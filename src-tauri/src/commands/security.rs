@@ -2,18 +2,21 @@
 //! Argon2id params, reset attempts. PIN registration is an explicit first-run command —
 //! `session.unlock` never bootstraps the row (F-004; no insecure self-registration).
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 use crate::commands::company::app_data_dir;
 use crate::commands::session::{validate_pin_policy, hash_pin, verify_pin};
 use crate::core::audit::{next_hash, GENESIS_HASH};
 use crate::core::error::{AppError, AppResult};
 use crate::storage::db;
+use crate::storage::keys::{self, KeyVault, PinRecord};
 use crate::storage::keystore;
 
 const PIN_ROW_ID: &str = "default";
 
 /// `security.change_pin` — {old_pin, new_pin} (PIN_POLICY_WEAK / AUTH_PIN_INVALID).
+/// The Company files are NOT re-encrypted: the same vault key is re-sealed under the new PIN's
+/// derived key with a fresh salt and nonce (AUTH-SPEC §2.4).
 #[tauri::command(name = "security.change_pin", rename_all = "camelCase")]
 pub fn security_change_pin(app: AppHandle, old_pin: String, new_pin: String) -> AppResult<serde_json::Value> {
     validate_pin_policy(&new_pin)?;
@@ -27,14 +30,18 @@ pub fn security_change_pin(app: AppHandle, old_pin: String, new_pin: String) -> 
         )
         .ok();
     let stored = stored.ok_or_else(|| AppError::invalid("PIN_NOT_INITIALIZED".into()))?;
-    if !verify_pin(&old_pin, &stored)? {
+    let record = PinRecord::from_json(&stored)?;
+    if !verify_pin(&old_pin, &record.phc)? {
         return Err(AppError::PinInvalid);
     }
+    let mut vault_key = record.unseal_vault_key(&old_pin)?;
     let new_hash = hash_pin(&new_pin)?;
+    let new_record = keys::reseal_pin_record(&vault_key, &new_pin, new_hash)?;
+    keys::zeroize(&mut vault_key);
     let changed = conn
         .execute(
             "UPDATE pin_metadata SET argon2_params_json = ?1, failed_attempts = 0, locked_until = NULL WHERE id = ?2",
-            rusqlite::params![new_hash, PIN_ROW_ID],
+            rusqlite::params![new_record.to_json()?, PIN_ROW_ID],
         )
         .map_err(AppError::from)?;
     if changed != 1 {
@@ -47,7 +54,12 @@ pub fn security_change_pin(app: AppHandle, old_pin: String, new_pin: String) -> 
 /// policy → Argon2id hash → transactional pin_metadata insert (attempts/lockout reset)
 /// + HMAC audit marker. A second call fails closed (PIN_ALREADY_SET) — no silent overwrite.
 #[tauri::command(name = "security.pin_setup", rename_all = "camelCase")]
-pub fn security_pin_setup(app: AppHandle, pin: String, confirm: String) -> AppResult<serde_json::Value> {
+pub fn security_pin_setup(
+    app: AppHandle,
+    pin: String,
+    confirm: String,
+    vault: State<'_, KeyVault>,
+) -> AppResult<serde_json::Value> {
     validate_pin_policy(&pin)?;
     if pin != confirm {
         return Err(AppError::invalid("PIN_CONFIRM_MISMATCH: confirm must equal pin"));
@@ -62,12 +74,16 @@ pub fn security_pin_setup(app: AppHandle, pin: String, confirm: String) -> AppRe
     }
 
     let hash = hash_pin(&pin)?;
+    // Key ceremony (AUTH-SPEC §2.1 step 5): generate the random vault key and seal it under
+    // the PIN-derived key. Only the sealed copy is persisted; the vault key lives in memory so
+    // the wizard can create the first Company without asking for the PIN again.
+    let (record, mut vault_key) = keys::seal_pin_record(&pin, hash)?;
     let now = chrono::Utc::now().to_rfc3339();
     let tx = conn.transaction().map_err(AppError::from)?;
     tx.execute(
         "INSERT INTO pin_metadata (id, argon2_params_json, recovery_phrase_hash, failed_attempts, locked_until)
          VALUES (?1, ?2, '', 0, NULL)",
-        rusqlite::params![PIN_ROW_ID, hash],
+        rusqlite::params![PIN_ROW_ID, record.to_json()?],
     )
     .map_err(AppError::from)?;
 
@@ -98,6 +114,11 @@ pub fn security_pin_setup(app: AppHandle, pin: String, confirm: String) -> AppRe
     )
     .map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
+
+    // Hold the vault key for the rest of this process run (first-run → wizard → company.create).
+    // It is dropped and zeroised by `session.lock` (AUTH-SPEC §2.3).
+    vault.put(vault_key)?;
+    keys::zeroize(&mut vault_key);
 
     Ok(serde_json::json!({ "data": { "ok": true } }))
 }

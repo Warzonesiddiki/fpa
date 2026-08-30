@@ -1,7 +1,8 @@
 //! session.status / session.unlock / session.lock (AUTH-SPEC §2).
 //! PIN = Argon2id hash in pin_metadata (never the PIN itself); attempts/lockout enforced in Rust.
-//! Company verification happens against the app DB; the encrypted `.fpa` container gate lands
-//! with the Company file milestone (SECURITY-CHECKLIST A02) — error codes are already final.
+//! Unlocking derives the PIN's wrap key, unwraps the in-memory vault key and proves the
+//! Company's encrypted `.fpa` container opens with it (SECURITY-CHECKLIST A02); the vault key
+//! is the only thing held between unlock and lock and is zeroised on lock (AUTH-SPEC §2.3).
 
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -9,15 +10,18 @@ use argon2::{
 };
 use base64::Engine;
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::commands::company::app_data_dir;
 use crate::core::error::{AppError, AppResult};
+use crate::storage::container;
 use crate::storage::db;
+use crate::storage::keys::{self, KeyVault, PinRecord};
 
 const PIN_ROW_ID: &str = "default";
 const MAX_FAILED_ATTEMPTS: u32 = 5;
@@ -67,6 +71,9 @@ pub struct SessionState(Mutex<Option<Session>>);
 struct Session {
     company_id: String,
     session_token: String,
+    /// The sealed `.fpa` container this session opened (A02) — held so `company.open`/lock
+    /// know which file the in-memory keys belong to.
+    container_path: String,
 }
 
 pub fn hash_pin(pin: &str) -> Result<String, AppError> {
@@ -85,10 +92,14 @@ pub fn verify_pin(pin: &str, stored_hash: &str) -> Result<bool, AppError> {
 
 /// Mint a fresh session token for `company_id` and swap it into the session state.
 /// Shared by `session.unlock` and `company.open` (S-020) — one place owns the token (AUTH-SPEC §2).
-pub fn mint_session(state: &State<'_, SessionState>, company_id: String) -> AppResult<String> {
+pub fn mint_session(
+    state: &State<'_, SessionState>,
+    company_id: String,
+    container_path: String,
+) -> AppResult<String> {
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes());
     let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-    *guard = Some(Session { company_id, session_token: token.clone() });
+    *guard = Some(Session { company_id, session_token: token.clone(), container_path });
     Ok(token)
 }
 
@@ -106,30 +117,33 @@ pub fn session_status(state: State<'_, SessionState>) -> AppResult<serde_json::V
     }))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct PinRow {
-    hash: String,
+    /// `pin_metadata.argon2_params_json` — the PIN hash plus the vault key sealed under it.
+    record: PinRecord,
     failed_attempts: u32,
     locked_until: Option<i64>, // unix ms
 }
 
 fn load_pin_row(conn: &Connection) -> Result<Option<PinRow>, AppError> {
-    let mut stmt = conn
-        .prepare("SELECT argon2_params_json, failed_attempts, locked_until FROM pin_metadata WHERE id = ?1")
+    // locked_until is TEXT (unix ms as string); parse back to i64 — never trust a cast.
+    let row: Option<(String, i64, Option<String>)> = conn
+        .query_row(
+            "SELECT argon2_params_json, failed_attempts, locked_until FROM pin_metadata WHERE id = ?1",
+            [PIN_ROW_ID],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
         .map_err(AppError::from)?;
-    let mut rows = stmt.query_map([PIN_ROW_ID], |r| {
-        // locked_until is TEXT (unix ms as string); parse back to i64 — never trust a cast.
-        let locked_until: Option<String> = r.get(2)?;
-        Ok(PinRow {
-            hash: r.get(0)?,
-            failed_attempts: r.get::<_, i64>(1)? as u32,
-            locked_until: locked_until.and_then(|s| s.parse::<i64>().ok()),
-        })
-    })?;
-    match rows.next() {
-        Some(r) => Ok(Some(r.map_err(AppError::from)?)),
-        None => Ok(None),
-    }
+    let (json, failed_attempts, locked_until) = match row {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    Ok(Some(PinRow {
+        record: PinRecord::from_json(&json)?,
+        failed_attempts: failed_attempts as u32,
+        locked_until: locked_until.and_then(|s| s.parse::<i64>().ok()),
+    }))
 }
 
 fn now_ms() -> i64 {
@@ -137,25 +151,30 @@ fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
-/// `session.unlock` — verify PIN (Argon2id), enforce lockout, mint session token.
+/// `session.unlock` — verify PIN (Argon2id), enforce lockout, unwrap the vault key, prove the
+/// Company container opens with it, then mint the session token (AUTH-SPEC §2.2).
 #[tauri::command(name = "session.unlock", rename_all = "camelCase")]
 pub fn session_unlock(
     app: AppHandle,
     pin: String,
     company_id: String,
     state: State<'_, SessionState>,
+    vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     validate_pin_policy(&pin)?;
     let dir = app_data_dir(&app)?;
     let conn = db::open_at(&dir).map_err(AppError::from)?;
 
-    // Company must exist (file gate — encrypted container in a later milestone).
-    let company_exists: bool = conn
-        .query_row("SELECT EXISTS(SELECT 1 FROM companies WHERE id = ?1)", [&company_id], |r| r.get(0))
-        .map_err(AppError::from)?;
-    if !company_exists {
-        return Err(AppError::DecryptFailed);
-    }
+    // The Company row owns the path of its sealed `.fpa` container — opened below (A02).
+    let container_path: String = conn
+        .query_row(
+            "SELECT company_file_path FROM companies WHERE id = ?1",
+            [&company_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or(AppError::DecryptFailed)?;
 
     let row = match load_pin_row(&conn)? {
         Some(r) => r,
@@ -170,7 +189,7 @@ pub fn session_unlock(
         }
     }
 
-    if verify_pin(&pin, &row.hash)? {
+    if verify_pin(&pin, &row.record.phc)? {
         conn.execute(
             "UPDATE pin_metadata SET failed_attempts = 0, locked_until = NULL WHERE id = ?1",
             [PIN_ROW_ID],
@@ -182,7 +201,16 @@ pub fn session_unlock(
             rusqlite::params![Utc::now().to_rfc3339(), company_id],
         )
         .map_err(AppError::from)?;
-        let token = mint_session(&state, company_id.clone())?;
+
+        // Correct PIN → unwrap the vault key and prove this PIN opens THIS Company file. A
+        // container copied from another installation (different PIN → different wrap key) or a
+        // tampered record fails here with STORAGE_DECRYPT_FAILED and nothing is cached.
+        let mut vault_key = row.record.unseal_vault_key(&pin)?;
+        container::read_key(Path::new(&container_path), &vault_key)?;
+        vault.put(vault_key)?;
+        keys::zeroize(&mut vault_key);
+
+        let token = mint_session(&state, company_id.clone(), container_path)?;
         return Ok(serde_json::json!({ "data": { "company_id": company_id, "session_token": token } }));
     }
 
@@ -205,11 +233,20 @@ pub fn session_unlock(
     Err(AppError::PinInvalid)
 }
 
-/// `session.lock`
+/// `session.lock` — invalidate the session token and drop every key from memory
+/// (AUTH-SPEC §2.3). Nothing unencrypted is ever written beside the container, so locking has
+/// nothing to scrub on disk: the next unlock re-derives the keys from the PIN.
 #[tauri::command(name = "session.lock")]
-pub fn session_lock(state: State<'_, SessionState>) -> AppResult<serde_json::Value> {
+pub fn session_lock(
+    state: State<'_, SessionState>,
+    vault: State<'_, KeyVault>,
+) -> AppResult<serde_json::Value> {
     let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
     *guard = None;
+    drop(guard);
+    // KeyVault::clear zeroises the vault key; the Company file key lives only inside the
+    // sealed container, so no plaintext copy exists to delete.
+    vault.clear()?;
     Ok(serde_json::json!({ "data": { "locked": true } }))
 }
 
@@ -258,16 +295,20 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         // No row before registration — session.unlock must fail closed (no bootstrap F-004).
         assert!(load_pin_row(&conn).unwrap().is_none());
-        // Simulate `security.pin_setup` (explicit first-run command).
-        let hash = hash_pin("Meridian#2026").unwrap();
+        // Simulate `security.pin_setup` (explicit first-run command): the row carries the
+        // structured record — the PIN hash plus the vault key sealed under the PIN.
+        let phc = hash_pin("Meridian#2026").unwrap();
+        let (record, vault_key) = keys::seal_pin_record("Meridian#2026", phc.clone()).unwrap();
         conn.execute(
             "INSERT INTO pin_metadata (id, argon2_params_json, recovery_phrase_hash, failed_attempts, locked_until)
              VALUES (?, ?, '', 0, NULL)",
-            rusqlite::params![PIN_ROW_ID, hash],
+            rusqlite::params![PIN_ROW_ID, record.to_json().unwrap()],
         )
         .unwrap();
         let row = load_pin_row(&conn).unwrap().unwrap();
-        assert!(verify_pin("Meridian#2026", &row.hash).unwrap());
+        assert_eq!(row.record.phc, phc);
+        assert!(verify_pin("Meridian#2026", &row.record.phc).unwrap());
+        assert_eq!(row.record.unseal_vault_key("Meridian#2026").unwrap(), vault_key);
         assert_eq!(row.failed_attempts, 0);
         assert!(row.locked_until.is_none());
     }

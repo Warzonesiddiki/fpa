@@ -1,18 +1,23 @@
 //! company.list / company.create / company.open / company.delete (F-001 Company Manager).
-//! File-backed Company records live in the app DB; the encrypted `.fpa` container wraps the
-//! Company DB in a later milestone (SECURITY-CHECKLIST A02) — the id/path contract is unchanged.
+//! Company records live in the app DB; each Company's data lives in an encrypted `.fpa`
+//! container (`storage::container`, SECURITY-CHECKLIST A02) whose key is wrapped by the
+//! PIN-derived vault key. The id/path contract across IPC is unchanged.
 
 use chrono::{DateTime, Datelike, Utc};
 use rusqlite::OptionalExtension;
+use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
 use tauri::Manager;
+use tauri::State;
 use uuid::Uuid;
 
 use crate::core::audit::{next_hash, GENESIS_HASH};
 use crate::core::calendar::{build_12month, build_week_based, CalendarPreset, WeekRule};
 use crate::core::error::{AppError, AppResult};
+use crate::storage::container;
 use crate::storage::db;
+use crate::storage::keys::{self, KeyVault};
 use crate::storage::keystore;
 
 /// Retention window for `company.delete` (ERROR-HANDLING `COMPANY_IN_USE_RECENT`): a Company
@@ -168,6 +173,8 @@ pub(crate) fn write_calendar(
 }
 
 /// `company.create` — {name, path, pack_key, calendar{...}, plan_only?, horizon?}
+/// Seals a fresh `.fpa` container at `path`: random 256-bit Company key, wrapped by the
+/// PIN-derived vault key (AUTH-SPEC §2.1). Requires an unlocked vault (API-SPEC: session).
 #[tauri::command(name = "company.create", rename_all = "camelCase")]
 pub fn company_create(
     app: AppHandle,
@@ -176,6 +183,7 @@ pub fn company_create(
     pack_key: String,
     calendar: CalendarConfig,
     horizon: Option<String>,
+    vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
@@ -209,6 +217,14 @@ pub fn company_create(
         Path::new(&path).canonicalize().unwrap_or_else(|_| Path::new(&path).to_path_buf());
     let company_file_path = company_file_path.to_string_lossy().to_string();
 
+    // Never overwrite an existing Company file (ERROR-HANDLING STORAGE_FILE_EXISTS).
+    if Path::new(&company_file_path).exists() {
+        return Err(AppError::file_exists());
+    }
+    // The vault key is only present between unlock and lock (AUTH-SPEC §2.2/§2.3): a locked
+    // app cannot mint a Company key, so `company.create` fails closed with SESSION_LOCKED.
+    let mut vault_key = vault.get()?;
+
     let tx = conn.transaction().map_err(AppError::from)?;
     tx.execute(
         "INSERT INTO companies (id, name, type, default_currency_code, base_locale, pack_schema_version,
@@ -234,7 +250,17 @@ pub fn company_create(
         rusqlite::params![company_id, company_id, after_json, prev, hash, now],
     )
     .map_err(AppError::from)?;
+
+    // Seal the encrypted container LAST, still inside the transaction: if the image cannot be
+    // built or sealed the transaction rolls back, so there is never a Company row without its
+    // `.fpa` file (nor a sealed file without its Company).
+    let mut cek = container::create_key();
+    let image = container::new_image(&dir, &company_id)?;
+    container::seal(Path::new(&company_file_path), &image, &cek, &vault_key)?;
+    keys::zeroize(&mut cek);
+
     tx.commit().map_err(AppError::from)?;
+    keys::zeroize(&mut vault_key);
 
     Ok(serde_json::json!({ "data": { "company_id": company_id } }))
 }
@@ -246,6 +272,7 @@ pub fn company_open(
     app: AppHandle,
     path: String,
     state: tauri::State<'_, crate::commands::session::SessionState>,
+    vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
@@ -271,8 +298,19 @@ pub fn company_open(
     let (company_id, name, ctype, currency, locale, pack_schema_version, stored_path) =
         row.ok_or_else(AppError::file_corrupt)?;
 
+    // Authenticate the sealed container with the vault key held since unlock (A02). A Company
+    // file brought from another installation — sealed under a different PIN — fails here with
+    // STORAGE_DECRYPT_FAILED; a decrypted image that is not a SQLite database is FILE_CORRUPT.
+    let mut vault_key = vault.get()?;
+    let mut opened = container::open(Path::new(&stored_path), &vault_key)?;
+    if !container::is_sqlite_image(&opened.image) {
+        return Err(AppError::file_corrupt());
+    }
+    keys::zeroize(&mut opened.key);
+    keys::zeroize(&mut vault_key);
+
     // Session switch (token re-minted per open — AUTH-SPEC §2).
-    crate::commands::session::mint_session(&state, company_id.clone())?;
+    crate::commands::session::mint_session(&state, company_id.clone(), stored_path.clone())?;
 
     let now = Utc::now().to_rfc3339();
     conn.execute("UPDATE companies SET updated_at = ?1 WHERE id = ?2", [&now, &company_id])
@@ -337,6 +375,18 @@ pub fn company_delete(app: AppHandle, company_id: String, reason: String) -> App
         }
     }
 
+    // Erasure covers the sealed file as well as the row (COMPLIANCE-DATA-SOVEREIGNTY §Erasure):
+    // the container is only ciphertext without the vault key, but it still belongs to the Company.
+    let container_path: String = tx
+        .query_row(
+            "SELECT company_file_path FROM companies WHERE id = ?1",
+            [&company_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::file_corrupt)?;
+
     // Audit the deletion before the per-Company chain is excised (erasure semantics: the
     // Company's trail is removed with it; surviving Companies keep their own chain, F-033).
     let after_json = serde_json::json!({ "reason": reason.trim() }).to_string();
@@ -376,6 +426,13 @@ pub fn company_delete(app: AppHandle, company_id: String, reason: String) -> App
     tx.execute("DELETE FROM audit_events WHERE company_id = ?1", [&company_id]).map_err(AppError::from)?;
     tx.execute("DELETE FROM companies WHERE id = ?1", [&company_id]).map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
+
+    match fs::remove_file(Path::new(&container_path)) {
+        Ok(()) => {}
+        // A Company whose file was already moved/removed by the user is still erased.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(AppError::internal(format!("COMPANY_FILE_DELETE: {e}"))),
+    }
 
     Ok(serde_json::json!({ "data": { "deleted": true } }))
 }
