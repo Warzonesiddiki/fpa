@@ -18,8 +18,13 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     const out = (await mockInvoke("session.unlock", {
       pin: "Meridian2026",
       company_id: "00000000-0000-0000-0000-000000000000",
-    })) as { error: { code: string } };
+    })) as { error: { code: string; httpStatus: number; userMessage: string; retryable: boolean } };
+    // The mock is the dev-only mirror of the Rust core: code, status and text must match
+    // ERROR-HANDLING.md §B and AppError::DecryptFailed exactly.
     expect(out.error.code).toBe("STORAGE_DECRYPT_FAILED");
+    expect(out.error.httpStatus).toBe(401);
+    expect(out.error.userMessage).toBe("The Company file cannot be decrypted with this PIN.");
+    expect(out.error.retryable).toBe(false);
   });
 
   it("security.pin_setup mirrors the documented {ok} success shape", async () => {

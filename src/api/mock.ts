@@ -179,11 +179,11 @@ export async function mockInvoke<C extends CommandName>(
       if (!companies.some((c) => c.id === company_id)) {
         return {
           error: {
+            // Mirrors the Rust core exactly (ERROR-HANDLING.md §B: key mismatch is 401).
             code: "STORAGE_DECRYPT_FAILED",
             message: "unknown company",
-            userMessage:
-              "This Company file could not be decrypted. Choose a different file or restore a backup.",
-            httpStatus: 500,
+            userMessage: "The Company file cannot be decrypted with this PIN.",
+            httpStatus: 401,
             retryable: false,
             retryAfterMs: null,
             details: {},
