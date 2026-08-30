@@ -9,6 +9,9 @@ pub mod storage;
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::coa_list;
 use commands::company::{company_create, company_delete, company_list, company_open};
+use commands::import::{
+    import_commit, import_parse, import_rollback, import_tieout, import_validate, ParseRegistry,
+};
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
@@ -27,6 +30,9 @@ pub fn run() {
         .manage(SessionState::default())
         // In-memory unlocked vault key (A02): never persisted, zeroised by `session.lock`.
         .manage(KeyVault::default())
+        // In-memory parse store (B19): parsed rows live only between import.parse and
+        // import.commit and are never written to disk.
+        .manage(ParseRegistry::default())
         .invoke_handler(tauri::generate_handler![
             session_status,
             session_unlock,
@@ -41,6 +47,11 @@ pub fn run() {
             calendar_apply,
             coa_list,
             pack_list,
+            import_parse,
+            import_validate,
+            import_tieout,
+            import_commit,
+            import_rollback,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).
