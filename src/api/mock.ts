@@ -158,9 +158,12 @@ export async function mockInvoke<C extends CommandName>(
       return {
         data: { unlocked: session.unlocked, company_id: session.company_id, license: null },
       };
+    case "security.pin_setup":
+      // Shape mirror only (B18-3): the Rust core owns policy + persistence.
+      return { data: { ok: true } };
     case "session.unlock": {
       const { pin, company_id } = args as { pin: string; company_id: string };
-      if (pin === "wrong") {
+      if (pin === "WrongPin9!") {
         return {
           error: {
             code: "AUTH_PIN_INVALID",

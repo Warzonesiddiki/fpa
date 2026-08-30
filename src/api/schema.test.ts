@@ -8,6 +8,9 @@ import {
   CoaListData,
   DecimalString,
   MoneyMinor,
+  SecurityPinSetupData,
+  pinPolicyChecks,
+  validatePinPolicy,
 } from "./schema";
 
 describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
@@ -22,6 +25,79 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     expect(DecimalString.safeParse("-0.01").success).toBe(true);
     expect(DecimalString.safeParse("1e3").success).toBe(false);
     expect(DecimalString.safeParse("abc").success).toBe(false);
+  });
+
+  it("validatePinPolicy enforces ≥8 chars, ≥2 classes, no sequential run ≥4 (AUTH-SPEC §2.1)", () => {
+    expect(validatePinPolicy("Meridian#2026")).toBeNull();
+    expect(validatePinPolicy("Meridian2026")).toBeNull();
+    expect(validatePinPolicy("short")).toBe("too_short");
+    expect(validatePinPolicy("abcdefgh")).toBe("one_class");
+    expect(validatePinPolicy("12345678")).toBe("one_class");
+    expect(validatePinPolicy("abcd1234")).toBe("sequence");
+    expect(validatePinPolicy("ABcd1234")).toBe("sequence");
+    expect(validatePinPolicy("a1!9876b")).toBe("sequence");
+    expect(validatePinPolicy("a1!aaaa1")).toBe("sequence");
+    expect(validatePinPolicy("x".repeat(65) + "Aa1!")).toBe("too_long");
+  });
+
+  it("pinPolicyChecks reports each rule independently for the live hints", () => {
+    expect(pinPolicyChecks("")).toEqual({ length: false, classes: false, sequence: true });
+    expect(pinPolicyChecks("meridi")).toEqual({
+      length: false,
+      classes: false,
+      sequence: true,
+    });
+    expect(pinPolicyChecks("meridian")).toEqual({
+      length: true,
+      classes: false,
+      sequence: true,
+    });
+    expect(pinPolicyChecks("abcdefgh")).toEqual({
+      length: true,
+      classes: false,
+      sequence: false,
+    });
+    expect(pinPolicyChecks("Meridian2026")).toEqual({
+      length: true,
+      classes: true,
+      sequence: true,
+    });
+    expect(pinPolicyChecks(`${"x".repeat(65)}Aa1!`)).toEqual({
+      length: false,
+      classes: true,
+      sequence: false,
+    });
+  });
+
+  it("session.unlock rejects a policy-weak PIN before IPC (min 8, was 4)", () => {
+    expect(
+      CommandArgs["session.unlock"].safeParse({
+        pin: "1234",
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["session.unlock"].safeParse({
+        pin: "Meridian#2026",
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("security.pin_setup validates policy + confirm match and returns {ok:true}", () => {
+    const args = { pin: "Meridian#2026", confirm: "Meridian#2026" };
+    expect(CommandArgs["security.pin_setup"].safeParse(args).success).toBe(true);
+    expect(
+      CommandArgs["security.pin_setup"].safeParse({ pin: "Meridian#2026", confirm: "Different9!" })
+        .success,
+    ).toBe(false);
+    expect(
+      CommandArgs["security.pin_setup"].safeParse({ pin: "1234", confirm: "1234" }).success,
+    ).toBe(false);
+    expect(CommandArgs["security.pin_setup"].safeParse({ pin: "Meridian#2026" }).success).toBe(
+      false,
+    );
+    expect(SecurityPinSetupData.safeParse({ ok: true }).success).toBe(true);
   });
 
   it("AppErrorShape validates the documented error object", () => {
