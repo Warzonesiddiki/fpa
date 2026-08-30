@@ -53,9 +53,10 @@ pub fn random_bytes<const N: usize>() -> [u8; N] {
     out
 }
 
-/// Overwrite a secret in memory (AUTH-SPEC §2.3: keys are dropped on lock). The compiler is
-/// not allowed to elide these stores — no `zeroize` dependency is needed for a 32-byte key
-/// (B13: the technology budget is closed at 15).
+/// Overwrite a secret in memory (AUTH-SPEC §2.3: keys are dropped on lock). `zeroize` is not in
+/// the locked technology budget (B13), so this is its plain-slice equivalent: it clears every
+/// short-lived key copy (the derived wrap key, the freshly unwrapped vault key) and the vault
+/// slot itself before they go out of scope.
 pub fn zeroize(buf: &mut [u8]) {
     buf.fill(0);
 }
