@@ -2,6 +2,7 @@
 //! headless-Linux fallback = 0600 file beside the app dir (warned in logs; no key ever in the DB).
 
 use keyring::Entry;
+use rand::rngs::OsRng;
 use rand::RngCore;
 use std::fs;
 use std::path::Path;

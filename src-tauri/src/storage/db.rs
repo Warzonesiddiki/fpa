@@ -6,23 +6,32 @@ use rusqlite_migration::{Migrations, M};
 use std::fs;
 use std::path::Path;
 
-pub fn open_at(dir: &Path) -> Result<Connection, String> {
-    fs::create_dir_all(dir).map_err(|e| format!("DB_DIR: {e}"))?;
-    let conn = Connection::open(dir.join("onefpa.db")).map_err(|e| format!("DB_OPEN: {e}"))?;
+use crate::core::error::{AppError, AppResult};
+
+/// Database file name inside a directory — shared with `container` (the `.fpa` image is this
+/// file, checkpointed and sealed).
+pub const DB_FILE: &str = "onefpa.db";
+
+pub fn open_at(dir: &Path) -> AppResult<Connection> {
+    fs::create_dir_all(dir).map_err(|e| AppError::Db(format!("DB_DIR: {e}")))?;
+    let conn = Connection::open(dir.join(DB_FILE)).map_err(|e| AppError::Db(format!("DB_OPEN: {e}")))?;
     init(&conn)?;
     Ok(conn)
 }
 
-pub fn open_in_memory() -> Result<Connection, String> {
-    let conn = Connection::open_in_memory().map_err(|e| format!("DB_OPEN: {e}"))?;
+pub fn open_in_memory() -> AppResult<Connection> {
+    let conn = Connection::open_in_memory().map_err(|e| AppError::Db(format!("DB_OPEN: {e}")))?;
     init(&conn)?;
     Ok(conn)
 }
 
-fn init(conn: &Connection) -> Result<(), String> {
-    conn.pragma_update(None, "journal_mode", "WAL").map_err(|e| e.to_string())?;
-    conn.pragma_update(None, "foreign_keys", "ON").map_err(|e| e.to_string())?;
-    conn.pragma_update(None, "synchronous", "NORMAL").map_err(|e| e.to_string())?;
+fn init(conn: &Connection) -> AppResult<()> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| AppError::Db(e.to_string()))?;
     migrate(conn)?;
     // integrity gate on open (silent failure is forbidden — DATABASE-SCHEMA §11.1)
     let ok: bool = conn
@@ -30,9 +39,9 @@ fn init(conn: &Connection) -> Result<(), String> {
             let val: String = r.get(0)?;
             Ok(val == "ok")
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     if !ok {
-        return Err("INTEGRITY_CHECK_FAILED: run recovery mode (DR-RECOVERY-RUNBOOK §3.1)".to_string());
+        return Err(AppError::Db("INTEGRITY_CHECK_FAILED: run recovery mode (DR-RECOVERY-RUNBOOK §3.1)".into()));
     }
     Ok(())
 }
@@ -42,9 +51,9 @@ const MIGRATIONS: &[M] = &[M {
     down: "", // additive v1; destructive changes require a new migration + Snapshot policy (§11.3)
 }];
 
-fn migrate(conn: &Connection) -> Result<(), String> {
+fn migrate(conn: &Connection) -> AppResult<()> {
     let migrations = Migrations::new(MIGRATIONS);
-    migrations.to_latest(conn).map_err(|e| format!("MIGRATION: {e}"))
+    migrations.to_latest(conn).map_err(|e| AppError::Db(format!("MIGRATION: {e}")))
 }
 
 #[cfg(test)]

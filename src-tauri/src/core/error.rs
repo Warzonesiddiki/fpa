@@ -24,6 +24,8 @@ pub enum AppError {
     Locked { retry_after_ms: u64 },
     #[error("company file could not be decrypted")]
     DecryptFailed,
+    #[error("a file already exists at that location")]
+    FileExists,
     #[error("session required")]
     SessionRequired,
     #[error("invalid argument: {0}")]
@@ -53,7 +55,9 @@ impl AppError {
         let (code, http_status, retryable, retry_after_ms) = match self {
             AppError::PinInvalid => ("AUTH_PIN_INVALID", 401, true, None),
             AppError::Locked { retry_after_ms } => ("AUTH_LOCKED", 423, false, Some(*retry_after_ms)),
-            AppError::DecryptFailed => ("STORAGE_DECRYPT_FAILED", 500, false, None),
+            // ERROR-HANDLING.md §B: key mismatch is 401 with the exact documented user text.
+            AppError::DecryptFailed => ("STORAGE_DECRYPT_FAILED", 401, false, None),
+            AppError::FileExists => ("STORAGE_FILE_EXISTS", 409, false, None),
             AppError::SessionRequired => ("SESSION_LOCKED", 401, true, None),
             AppError::InvalidArgument(_) => ("VALUE_INVALID", 422, false, None),
             AppError::Scope(_) => ("VALUE_INVALID", 403, false, None),
@@ -69,9 +73,8 @@ impl AppError {
         let user_message = match self {
             AppError::PinInvalid => "Incorrect PIN. Please try again.",
             AppError::Locked { .. } => "Too many attempts. Try again later.",
-            AppError::DecryptFailed => {
-                "This Company file could not be decrypted. Choose a different file or restore a backup."
-            }
+            AppError::DecryptFailed => "The Company file cannot be decrypted with this PIN.",
+            AppError::FileExists => "A file already exists at that location. Choose another name.",
             AppError::SessionRequired => "The session is locked. Unlock first.",
             AppError::InvalidArgument(_) => "Invalid arguments.",
             AppError::Scope(_) => "This operation is not permitted.",
@@ -133,6 +136,10 @@ impl AppError {
 
     pub fn file_corrupt() -> Self {
         AppError::FileCorrupt
+    }
+
+    pub fn file_exists() -> Self {
+        AppError::FileExists
     }
 
     pub fn company_recent_use(days: u16) -> Self {
