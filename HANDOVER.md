@@ -12,7 +12,7 @@
    Clean tree expected. If refs reset (see §6 Recovery), recover before any edit.
 2. `ls node_modules | wc -l` — if `0`, run `npm install`. **The sandbox wipes `node_modules`
    mid-session** (it is excluded from snapshots). This is normal, not an error. Expect it to
-   happen again *during* your session: if `npx vitest` suddenly reports `eslint: not found`,
+   happen again _during_ your session: if `npx vitest` suddenly reports `eslint: not found`,
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
@@ -30,11 +30,11 @@ commands, `rust_decimal`, HMAC audit chains, `src/api/schema.ts` + `mock.ts`), *
 **This session (branch `arena/01a053dd-fpa`, 3 commits) — A02 encrypted `.fpa` container:
 NOT YET MERGED at the time of writing (open PR).** Commits:
 
-| Commit | Scope |
-|---|---|
+| Commit    | Scope                                                                                                                                          |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `edfe833` | `storage/keys.rs` (new), `storage/container.rs` (new), `storage/mod.rs`, `storage/db.rs`, `storage/keystore.rs`, `core/error.rs`, `Cargo.toml` |
-| `e7a35d0` | `commands/session.rs`, `commands/security.rs`, `commands/company.rs`, `lib.rs` |
-| `0fc51b1` | `src/api/mock.ts`, `src/api/mock.test.ts` (mock ↔ core status alignment) |
+| `e7a35d0` | `commands/session.rs`, `commands/security.rs`, `commands/company.rs`, `lib.rs`                                                                 |
+| `0fc51b1` | `src/api/mock.ts`, `src/api/mock.test.ts` (mock ↔ core status alignment)                                                                       |
 
 ### What A02 changed (do not re-derive)
 
@@ -51,7 +51,7 @@ NOT YET MERGED at the time of writing (open PR).** Commits:
   (`params_are_spec`) — A02 "no weak mode".
 - **`.fpa` format v1** (`storage/container.rs`, documented in the module header):
   `magic "ONEFPA01" | version 1 | cek_nonce 12B | cek_sealed 48B (AAD = 0..21) |
-  payload_nonce 12B | payload (AAD = 0..69)`. Every header byte is either inside a GCM tag or
+payload_nonce 12B | payload (AAD = 0..69)`. Every header byte is either inside a GCM tag or
   used as that tag's AAD.
 - **WAL decision (SECURITY-CHECKLIST §3 "WAL in same encrypted container"): checkpoint-then-seal,
   single file.** The image is built from a `PRAGMA wal_checkpoint(TRUNCATE)`-ed database, so
@@ -78,7 +78,7 @@ NOT YET MERGED at the time of writing (open PR).** Commits:
 2. `storage/keystore.rs` used `OsRng` without `use rand::rngs::OsRng;`.
 3. `AppError::DecryptFailed` emitted `STORAGE_DECRYPT_FAILED` as **500** with the wrong text.
    ERROR-HANDLING.md §B (locked) says **401** and `"The Company file cannot be decrypted with
-   this PIN."` — both Rust and the dev mock now match, and `mock.test.ts` asserts all four
+this PIN."` — both Rust and the dev mock now match, and `mock.test.ts` asserts all four
    envelope fields so they cannot drift again.
 
 Added `AppError::FileExists` → `STORAGE_FILE_EXISTS` (409) — a pre-defined code, reused.
