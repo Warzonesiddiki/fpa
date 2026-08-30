@@ -95,7 +95,7 @@
 2. **S-022** BU calendar matrix → Transit Periods mapped (retail P06 spans group P05–P06) — explicit mapping screen.
    - *Branch:* ambiguous transit mapping → `CAL_TRANSIT_AMBIGUOUS` → resolve or consolidation blocked.
 3. **S-030**: import per-BU Actuals (dumps or connectors); Source Reconciliation per BU.
-4. **S-028 consolidation settings (S-061/S-060 group scope)**: Group Rollup Maps per BU; FX rates (average/closing per period, OCI policy); IC Tags in mappings.
+4. **Consolidation settings (S-021 BU setup, S-022 Transit Map — group scope S-061/S-060)**: Group Rollup Maps per BU; FX rates (average/closing per period, OCI policy); IC Tags in mappings.
    - *Branch:* IC Line unmatched → `IC_UNMATCHED` → consolidation blocked; pair or classify.
 5. Run consolidation → progress; post-run: IC Tie-Out Check, Group BS tie, eliminations report.
 6. **S-061 Segment Report** + **S-060** group statements + SoCE with NCI.

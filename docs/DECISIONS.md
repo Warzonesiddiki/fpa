@@ -44,7 +44,7 @@
 **Consequences:** money crosses IPC as i64/string (I1); decimal.js display-only; no per-industry code.
 
 ### ADR-003 · Money core: integer minor units + rust_decimal (I1)
-**Why:** audit-grade exactness; `REAL`/float corrupts cents at scale (reference F-0001 found 134 float sites).
+**Why:** audit-grade exactness; `REAL`/float corrupts cents at scale (reference issue #0001 found 134 float sites).
 **Consequences:** AST gate (`money:ast`); model values `amount_minor INTEGER`; all arithmetic in Rust.
 
 ### ADR-004 · One Fiscal Calendar engine (B14/I5)
@@ -73,7 +73,7 @@
 
 ### ADR-010 · Statements computed by Rust engines, not stored (B14)
 **Why:** single source of truth; tie-outs + rounding rules enforced at compute; no denormalized drift.
-**Consequences:** `statement.get` computes on demand; Health Check gates exports; rounding largest-remainder (F-027).
+**Consequences:** `statement.get.v1` computes on demand; Health Check gates exports; rounding largest-remainder (F-027).
 
 ### ADR-011 · Audit chain HMAC-SHA256, key in keyring (B18-1)
 **Why:** tamper-evidence; reference left unkeyed SHA-256 (documented red item).
@@ -92,7 +92,7 @@
 **Consequences:** PDF hash equality CI gate; `EXPORT_FORMULA_INJECTION_GUARD`.
 
 ### ADR-015 · QA gates blocking, no skips (B18-7)
-**Why:** reference CI had timeouts, `continue-on-error`, and skipped a11y gates (W8/F-0002/03).
+**Why:** reference CI had timeouts, `continue-on-error`, and skipped a11y gates (W8/reference issues #0002/03).
 **Consequences:** 12-stage CI; no `retry:3` masking; coverage waivers capped (2/release, audited).
 
 ### ADR-016 · Persona-first UX: 3 personas drive states/flows (P1)

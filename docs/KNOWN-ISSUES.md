@@ -9,7 +9,7 @@
 
 ### KI-001 · PIN/Recovery Phrase loss = unrecoverable Company · High · Accepted-by-design
 - **Affected:** F-034 security (S-072, D-007)
-- **Detail:** Local-first encryption means if both PIN and Recovery Phrase are lost, the Company cannot be opened. There is no server-side escrow (by design — B18-9, no data off machine). Reference project's unverified-unlock flaw (F-0006) is avoided, but this trade-off is inherent.
+- **Detail:** Local-first encryption means if both PIN and Recovery Phrase are lost, the Company cannot be opened. There is no server-side escrow (by design — B18-9, no data off machine). Reference project's unverified-unlock flaw (reference issue #0006) is avoided, but this trade-off is inherent.
 - **Plan:** Setup shows the Warning once; suggest writing phrase to paper + storing a passphrase-protected Backup in a second location (F-037 mitigates). Future V2: optional customer-managed escrow (never vendor).
 
 ### KI-002 · Connector API surface varies by region/plan · High · Workaround

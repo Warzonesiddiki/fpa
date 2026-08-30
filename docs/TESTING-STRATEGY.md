@@ -19,7 +19,7 @@
 
 ## 2. COVERAGE TARGETS (numeric, enforced in CI)
 
-| Metric | Target | Enforcement |
+| Measurement | Target | Enforcement |
 |---|---|---|
 | Rust core engine coverage (money, calendar, statements, consolidation, variance) | **≥ 95% lines, ≥ 90% branches** | `cargo llvm-cov` gate |
 | Rust storage/migration coverage | ≥ 85% lines | same |

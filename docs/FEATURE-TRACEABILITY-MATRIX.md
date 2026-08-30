@@ -3,6 +3,7 @@
 > OneFP&A · Stage 3 audit artifact (doc #38) · **Every `[MVP]` feature must have a checkmark in every column.**
 > Columns: User Story (US-xxx) · Screen(s) (S-xxx) · API Commands (API-SPEC) · DB Tables (DATABASE-SCHEMA) · Test Coverage (TESTING-STRATEGY + QA items).
 > Legend: ✅ complete · ⚠️ partial (flagged in Notes) · ❌ gap (blocking — must fix before Stage 4).
+> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 96 typed commands · 56 DB tables · 97 error codes**.
 
 ---
 
@@ -14,7 +15,7 @@
 | F-002 COA & Dimensions | US-003 | S-021 | coa.* | accounts, dimensions, dimension_values, account_dimension_map | ✅ unit+integration | — |
 | F-003 Calendar | US-004 | S-022 | calendar.* | fiscal_calendars, fiscal_years, fiscal_periods, bu_calendar_map | ✅ oracle fixtures (4-5-4, 52-53) | ⚠️ 5-4-4/3-3-3-4 fixtures scheduled M1-7 (TODO) |
 | F-004 First-Run Wizard | US-005 | S-002, D-005 | company.create, model.create | companies, models | ✅ E2E UF-001 | — |
-| F-005 Packs & Pack Builder | US-006 | S-023, S-002 | (pack load via company.create; builder commands in M1-9) | packs, pack_components | ✅ schema tests | ⚠️ explicit `pack.*` command group added in M1-9 (API-SPEC note) |
+| F-005 Packs & Pack Builder | US-006 | S-023, S-002 | pack.list/validate/install/builder.save_v1/builder.apply_diff | packs, pack_components | ✅ schema tests + fixture packs | — |
 | F-006 Horizons/Sizing | US-007 | S-040 | model.create (horizon) | models.horizon | ✅ bench (PERF §1) | — |
 | F-007 GL Dump Import | US-008 | S-030–S-032 | import.parse/validate/tieout/commit/rollback/history | import_batches, source_files, gl_lines | ✅ unit+E2E UF-002 | — |
 | F-008 Excel/CSV + Driver Data | US-009 | S-030/031 | driver.import, import.* (kind) | driver_values, import_batches | ✅ unit | — |
@@ -30,8 +31,8 @@
 | F-018 Production/Backlog | US-019 | S-047 | driver.* + model.schedule | drivers, model_values | ✅ unit | — |
 | F-019 RevRec | US-020 | S-048 | model.cell (policy) | model_lines/values | ✅ unit | — |
 | F-020 Excel-parity editing | US-021 | S-041 | (UI layer; cell.set under it) | model_values | ✅ unit+E2E (keyboard) | — |
-| F-021 Budget/Forecast/Rolling | US-022 | S-053, S-041 | scene.*, plan.* | scenarios, scenario_versions | ✅ unit+E2E UF-005 | — |
-| F-022 Scenarios/Compare/What-if | US-023 | S-050–S-052 | scene.create/duplicate/approve/lock, model.diff, goal_seek | scenarios, scenario_versions | ✅ unit+E2E UF-007 | ⚠️ `goal_seek` + `sensitivity` commands documented under plan.* (API-SPEC §2 — made explicit M4-4) |
+| F-021 Budget/Forecast/Rolling | US-022 | S-053, S-041 | scenario.create, plan.*, cycle.* | planning_cycles, cycle_tasks, scenarios, scenario_versions | ✅ unit+E2E UF-005 | — |
+| F-022 Scenarios/Compare/What-if | US-023 | S-050–S-052 | scenario.create/duplicate/submit/approve/lock/reopen/delete, baseline.set, model.diff, plan.whatif_overlay, plan.sensitivity, plan.goal_seek | scenarios, scenario_versions | ✅ unit+E2E UF-007 | — |
 | F-023 Input Collection | US-024 | S-053 | import.commit (kind=collection) | import_batches, driver_values | ✅ integration | — |
 | F-024 Variance & Attribution | US-025 | S-054 | variance.get, set_reason_code | gl_lines, model_values, drivers | ✅ unit+property (sum of parts) | — |
 | F-025 FVA | US-026 | S-055 | fva.get | scenario_versions, gl_lines | ✅ unit | — |
@@ -39,7 +40,7 @@
 | F-027 Statement Suite | US-028 | S-060 | statement.get.v1 | accounts, model_values, gl_lines | ✅ property (tie-outs) + oracle | — |
 | F-028 Consolidation | US-029 | S-061, S-060 | consolidation.run/status | business_units, bu_ownership, ic_lines, fx_rates, group_rollup_maps | ✅ oracle (2-BU) + property (IC=0) | ⚠️ 50-BU perf fixture in M6-3 (TODO) |
 | F-029 Report/KPI Builders | US-030 | S-062/063 | report.layout.*, kpi.define | kpis, report_layouts, layout_columns | ✅ unit | — |
-| F-030 Dashboard/Board Pack | US-031 | S-010, S-064 | statement.get, kpi, board_pack.generate | kpis, board_packs | ✅ unit+E2E UF-005 | — |
+| F-030 Dashboard/Board Pack | US-031 | S-010, S-064 | statement.get.v1, kpi, board_pack.generate | kpis, board_packs | ✅ unit+E2E UF-005 | — |
 | F-031 Export Suite | US-032 | D-003, S-060–064 | export.excel/pdf/model_dump, audit.export_dataroom | audit_events, gl_lines | ✅ unit+E2E (hash parity 3 OS) | — |
 | F-032 Health Check | US-033 | S-071 | health.run/waive | health_checks, health_findings, waivers | ✅ integration | — |
 | F-033 Audit Trail | US-034 | S-070 | audit.list, audit.export_dataroom | audit_events | ✅ property (chain) + E2E tamper | — |
@@ -81,8 +82,8 @@
 
 | Candidate | Status |
 |---|---|
-| Screen S-005 (referenced in UF-001/U-006) | ❌ Found → fixed to S-002 (wizard) |
-| Screen S-006 (Pack Builder ref) | ❌ Found → S-023 Pack Studio added (47 screens) + TODO/ROADMAP updated |
+| Screen phantom ref (wizard) | ❌ Found → fixed to S-002 (First-Run Wizard) |
+| Screen phantom ref (Pack Builder) | ❌ Found → S-023 Pack Studio added (42 screens) + TODO/ROADMAP updated |
 | Command `goal_seek`/`sensitivity` in stories but not catalog | ⚠️ Found → covered under `plan.*`; made explicit in M4-4 TODO |
 | Table `fiscal_calendars` in GLOSSARY? (yes) · `pack_components` covered in API? (loaded by company.create) | ✅ PASS |
 | Any doc outside DOCS-INDEX | ✅ PASS — 38 files = 38 index rows (verified by ls) |
@@ -110,7 +111,7 @@
 | 3.1 Feature traceability | ✅ PASS (0 gaps; 5 scheduled notes w/ TODOs) | — | — |
 | 3.2 Terminology audit | ✅ PASS → fixed 4 | 4 (Entity/Workspace/Metric/Upload) | ✅ |
 | 3.3 Data-flow audit | ✅ PASS | 0 | — |
-| 3.4 Orphan detection | ✅ PASS → fixed 2 | 2 (S-005, S-006) | ✅ |
+| 3.4 Orphan detection | ✅ PASS → fixed 2 | 2 phantom refs (wizard/Pack Builder) removed | ✅ |
 | 3.5 Contradiction scan | ✅ PASS | 0 | — |
 
 **Verdict: DOCUMENTATION SUITE IS CONSISTENT. Stage 4 (build-readiness test) may proceed.**

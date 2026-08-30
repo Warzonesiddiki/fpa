@@ -1,6 +1,6 @@
 # SCREENS-SPEC.md
 
-> OneFP&A · v1.0.0 · Terms per GLOSSARY.md · **Every screen: route · purpose · UI elements · all 5 states** (loading / empty / error / success / populated). 47 screens total. (loading / empty / error / success / populated).
+> OneFP&A · v1.0.0 · Terms per GLOSSARY.md · **Every screen: route · purpose · UI elements · all 5 states** (loading / empty / error / success / populated). 42 screens total.
 > Routes are hash-free paths in the webview router; the app shell loads `/` → unlock → App Shell.
 > Screen IDs (S-001…) are referenced by USER-FLOWS.md, QA-CHECKLIST.md, FEATURE-TRACEABILITY-MATRIX.md.
 
@@ -29,7 +29,11 @@
 ### S-003 Search Palette | `⌘K` overlay (route-less)
 **Purpose:** F-038 global search across Accounts, Drivers, KPIs, Reports, Screens, Settings.
 **Elements:** input, grouped results, keyboard navigation (↑↓ Enter Esc), "no results" panel.
-- **States:** loading (debounced 150ms), empty ("No matches for 'x' — see suggestions"), error (search index unavailable), success (grouped list), populated (history of 5 recent).
+- **Loading:** debounced spinner (150 ms) on query.
+- **Empty:** "No matches for 'x' — see suggestions".
+- **Error:** search index unavailable → retry + fallback to Settings search.
+- **Success:** grouped list renders with keyboard focus.
+- **Populated:** history of 5 recent results at the top of the list.
 
 ### S-004 App Shell | `/`
 **Purpose:** app chrome: sidebar navigation, top bar, content outlet.

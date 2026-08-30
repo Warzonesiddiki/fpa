@@ -2,6 +2,7 @@
 
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
+> **Code count: 97 (ZC revision — added 15 codes: FORMULA_UNSUPPORTED_FUNCTION, PACK_VERSION_EXISTS, PACK_IN_USE_LOCKED, CYCLE_NAME_DUP, CYCLE_TASK_BLOCKED, COLLECTION_CONFLICT, COLLECTION_STRUCTURE_CHANGED, CAPEX_IN_SERVICE_INVALID, PRODUCTION_CAPACITY, REVREC_COST_ESTIMATE_INVALID, COMPANY_IN_USE_RECENT, BASELINE_REPLACE_REASON_REQUIRED, MODEL_YEAR_EXISTS, SOURCE_BOOTSTRAP_EMPTY, PACK_NO_COMMENTARY).**
 
 ---
 
@@ -102,9 +103,24 @@
 | COMPARE_INCOMPATIBLE | different model | "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model." | 422 | false |
 | ASSUMPTION_IN_USE_LOCKED | locked | "Assumption is used by a Locked Baseline. Create a new Version to change." | 422 | false |
 | SPREAD_WEIGHTS_INVALID | sum != 100 | "Seasonality weights total {sum}% — normalize to 100% or fix." | 422 | false |
+| FORMULA_UNSUPPORTED_FUNCTION | function not in set | "Function {fn} is not in the supported set (see FORMULA-ENGINE-SPEC.md). Replace it or file a V2 request." | 422 | false |
 | PACK_SCHEMA_INVALID | validation failed | "Industry Pack failed validation at {path}. Retry or use the bundled Core Pack." | 422 | false |
+| PACK_VERSION_EXISTS | version installed | "Pack version {v} is already installed." | 409 | false |
+| PACK_IN_USE_LOCKED | locked reference | "This Pack version is used by a Locked Baseline. Clone the Pack before editing." | 422 | false |
 | PACK_UPDATE_AVAILABLE | new pack version | "A newer version of this Industry Pack is available ({old} → {new}) for new Models." | 200 | false |
+| CYCLE_NAME_DUP | name exists | "A planning cycle with this name already exists." | 409 | false |
+| CYCLE_TASK_BLOCKED | dependency | "This task is blocked by unfinished tasks: {list}." | 409 | false |
+| COLLECTION_CONFLICT | conflict | "This Driver value was changed by more than one contributor. Resolve the conflict (choose or average) — never merged silently." | 409 | false |
+| COLLECTION_STRUCTURE_CHANGED | template drift | "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging." | 422 | false |
+| CAPEX_IN_SERVICE_INVALID | date order | "Depreciation cannot start before the capital project's in-service date." | 422 | false |
+| PRODUCTION_CAPACITY | over capacity | "Production exceeds available capacity ({units} > {capacity}). Raise capacity (audited) or reduce the plan." | 422 | false |
+| REVREC_COST_ESTIMATE_INVALID | zero estimate | "Revenue recognition needs a non-zero total cost estimate (over-time method)." | 422 | false |
 | MODEL/RECALC_IN_FLIGHT | busy | "Recalculation is in progress — try again in a moment." | 409 | true |
+| COMPANY_IN_USE_RECENT | retention | "This Company was used less than {days} days ago. Delete it or wait — recent Companies can't be deleted." | 409 | false |
+| BASELINE_REPLACE_REASON_REQUIRED | governance | "Replacing the baseline requires a written reason." | 422 | false |
+| MODEL_YEAR_EXISTS | duplicate | "A Model already exists for this fiscal year." | 409 | false |
+| SOURCE_BOOTSTRAP_EMPTY | empty source | "The source year has no values to bootstrap." | 422 | false |
+| PACK_NO_COMMENTARY | narrative gate | "Variance commentary is required before this Board Pack can be generated. Add Reason Codes/narrative in S-054." | 422 | false |
 
 ### F. Connectors & Reconciliation
 | Code | Message | userMessage | httpStatus | Retry |

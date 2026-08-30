@@ -5,6 +5,7 @@
 > Auth column: `session` = requires unlocked (PIN-verified) session; `none` = pre-unlock.
 > Every command: validates with serde + Zod, writes Audit Trail (except read-only), returns typed JSON.
 > Errors: standard shape in ERROR-HANDLING.md. `httpStatus` is the mapped code retained for future API layer (V-012) and for debugging consistency.
+> **Command count: 96 commands (ZC revision — gaps closed: pack, cycle, collection, scenario lifecycle, plan-analysis, board pack, schedule, reconcile-authoritative).**
 
 ---
 
@@ -48,7 +49,10 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `model.inspect` | session | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
 | `model.diff` | session | `{scenario_a, version_a?, scenario_b, version_b?}` | `{diff_rows[]}` | COMPARE_INCOMPATIBLE |
 | `model.dump_export` | session | `{model_id, path}` | `{file, audit_id}` | HEALTH_CHECK_BLOCKED |
-| `scene.create` / `scene.duplicate` / `scene.approve` / `scene.lock` | session | `{model_id, name?, base_id?}` / `{scenario_id}` | `{scenario_id, version_id}` | SCENARIO_NAME_DUP, SCENARIO_LOCK_CONFLICT |
+| `scenario.create` / `scenario.duplicate` / `scenario.submit` / `scenario.approve` / `scenario.lock` / `scenario.reopen` / `scenario.delete` | session | `{model_id, name?, base_id?}` / `{scenario_id}` / `{reason?}` | `{scenario_id, version_id}` | SCENARIO_NAME_DUP, SCENARIO_LOCK_CONFLICT |
+| `baseline.set` | session | `{scenario_id, reason?}` | `{baseline_version_id}` | BASELINE_REPLACE_REASON_REQUIRED |
+| `model.year.copy` | session | `{source_model_id, target_fy, options}` | `{target_model_id, lines_copied}` | MODEL_YEAR_EXISTS |
+| `bootstrap.copy` | session | `{scenario_id, mode, options}` | `{lines, warnings[]}` | SOURCE_BOOTSTRAP_EMPTY |
 | `driver.upsert` | session | `{model_id, driver{...}}` | `{driver_id}` | DRIVER_FEED_MISSING |
 | `driver.set_value` | session | `{driver_id, scenario_id, period_id, value_decimal}` | `{ok, recalc}` | DRIVER_OUT_OF_BOUNDS |
 | `driver.import` | session | `{file_path, mapping_id}` | `{batch_id}` | IMPORT_* |
@@ -86,6 +90,24 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `security.recovery_reset` | none | `{phrase, new_pin}` | `{ok}` | RECOVERY_PHRASE_INVALID, AUTH_LOCKED |
 | `license.verify` | none | `{license_payload}` | `{status, days_left}` | LICENSE_INVALID_SIGNATURE, LICENSE_EXPIRED |
 | `license.request_file` | session | `{company_path}` | `{file}` | — |
+| `license.apply_response` | session | `{response_path_or_payload}` | `{status, plan, days_left}` | LICENSE_INVALID_SIGNATURE, LICENSE_EXPIRED |
+| `pack.list` | session | `{company_id?}` | `PackMeta[]` | — |
+| `pack.validate` | session | `{pack_path}` | `{valid, errors[], warnings[]}` | PACK_SCHEMA_INVALID |
+| `pack.install` | session | `{pack_path, company_id}` | `{pack_id, version}` | PACK_VERSION_EXISTS, PACK_SCHEMA_INVALID |
+| `pack.builder.save_v1` | session | `{pack_id?, definition_json}` | `{pack_id, version}` | PACK_SCHEMA_INVALID, PACK_IN_USE_LOCKED |
+| `pack.builder.apply_diff` | session | `{pack_id, model_ids[]}` | `{applied, skipped[]}` | PACK_IN_USE_LOCKED |
+| `model.schedule.upsert` | session | `{model_id, schedule_type, rows[]}` | `{schedule_id, recalc}` | CAPEX_IN_SERVICE_INVALID, PRODUCTION_CAPACITY, REVREC_COST_ESTIMATE_INVALID |
+| `cycle.start` | session | `{model_id, kind, name, due}` | `{cycle_id}` | CYCLE_NAME_DUP |
+| `cycle.task.update` | session | `{task_id, status, note}` | `{updated}` | CYCLE_TASK_BLOCKED |
+| `cycle.checklist.status` | session | `{model_id, period_id}` | `{tasks[], ready}` | — |
+| `collection.export` | session | `{cycle_id, driver_ids[], template}` | `{file, rows}` | COLLECTION_STRUCTURE_CHANGED |
+| `collection.import` | session | `{cycle_id, file_path, mapping_id}` | `{batch_id, conflicts[]}` | COLLECTION_CONFLICT, COLLECTION_STRUCTURE_CHANGED |
+| `collection.resolve_conflict` | session | `{conflict_id, choice, note}` | `{resolved}` | — |
+| `plan.goal_seek` | session | `{target_cell, target_value, driver_id, bounds}` | `{driver_value, iterations, converged}` | GOAL_SEEK_NO_CONVERGE, SENSITIVITY_OUT_OF_BOUNDS |
+| `plan.sensitivity` | session | `{driver_id, lo, hi, steps, target_lines[]}` | `{tornado[], values[]}` | SENSITIVITY_OUT_OF_BOUNDS |
+| `plan.whatif_overlay` | session | `{scenario_ids[], period_scope, kpis[]}` | `{series[], waterfall[]}` | COMPARE_INCOMPATIBLE |
+| `board_pack.generate` | session | `{template_id, period_scope, commentary_required}` | `{pack_id, preview_files[]}` | HEALTH_CHECK_BLOCKED, PACK_NO_COMMENTARY |
+| `reconcile.mark_authoritative` | session | `{batch_id, account_ids[], reason}` | `{updated}` | SRC_MISMATCH_UNRESOLVED, HEALTH_WAIVER_REASON_REQUIRED |
 | `update.check` | session | — | `{available, version, notes}` | UPDATE_FETCH_FAILED |
 | `settings.get` / `settings.set` | session | `{key}` / `{key, value_json}` | `{value}` / `{ok}` | SETTINGS_SAVE_FAILED |
 | `app.diagnostics.export` | session | `{path}` | `{file}` | — |

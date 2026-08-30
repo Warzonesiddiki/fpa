@@ -25,7 +25,7 @@
 4. Generate 12-word Recovery Phrase (BIP39-style, offline CSPRNG); user confirms by re-entering 3 words
    - decline path → 2nd explicit warning, logged; recovery impossible (KNOWN-ISSUES: accepted design trade-off)
 5. AES-256-GCM Company key is wrapped with derived key; wrapped key stored; plaintext key never persisted
-6. Success → session unlocked, Audit event `security.pin.setup`
+6. Success → session unlocked, Audit event `security.pin_setup`
 ```
 
 ### 2.2 Login (unlock)

@@ -6,7 +6,7 @@
 
 ## 1. STARTUP & UI
 
-| Metric | Target (p50) | Hard ceiling (p95) |
+| Measurement | Target (p50) | Hard ceiling (p95) |
 |---|---|---|
 | Cold start → unlock screen (app launch) | < 1.0 s | < 1.8 s |
 | Unlock → Dashboard populated (Company ≤ 500k GL Lines) | < 1.2 s | < 2.5 s |
@@ -21,7 +21,7 @@
 
 ## 2. DATA & INGESTION
 
-| Metric | Target | Ceiling |
+| Measurement | Target | Ceiling |
 |---|---|---|
 | Parse 500k-row GL dump (xlsx, multi-sheet) | < 8 s | < 20 s |
 | Normalize + map + validate (500k rows) | < 6 s | < 15 s |
@@ -34,7 +34,7 @@
 
 ## 3. ENGINES
 
-| Metric | Target | Ceiling |
+| Measurement | Target | Ceiling |
 |---|---|---|
 | Statement generation (P&L/BS/CF/SoCE, 50 BU group, 500k GL Lines) | < 4 s | < 8 s |
 | Consolidation (50 BU, mixed calendar/currency, IC matrix, 500k lines) | < 8 s | < 10 s |
@@ -45,7 +45,7 @@
 
 ## 4. EXPORT & STORAGE
 
-| Metric | Target | Ceiling |
+| Measurement | Target | Ceiling |
 |---|---|---|
 | Excel export (statement w/ 1M cells) | < 8 s | < 15 s |
 | PDF export (Board Pack, 30+ pages) | < 5 s | < 12 s |
@@ -57,7 +57,7 @@
 
 ## 5. RUNTIME HYGIENE
 
-| Metric | Target | Ceiling |
+| Measurement | Target | Ceiling |
 |---|---|---|
 | Idle CPU (no interaction, 5 min) | < 0.5% | < 2% |
 | Idle memory (app open, 1M-cell model) | < 450 MB | < 800 MB |
@@ -76,7 +76,7 @@
 ## 7. BENCHMARK CI GATES
 
 - `npm run bench` + `cargo bench` in CI on each PR touching engines; regression > 10% = fail.
-- Performance tests use reference hardware class; results stored in `reports/bench/` with history — no silent regressions (reference project's F-0002).
+- Performance tests use reference hardware class; results stored in `reports/bench/` with history — no silent regressions (reference project's issue #0002).
 - Bundle checksum gate (≤ 750 KB gz) blocks bloat; visualizer artifact in CI.
 
 *Referenced by: QA-CHECKLIST.md, CI-CD.md, MONITORING.md, FEATURE-TRACEABILITY-MATRIX.md.*

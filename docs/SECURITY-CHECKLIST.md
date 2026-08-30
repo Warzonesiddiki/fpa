@@ -28,7 +28,7 @@
 | **A02 Cryptographic Failures** | Money/sensitive data; "encrypted but weak" copies | AES-256-GCM; Argon2id params (AUTH-SPEC §6); no weak mode; encrypted backups; key never in DB | Crypto tests + key-location scan (`scripts/secret-scan.mjs`) |
 | **A03 Injection** | Excel export `=` cells; CSV formulas; SQL; command strings | Parametrized SQL (no string concat); export quoting of `=`-text; no shell commands from file data; connector payloads typed | `EXPORT_FORMULA_INJECTION_GUARD` tests; SQL audit; sample malicious files in fixtures |
 | **A04 Insecure Design** | "Trust the UI" gaps; single-user file ops | Threat model in this doc; ZC rules (B18); all mutations Snapshot + Audit; design review gate on new flows | QA-CHECKLIST B-items; design review in PR |
-| **A05 Security Misconfiguration** | Broad Tauri capabilities (reference F-0005) | Least-privilege `capabilities/default.json`: no broad FS scope; only dialog/save; no shell plugin | Capability manifest test + CI JSON schema check |
+| **A05 Security Misconfiguration** | Broad Tauri capabilities (reference project's issue #0005) | Least-privilege `capabilities/default.json`: no broad FS scope; only dialog/save; no shell plugin | Capability manifest test + CI JSON schema check |
 | **A06 Vulnerable Components** | npm/cargo deps; Tauri, HyperFormula, AG Grid | Dependabot + `npm audit` + `cargo audit` HIGH=0; lockfiles; license gate (no GPL/AGPL) | CI audit jobs fail on HIGH; SBOM artifact (`scripts/sbom.mjs`) |
 | **A07 Identification/Auth Failures** | PIN only; no rate limit on recovery | Argon2id; 5-fail lockout; recovery phrase entropy; lock screen; auto-lock | Auth tests incl. timing (min delay constant) |
 | **A08 Integrity Failures** | Audit chain tamper; license forgery | HMAC-SHA256 chain w/ key in keyring; Ed25519 license verify; import batch hashes; source vault hashes | Chain-verify test; license invalid-sig test; tamper E2E |
@@ -57,7 +57,7 @@
 | Dependency license scan | Weekly CI |
 | Rust `cargo audit` + `cargo deny` | Weekly CI |
 | Internal adversarial review (threat model refresh) | Every release |
-| Incident response | Severity × SLA: Critical 24h, High 72h, Medium 14d (docs/security/INCIDENT.md) |
+| Incident response | Severity × SLA: Critical 24h, High 72h, Medium 14d (docs/SECURITY-INCIDENT-RESPONSE.md) |
 | Security advisories page | Public: SECURITY.md + GHSA advisories |
 
 ## 5. RELEASE SIGN-OFF (checkbox)

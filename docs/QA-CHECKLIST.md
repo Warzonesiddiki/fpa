@@ -9,18 +9,18 @@
 
 | # | Check |
 |---|---|
-| B1 | 5 Screen States covered (loading/empty/error/success/populated) per SCREENS-SPEC |
-| B2 | Every error path returns a code from ERROR-HANDLING.md (+ userMessage, retry flag) |
-| B3 | All money paths use Money Value (no float; `npm run money:ast` gate) |
-| B4 | Accessibility: axe 0 violations; keyboard-only operation; no color-only |
-| B5 | Unit + integration tests added, coverage targets met (≥85% TS, ≥95% engines) |
-| B6 | Stats/UX: responds within PERFORMANCE-REQUIREMENTS budget for the feature |
-| B7 | Audit Trail event written for every mutation |
-| B8 | Docs synced: GLOSSARY terms, PRD/API-SPEC/ERROR-HANDLING updated; DOCS-INDEX passes |
+| Q1 | 5 Screen States covered (loading/empty/error/success/populated) per SCREENS-SPEC |
+| Q2 | Every error path returns a code from ERROR-HANDLING.md (+ userMessage, retry flag) |
+| Q3 | All money paths use Money Value (no float; `npm run money:ast` gate) |
+| Q4 | Accessibility: axe 0 violations; keyboard-only operation; no color-only |
+| Q5 | Unit + integration tests added, coverage targets met (≥85% TS, ≥95% engines) |
+| Q6 | Stats/UX: responds within PERFORMANCE-REQUIREMENTS budget for the feature |
+| Q7 | Audit Trail event written for every mutation |
+| Q8 | Docs synced: GLOSSARY terms, PRD/API-SPEC/ERROR-HANDLING updated; DOCS-INDEX passes |
 
 ## 2. FEATURE-SPECIFIC CHECKLISTS (≥8 items each)
 
-| Feature | Specific items (8 each — beyond B1–B8) |
+| Feature | Specific items (8 each — beyond Q1–Q8) |
 |---|---|
 | **F-001 Company Manager** | 1 Create/open/switch 3 companies · 2 Clone Sandbox isolation (edit original unaffected) · 3 Archive year w/ reference block · 4 Delete requires reason + 2-step · 5 `.fpa` double-click opens correct Company · 6 Second instance = read-only banner · 7 Company File on network share warns + snapshots · 8 Reopen restores last Company + window state |
 | **F-002 COA & Dimensions** | 1 Pack COA imports correct types/sections · 2 Account code normalization (leading zeros, spacing) · 3 Merge accounts remaps references + audit · 4 Dimension tree add/edit/move · 5 Account-level required dimensions · 6 Duplicate code blocked (COA_DUPLICATE_CODE) · 7 COA version history visible · 8 Cross-BU shared vs private accounts |

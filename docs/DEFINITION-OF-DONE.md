@@ -1,6 +1,6 @@
 # DEFINITION-OF-DONE.md
 
-> OneFP&A · v1.0.0 · **A feature is NOT done until EVERY item below is checked** (QA-CHECKLIST B1–B8 + feature-specific + gates). No partial credit; "merged but not done" is not done.
+> OneFP&A · v1.0.0 · **A feature is NOT done until EVERY item below is checked** (QA-CHECKLIST Q1–Q8 + feature-specific + gates). No partial credit; "merged but not done" is not done.
 
 ---
 

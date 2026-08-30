@@ -9,8 +9,8 @@
 
 - [ ] **M0-1** Stage 3 cross-document audit: FEATURE-TRACEABILITY-MATRIX.md, terminology scan, data-flow audit, orphan detection, contradiction scan (per DOCS-INDEX item) — depends: all phases approved
 - [ ] **M0-2** Stage 4 build-readiness test: answer 5 gates, fix docs, confirm YES
-- [ ] **M0-3** Generate `docs/examples/sample_gl_dump.xlsx` + Demo Company fixture (synthetic)
-- [ ] **M0-4** Pack schema v1.0 (`packs/schema/pack.schema.json`) + 12 packs seed content
+- [ ] **M0-3** Generate `docs/examples/sample_gl_dump.xlsx` + Demo Company fixture (synthetic; per TEST-FIXTURES-SPEC)
+- [ ] **M0-4** Pack schema v1.0 (`packs/schema/pack.schema.json` per INDUSTRY-PACK-SPEC) + 12 packs seed content (per TEST-FIXTURES-SPEC §1 packs/)
 
 ## M1 — FOUNDATION (F-001…F-006)
 
@@ -22,7 +22,7 @@
 - [ ] **M1-6** COA + dimensions (S-021) w/ codes normalization + merge + version
 - [ ] **M1-7** Calendar engine (S-022): 12mo/4-5-4/4-4-5/5-4-4/3-3-3-4 + 52-53 + transit mapping + oracle fixtures
 - [ ] **M1-8** First-Run Wizard (S-002/D-005): 5 steps, plan-only mode, demo company, resume-safe
-- [ ] **M1-9** Industry Pack loader + schema validation + Pack Builder MVP (S-023)
+- [ ] **M1-9** Industry Pack loader + schema validation (INDUSTRY-PACK-SPEC §8) + Pack Builder MVP (S-023)
 - [ ] **M1-10** Settings + theme/density + global search skeleton (S-075/S-003)
 
 ## M2 — INGESTION (F-007…F-011)
@@ -31,7 +31,7 @@
 - [ ] **M2-2** Mapping wizard + template versioning + normalization rules (S-031, F-011)
 - [ ] **M2-3** Validation + preview + HARD/WARNING engine (S-031)
 - [ ] **M2-4** Tie-Out gate + commit as Import Batch + rollback + vault (S-032, F-007/010)
-- [ ] **M2-5** Driver/dimension/opening-balance imports (S-008/009 – same pipeline)
+- [ ] **M2-5** Driver/dimension/opening-balance imports (S-030/031 – same pipeline)
 - [ ] **M2-6** Connector adapter + QBO connector (contract tests, keychain, rate limiter) (S-033)
 - [ ] **M2-7** Xero connector
 - [ ] **M2-8** NetSuite connector (OAuth1 TBA)
@@ -40,11 +40,11 @@
 
 ## M3 — MODELING (F-012…F-020)
 
-- [ ] **M3-1** Multi-sheet model + HyperFormula worker integration + `model.cell.set.v1` (S-040/041)
+- [ ] **M3-1** Multi-sheet model + HyperFormula worker integration + `model.cell.set.v1` (S-040/041; FORMULA-ENGINE-SPEC whitelist + MONEY-ROUNDING-SPEC commit rule)
 - [ ] **M3-2** Formula inspection + cycle detection + refs (S-042)
 - [ ] **M3-3** Driver tables + federation precedence + bounds (S-043)
 - [ ] **M3-4** Assumption Register + hardcode detection (S-044)
-- [ ] **M3-5** Planning methods + period spreading + bootstrap/copy (S-041 part)
+- [ ] **M3-5** Planning methods + period spreading + bootstrap/copy (S-041 part; MODELING-METHODS-SPEC)
 - [ ] **M3-6** Headcount plan (S-045)
 - [ ] **M3-7** Capital/debt/WC/13-week cash + covenant gauges (S-046)
 - [ ] **M3-8** Production/inventory/backlog + rev rec schedules (S-047/048)
@@ -54,7 +54,7 @@
 ## M4 — PLANNING (F-021…F-023)
 
 - [ ] **M4-1** Budget/Forecast/Rolling + hybrid labeling (S-041/053)
-- [ ] **M4-2** Scenario states + versions + baseline freeze (S-050)
+- [ ] **M4-2** Scenario states + versions + baseline freeze (S-050; SCENARIO-VERSION-SPEC)
 - [ ] **M4-3** Model compare (S-051)
 - [ ] **M4-4** What-if overlay + waterfall + sensitivity tornado + goal seek (S-052)
 - [ ] **M4-5** Planning cycle manager + close checklist (S-053)
@@ -71,10 +71,10 @@
 
 - [ ] **M6-1** Statement engine (P&L/BS/CF/SoCE) + tie-outs + rounding largest-remainder (S-060)
 - [ ] **M6-2** GAAP/IFRS presets + segment report (S-060/061)
-- [ ] **M6-3** Consolidation: rollup maps, IC tie/elimination, FX translation, NCI (S-028/061)
+- [ ] **M6-3** Consolidation: rollup maps, IC tie/elimination, FX translation, NCI (S-021/S-061)
 - [ ] **M6-4** Report Builder + KPI Builder (S-062/063)
 - [ ] **M6-5** Dashboard + Board Pack + explainers (S-010/064)
-- [ ] **M6-6** Export suite: xlsx/typst PDF/model dump/data room + injection guard (S-031/D-003)
+- [ ] **M6-6** Export suite: xlsx/typst PDF/model dump/data room + injection guard (S-031/D-003; EXPORT-FORMAT-SPEC)
 - [ ] **M6-7** Health Check engine + waiver (S-071)
 - [ ] **M6-8** Audit trail engine (HMAC chain) + data room (S-070)
 - [ ] **M6-9** Backup/restore/retention (S-074) + updater integration (F-036)

@@ -63,7 +63,7 @@ flowchart TB
 
 ```text
 fpa/
-├── docs/                      # The 37 documents (spec). Off-index docs forbidden (B8)
+├── docs/                      # The 54 docs/ specs (DOCS-INDEX.md = master index). Off-index docs forbidden (B8)
 ├── src/                       # TypeScript UI (webview)
 │   ├── main.tsx / App.tsx
 │   ├── router.tsx             # routes per SCREENS-SPEC
@@ -81,7 +81,7 @@ fpa/
 ├── src-tauri/
 │   ├── Cargo.toml / Cargo.lock
 │   ├── tauri.conf.json        # window, capabilities, updater config
-│   ├── capabilities/default.json   # least-privilege (F-0005 fixed: no broad FS)
+│   ├── capabilities/default.json   # least-privilege (reference issue #0005 fixed: no broad FS)
 │   ├── migrations/            # 001_initial.sql … (versioned, tested)
 │   └── src/
 │       ├── main.rs / lib.rs   # plugin setup, command registration
@@ -123,7 +123,7 @@ sequenceDiagram
     participant D as SQLite (WAL)
     U->>P: type value in grid Cell (S-041)
     P->>S: commitCell(cell, value)
-    S->>C: invoke('model.cell.set', {cell, value})
+    S->>C: invoke('model.cell.set.v1', {cell, value})
     C->>R: validate + authorize (ScenarioState)
     R->>R: money check (minor units), engine recalc (dirty graph)
     R->>W2: (HyperFormula worker computes cell graph — WebView side)

@@ -204,7 +204,25 @@
 | Migration | Versioned SQL schema upgrade with forward test + pre-migration Snapshot + documented rollback. | Ops, DB | Schema update |
 | Auto-Update | Signed, per-OS application updater (enabled from v1.0.0; rule R1/B18). | Ops | Updater |
 | Local Diagnostics | Opt-in, local-only crash/error log the user can export for support; contains no financial values. | Ops | Crash report |
-| Zero-Drift | CI rule: documented claims that are machine-checked must pass (rules B4, B8, B9). | QA, Docs | — |
+| Zero-Drift | CI rule: documented claims that are machine-checked must pass (rules B5, B8, Q8; see ZERO-COMPROMISE-RULES.md). | QA, Docs | — |
+
+## 11b. ENGINEERING TERMS (added in ZC revision — used by the 15 supplemental specs)
+
+| Term | Definition | Used In | Synonyms (BANNED) |
+|---|---|---|---|
+| Currency Scale | Number of minor-unit digits for a currency (e.g., USD/INR = 2, JPY = 0, KWD = 3); scales `amount_minor` values. | Money spec, DB | Decimals (banned), Precision (banned as synonym) |
+| Rounding Mode | The exact rule applied when a computation cannot be represented exactly: `HALF_UP` (default money), `HALF_EVEN` (reserved for allocation), `TRUNCATE` (only non-money). | Money spec, Statements | Rounding (banned as bare noun) |
+| Largest-Remainder Allocation | Algorithm that distributes a display-rounding residual so every subtotal sums exactly to the unrounded total. | Statements, Reports | Proportional rounding |
+| Supported Function | A function in the approved Formula Engine set (Excel core + Analysis Functions); anything else fails with FORMULA_UNSUPPORTED_FUNCTION. | Formula spec | Custom function, UDF |
+| Pack Definition | The versioned JSON + SQL seed that fully describes an Industry Pack (COA template, KPIs, Driver Templates, Report Layouts, calendar preset, GL Template, group rollup maps). | Packs | Pack file (allowed as UI label) |
+| Canonical GL Template | The documented column layout for a General Ledger export that every Manual Import accepts directly (see GL-TEMPLATE-SPEC.md). | Ingestion, GL | GL standard, Header layout |
+| Fixture | A synthetic, deterministic test input/output pair (file + expected values) used by oracle tests; never production data. | Testing | Sample data (banned as synonym) |
+| Incident Tier | Severity class (Critical / High / Medium / Low) with defined SLA (see SECURITY-INCIDENT-RESPONSE.md). | Security, Ops | Priority |
+| Data-Room Package | One encrypted, indexable bundle (statements, mappings, registers, Audit Trail, source files, chain) for auditors. | Audit, Export | Audit bundle |
+| Recovery Point Objective (RPO) | Max acceptable data loss (backup cadence): v1.0.0 = 24h (auto-daily) for lost-file scenarios; 0 for crash (WAL). | DR | — |
+| Recovery Time Objective (RTO) | Max acceptable downtime to restore: v1.0.0 target = 15 min (2 GB Company). | DR | — |
+| Formula Error Value | One of `#CYCLE!`, `#REF!`, `#VALUE!`, `#DIV/0!`, `#N/A`, `#NAME?`, `#NUM!`, `#UNSUPPORTED!` — never displayed as a raw number. | Formulas, Grid | Error code (banned as synonym) |
+| Hybrid Period Label | Report marker for periods mixing Actuals and Forecast (`HYBRID (Actual P01–P04, Forecast P05–P12)`); never silently mixed. | Reports, Planning | Mixed periods |
 
 ---
 

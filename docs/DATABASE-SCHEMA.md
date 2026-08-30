@@ -5,6 +5,7 @@
 > IDs = `TEXT` UUID v4. All tables have `created_at`, most `updated_at` (`TEXT ISO-8601 UTC`).
 > Migrations: `src-tauri/migrations/001_initial.sql …` — versioned, forward-tested, rollback-tested.
 > One example row per table (SQL INSERT). Indexes named `ix_*`. FKs named `fk_*`.
+> **Table count: 56 (49 original incl. grouped headings + 7 ZC supplemental: planning_cycles, cycle_tasks, collection_uploads, reason_codes, annotations, currency_scales, license_requests).**
 
 ---
 
@@ -521,7 +522,7 @@ INSERT INTO kpis VALUES ('kpi-gm','c-01','Gross Margin %','gm_pct','%',38.0,'Use
 | seq | INTEGER | PK AUTOINCREMENT |
 | company_id | TEXT | NOT NULL FK |
 | actor | TEXT | NOT NULL (`'owner'`,`'system'`) |
-| action | TEXT | NOT NULL (`'model.cell.set'`,`'import.commit'`,…) |
+| action | TEXT | NOT NULL (`'model.cell.set.v1'`,`'import.commit'`,…) |
 | object_type / object_id | TEXT | NOT NULL |
 | before_json / after_json | TEXT | NULL (no secrets ever) |
 | prev_hash | TEXT | NOT NULL |
@@ -530,7 +531,7 @@ INSERT INTO kpis VALUES ('kpi-gm','c-01','Gross Margin %','gm_pct','%',38.0,'Use
 
 ```sql
 INSERT INTO audit_events (seq,company_id,actor,action,object_type,object_id,before_json,after_json,prev_hash,hash,created_at)
-VALUES (1,'c-01','owner','model.cell.set','model_value','mv-1','{"amount":180000000}','{"amount":182500000}','genesis','f0e1…','2026-08-30T00:00:00Z');
+VALUES (1,'c-01','owner','model.cell.set.v1','model_value','mv-1','{"amount":180000000}','{"amount":182500000}','genesis','f0e1…','2026-08-30T00:00:00Z');
 ```
 
 ### `health_checks` / `health_findings` / `waivers`
@@ -604,6 +605,118 @@ INSERT INTO settings VALUES ('format.negative','{"style":"parentheses","locale":
 
 ```sql
 INSERT INTO pin_metadata VALUES ('pm-1','{"salt":"…","m":19456,"t":2,"p":1,"hash":"…"}','…',0,NULL);
+```
+
+---
+
+## 9b. SUPPLEMENTAL TABLES (ZC revision — Input Collection, Planning Cycles, Comments, Currency, License Requests — used by API commands added in ZC pass)
+
+### `planning_cycles`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| company_id / model_id | TEXT | NOT NULL FK (companies/models) |
+| name | TEXT | NOT NULL, UNIQUE(company_id,name) |
+| kind | TEXT | NOT NULL CHECK (`'budget'`,`'forecast'`,`'rolling'`) |
+| state | TEXT | NOT NULL CHECK (`'draft'`,`'active'`,`'review'`,`'approved'`,`'closed'`) |
+| starts_at / ends_at | TEXT | NOT NULL |
+| baseline_scenario_id | TEXT | NULL FK→scenarios |
+| created_at / updated_at | TEXT | NOT NULL |
+
+```sql
+INSERT INTO planning_cycles VALUES ('pc-1','c-01','m-main','FY27 Budget','budget','active','2026-08-01','2026-12-15','sc-base','2026-08-30T00:00:00Z','2026-08-30T00:00:00Z');
+```
+
+### `cycle_tasks`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| cycle_id | TEXT | NOT NULL FK→planning_cycles ON DELETE CASCADE |
+| title | TEXT | NOT NULL |
+| owner | TEXT | NOT NULL |
+| depends_on_id | TEXT | NULL FK→cycle_tasks |
+| due_date | TEXT | NULL |
+| status | TEXT | NOT NULL CHECK (`'pending'`,`'done'`,`'blocked'`) |
+| sort_order | INTEGER | NOT NULL DEFAULT 0 |
+
+```sql
+INSERT INTO cycle_tasks VALUES ('ct-1','pc-1','Import all BU actuals','FinOps',NULL,'2026-09-05','pending',1);
+```
+
+### `collection_uploads`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| cycle_id | TEXT | NOT NULL FK→planning_cycles |
+| contributor | TEXT | NOT NULL |
+| exported_at | TEXT | NOT NULL |
+| template_checksum | TEXT | NOT NULL |
+| file_hash | TEXT | NULL |
+| imported_batch_id | TEXT | NULL FK→import_batches |
+| status | TEXT | NOT NULL CHECK (`'expected'`,`'filled'`,`'conflict'`,`'merged'`,`'rejected'`) |
+| conflicts_json | TEXT | NULL (array of {driver_id, period_id, value_a, value_b}) |
+
+```sql
+INSERT INTO collection_uploads VALUES ('cu-1','pc-1','Sales Director','2026-09-01T00:00:00Z','tpl-abc','ff22…',NULL,'conflict','[{"driver_id":"dr-units","period_id":"fp-2027-p08","value_a":"11000","value_b":"12000"}]');
+```
+
+### `reason_codes`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| company_id | TEXT | NOT NULL FK |
+| code | TEXT | NOT NULL (`'volume'`…) |
+| label | TEXT | NOT NULL (`'Volume shortfall'`) |
+| category | TEXT | NOT NULL CHECK (`'volume'`,`'price'`,`'mix'`,`'fx'`,`'efficiency'`,`'one_time'`,`'seasonality'`,`'other'`) |
+| active | INTEGER | NOT NULL DEFAULT 1 |
+| UNIQUE | | (company_id, code) |
+
+```sql
+INSERT INTO reason_codes VALUES ('rc-1','c-01','volume','Volume shortfall','volume',1);
+```
+
+### `annotations`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| line_id / period_id / scenario_id | TEXT | NOT NULL FK |
+| author | TEXT | NOT NULL |
+| text | TEXT | NOT NULL (≤ 4000 chars) |
+| is_pinned | INTEGER | NOT NULL DEFAULT 0 |
+| created_at / updated_at | TEXT | NOT NULL |
+
+```sql
+INSERT INTO annotations VALUES ('an-1','ln-rev','fp-2027-p08','sc-base','Owner','Strike impacted units; flagged in Health Check.',1,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z');
+```
+
+### `currency_scales` (seed table — read-only; part of Pack/Core install)
+| Column | Type | Constraints |
+|---|---|---|
+| code | TEXT | PK (ISO 4217) |
+| scale | INTEGER | NOT NULL CHECK (0–4) |
+| symbol | TEXT | NOT NULL |
+| thousand_sep / decimal_sep | TEXT | NOT NULL |
+| is_fiat | INTEGER | NOT NULL DEFAULT 1 |
+
+```sql
+INSERT INTO currency_scales VALUES ('USD',2,'$',',','.',1);
+INSERT INTO currency_scales VALUES ('JPY',0,'¥',',','.',1);
+INSERT INTO currency_scales VALUES ('KWD',3,'د.ك',',','.',1);
+```
+
+### `license_requests`
+| Column | Type | Constraints |
+|---|---|---|
+| id | TEXT | PK |
+| company_hash | TEXT | NOT NULL |
+| machine_fingerprint | TEXT | NULL |
+| plan_requested | TEXT | NOT NULL CHECK (`'pro'`,`'enterprise'`) |
+| status | TEXT | NOT NULL CHECK (`'pending'`,`'applied'`,`'expired'`,`'rejected'`) |
+| response_file_path | TEXT | NULL (vendor-signed file) |
+| created_at | TEXT | NOT NULL |
+
+```sql
+INSERT INTO license_requests VALUES ('lr-1','ab12…','mach-9f8','enterprise','applied','/licenses/lk-2026-0001.fpa-license','2026-08-30T00:00:00Z');
 ```
 
 ---

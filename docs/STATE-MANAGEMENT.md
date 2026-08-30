@@ -13,8 +13,8 @@
 | Session (unlocked, session_token) | global | ephemeral (Rust memory only — never UI-localStorage) | On `session.lock`, auto-lock, app close; re-unlock required |
 | Current Company ID | global | persistent (settings, app scope) | On `company.open` failure / file moved |
 | Current Model ID / Scenario ID / Period IDs | global | ephemeral (UI router + store) | On ScenarioLock (must create Version), model switch, period calendar change |
-| Model Sheets + Lines (structure) | global | persistent (DB `model_sheets`, `model_lines`) — cached in store | Invalidate on `model.cell.set` recalc response (structure rarely changes: sheet add/rename event) |
-| Cell values (visible window) | local (grid) | cache — shadows DB; source of truth = DB after each `cell.set` | On recalc response, undo/redo, scenario switch; window scroll evicts (virtualized) |
+| Model Sheets + Lines (structure) | global | persistent (DB `model_sheets`, `model_lines`) — cached in store | Invalidate on `model.cell.set.v1` recalc response (structure rarely changes: sheet add/rename event) |
+| Cell values (visible window) | local (grid) | cache — shadows DB; source of truth = DB after each `model.cell.set.v1` | On recalc response, undo/redo, scenario switch; window scroll evicts (virtualized) |
 | Dirty cell queue (pending writes) | local (grid) | ephemeral | Flush on commit, blur, save, lock, app close (with confirm) |
 | Recalculation status (dirty cells, cycles, duration) | global | ephemeral | On recalc completion / edit enqueue |
 | Formula worker instance (HyperFormula) | global | ephemeral (webview worker) | Rebuilt on Model/Scenario switch; disposed on lock |

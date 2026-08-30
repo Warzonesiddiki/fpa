@@ -20,10 +20,15 @@ OneFP&A replaces Excel + BI + cloud EPM for the full FP&A cycle: **import (GL Du
 ```
 src/                     # TS UI (pages/, components/ui|domain/, stores/, workers/, api/, hooks/, theme/)
 src-tauri/src/           # Rust core (commands/, core/{money,calendar,ingestion,engines,connectors,export,security}, audit.rs, storage/)
-packs/                   # Industry Packs — DATA ONLY (schema-validated JSON + SQL seeds)
-docs/                    # 37 specs — the ONLY source of truth; off-index docs fail CI (B8)
+packs/                   # Industry Packs — DATA ONLY (schema-validated JSON + SQL seeds, per INDUSTRY-PACK-SPEC.md)
+docs/                    # 54 specs — the ONLY source of truth; off-index docs fail CI (B8)
 e2e/  scripts/  migrations/ (in src-tauri/migrations)
 ```
+
+**Core specs you cannot skim:** GLOSSARY.md (terms) · MONEY-ROUNDING-SPEC.md (money — read before touching any amount)
+· FORMULA-ENGINE-SPEC.md (supported functions/error values) · MODELING-METHODS-SPEC.md (methods/driver grammar)
+· SCENARIO-VERSION-SPEC.md (state machine) · INDUSTRY-PACK-SPEC.md (pack schema — B15) · GL-TEMPLATE-SPEC.md
+· CONNECTOR-DATA-DICTIONARY.md (per-provider fields) · EXPORT-FORMAT-SPEC.md (output contracts) · SCENARIO-VERSION-SPEC.md.
 
 ## 4. DO LIST (every task)
 

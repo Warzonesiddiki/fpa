@@ -4,7 +4,7 @@
 
 ---
 
-## MASTER INDEX (38 documents — 37 spec + Stage 3 audit matrix)
+## MASTER INDEX (54 docs/ specs + root README = 55 files; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md)
 
 | # | File | One-line summary | Depends on |
 |---|---|---|---|
@@ -14,7 +14,7 @@
 | 4 | `USER-PERSONAS.md` | Ravi (manufacturer), Priya (group CFO), Alex (SaaS founder) — goals/device/skill | 3 |
 | 5 | `USER-STORIES.md` | US-001…US-039 Given/When/Then + 78 edge cases, P0–P3 | 3, 4 |
 | 6 | `DESIGN-SYSTEM.md` | Exact hex/fonts/spacing/radii/motion + component styles (light+dark) | 1 |
-| 7 | `SCREENS-SPEC.md` | 47 screens + 10 dialogs: route, purpose, elements, all 5 states | 3, 6 |
+| 7 | `SCREENS-SPEC.md` | 42 screens + 10 dialogs: route, purpose, elements, all 5 states | 3, 6 |
 | 8 | `USER-FLOWS.md` | 14 journeys with failure/recovery branches (UF-001…UF-014) | 5, 7 |
 | 9 | `COMPONENT-LIBRARY.md` | ~35 components: props tables, variants, usage rules | 6, 7 |
 | 10 | `RESPONSIVE-DESIGN.md` | Breakpoints 900/1280, min 960×640, density, OS DPI, multi-monitor | 6 |
@@ -31,7 +31,7 @@
 | 21 | `CODING-STANDARDS.md` | Naming, imports, async patterns, templates, review checklist | 20 |
 | 22 | `GIT-STANDARDS.md` | Commits/branches/PR rules/release tags | 21 |
 | 23 | `TESTING-STRATEGY.md` | Unit/integration/E2E/property/oracle + numeric coverage targets | 12, 19 |
-| 24 | `QA-CHECKLIST.md` | B1–B8 + 38 feature checklists (8 each) + release gates | 5, 7, 23 |
+| 24 | `QA-CHECKLIST.md` | Q1–Q8 + 38 feature checklists (8 each) + release gates | 5, 7, 23 |
 | 25 | `PERFORMANCE-REQUIREMENTS.md` | Numeric only: startup/recalc/import/consolidation/export budgets | 13, 23 |
 | 26 | `SECURITY-CHECKLIST.md` | Threat model + OWASP 10 mapping + local controls + sign-off | 16, 19 |
 | 27 | `ENV-VARIABLES.md` | No runtime .env; CI secrets + in-app config tables | 18, 20 |
@@ -46,6 +46,22 @@
 | 36 | `ROADMAP.md` | Dependency-ordered milestones w/ complexity + reference docs | 35 |
 | 37 | `DEFINITION-OF-DONE.md` | Feature/release doneness checklist + traps | 24, 36 |
 | 38 | `FEATURE-TRACEABILITY-MATRIX.md` | Stage 3 audit: feature ↔ story ↔ screens ↔ commands ↔ tables ↔ tests | 3–36 |
+| 39 | `INDUSTRY-PACK-SPEC.md` | Pack schema v1: COA/KPI/Driver/Layout/GL/rollup definitions + validation + 12-pack inventory | 3, 14 |
+| 40 | `FORMULA-ENGINE-SPEC.md` | Supported function set, Analysis Functions, error values, recalc/cycle policy | 3, 14, 24 |
+| 41 | `MONEY-ROUNDING-SPEC.md` | Money representation, rounding modes, largest-remainder algorithm, sign conventions | 12, 14, 40 |
+| 42 | `MODELING-METHODS-SPEC.md` | Exact semantics of 7 Planning Methods, spreading, bootstrap, driver grammar | 3, 40, 41 |
+| 43 | `SCENARIO-VERSION-SPEC.md` | Scenario state machine, Version rules, Baseline/freeze, compare semantics | 3, 17, 42 |
+| 44 | `GL-TEMPLATE-SPEC.md` | Canonical GL Dump columns/signs/sub-sheets + error handling (any-ERP import) | 3, 18, 19 |
+| 45 | `CONNECTOR-DATA-DICTIONARY.md` | Per-provider endpoints/fields/scopes + normalization to GL Template | 18, 44 |
+| 46 | `EXPORT-FORMAT-SPEC.md` | xlsx/PDF/Model Dump/Data-Room/Board Pack output contracts + injection guard | 3, 41, 43 |
+| 47 | `TEST-FIXTURES-SPEC.md` | Deterministic fixture inventory + oracle expected values (calendar/statements/consolidation) | 23, 45 |
+| 48 | `LOCALIZATION-SPEC.md` | Locale number/date/currency rules, i18n readiness, V2 RTL | 6, 44 |
+| 49 | `COMPLIANCE-DATA-SOVEREIGNTY.md` | Privacy/data-sovereignty guarantees, no-PHI posture, enterprise artifacts | 26, 30 |
+| 50 | `SECURITY-INCIDENT-RESPONSE.md` | Incident tiers/SLA/runbook/post-incident + disclosure policy | 26, 30 |
+| 51 | `DR-RECOVERY-RUNBOOK.md` | RPO/RTO, protection layers, recovery procedures, restore drills | 28, 34, 49 |
+| 52 | `ONBOARDING-USER-GUIDE.md` | Persona task guides: first 10 min, monthly close, consolidation, startup | 4, 7, 36 |
+| 53 | `RELEASE-CHECKLIST.md` | Pre-release sign-off checklist + stop conditions + release-day incident | 28, 29, 37 |
+| 54 | `ZERO-COMPROMISE-RULES.md` | Canonical B1–B20 / B18-x product rules + CI enforcement map + QA Q1–Q8 namespace note | 4, 9, 23, 37 |
 
 ## DEPENDENCY MAP (subset — build order)
 
