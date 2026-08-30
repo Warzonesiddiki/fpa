@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "inventory_turns",
+      "name": "Inventory Turns",
+      "unit": "x",
+      "target": {
+        "value": 6,
+        "direction": "gte"
+      },
+      "definition": "Inventory Turns — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "oee",
+      "name": "OEE %",
+      "unit": "pct",
+      "target": {
+        "value": 78,
+        "direction": "gte"
+      },
+      "definition": "OEE % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cost_variance",
+      "name": "Standard Cost Variance %",
+      "unit": "pct",
+      "target": {
+        "value": 2,
+        "direction": "gte"
+      },
+      "definition": "Standard Cost Variance % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "gross_margin_pct",
+      "name": "Gross Margin %",
+      "unit": "pct",
+      "target": {
+        "value": 38,
+        "direction": "gte"
+      },
+      "definition": "Gross Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

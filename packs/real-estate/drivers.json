@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "occupancy",
+      "name": "Occupancy %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "rent_psi",
+      "name": "Rent per sq ft",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "capex",
+      "name": "Capex per property",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    }
+  ]
+}

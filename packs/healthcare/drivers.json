@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "volume",
+      "name": "Patient volume",
+      "type": "volume_x_rate",
+      "unit": "visits",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "length_of_stay",
+      "name": "Length of stay",
+      "type": "manual",
+      "unit": "days",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "reimbursement",
+      "name": "Avg reimbursement",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    }
+  ]
+}

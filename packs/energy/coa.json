@@ -1,0 +1,44 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Energy Sales",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Cost of Energy",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Grid O&M",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1700",
+      "name": "Plant & Equipment",
+      "type": "asset",
+      "section": "Non-current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Accounts Payable",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": true
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Retail Sales",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Cost of Goods Sold",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4300",
+      "name": "Shrinkage",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Store Payroll",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Store Occupancy",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Accounts Receivable",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": false
+    },
+    {
+      "code": "1300",
+      "name": "Inventory",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

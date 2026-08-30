@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "reps_quota",
+      "name": "Reps × quota",
+      "type": "volume_x_rate",
+      "unit": "units",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "churn",
+      "name": "Churn %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "arpu",
+      "name": "ARPU",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    }
+  ]
+}

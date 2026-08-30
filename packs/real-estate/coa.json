@@ -1,0 +1,44 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Rental Income",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Property Expenses",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4200",
+      "name": "Mortgage Interest",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1700",
+      "name": "Investment Properties",
+      "type": "asset",
+      "section": "Non-current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Mortgages Payable",
+      "type": "liability",
+      "section": "Non-current Liabilities",
+      "dimensions": [],
+      "is_control": true
+    }
+  ]
+}

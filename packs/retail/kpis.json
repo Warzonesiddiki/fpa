@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "same_store",
+      "name": "Same-Store Sales %",
+      "unit": "pct",
+      "target": {
+        "value": 3.5,
+        "direction": "gte"
+      },
+      "definition": "Same-Store Sales % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "gmroi",
+      "name": "GMROI",
+      "unit": "x",
+      "target": {
+        "value": 2.2,
+        "direction": "gte"
+      },
+      "definition": "GMROI — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "footfall_conversion",
+      "name": "Conversion %",
+      "unit": "pct",
+      "target": {
+        "value": 24,
+        "direction": "gte"
+      },
+      "definition": "Conversion % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "inventory_turns",
+      "name": "Inventory Turns",
+      "unit": "x",
+      "target": {
+        "value": 4,
+        "direction": "gte"
+      },
+      "definition": "Inventory Turns — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+//! OneFP&A app bootstrap (Tauri 2). Core lives in `core/`; commands in `commands/`.
+//! Invariants at the IPC boundary (ARCHITECTURE §1b): typed commands, money i64/decimal strings,
+//! mutations audited, no network (B1/B18-9).
+
+pub mod commands;
+pub mod core;
+pub mod storage;
+
+use commands::calendar::calendar_preview;
+use commands::company::{company_create, company_list};
+use commands::pack::pack_list;
+use commands::security::security_change_pin;
+use commands::session::{session_lock, session_status, session_unlock, SessionState};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(SessionState::default())
+        .invoke_handler(tauri::generate_handler![
+            session_status,
+            session_unlock,
+            session_lock,
+            security_change_pin,
+            company_list,
+            company_create,
+            calendar_preview,
+            pack_list,
+        ])
+        .setup(|_app| {
+            // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running OneFP&A");
+}

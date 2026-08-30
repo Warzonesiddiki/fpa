@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "backlog",
+      "name": "Backlog (months)",
+      "unit": "months",
+      "target": {
+        "value": 9,
+        "direction": "gte"
+      },
+      "definition": "Backlog (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "over_under_billing",
+      "name": "Over/Under Billing",
+      "unit": "money",
+      "target": {
+        "value": 250000,
+        "direction": "gte"
+      },
+      "definition": "Over/Under Billing — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cost_to_cost_pct",
+      "name": "Cost-to-Cost % Complete",
+      "unit": "pct",
+      "target": {
+        "value": 45,
+        "direction": "gte"
+      },
+      "definition": "Cost-to-Cost % Complete — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "gross_margin_pct",
+      "name": "Gross Margin %",
+      "unit": "pct",
+      "target": {
+        "value": 18,
+        "direction": "gte"
+      },
+      "definition": "Gross Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

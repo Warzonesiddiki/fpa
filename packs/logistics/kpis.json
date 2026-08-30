@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "cost_per_mile",
+      "name": "Cost per Mile",
+      "unit": "money",
+      "target": {
+        "value": 1.85,
+        "direction": "gte"
+      },
+      "definition": "Cost per Mile — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "dso",
+      "name": "Days Sales Outstanding",
+      "unit": "days",
+      "target": {
+        "value": 38,
+        "direction": "gte"
+      },
+      "definition": "Days Sales Outstanding — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "fleet_util",
+      "name": "Fleet Utilization %",
+      "unit": "pct",
+      "target": {
+        "value": 82,
+        "direction": "gte"
+      },
+      "definition": "Fleet Utilization % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "on_time",
+      "name": "On-Time Delivery %",
+      "unit": "pct",
+      "target": {
+        "value": 94,
+        "direction": "gte"
+      },
+      "definition": "On-Time Delivery % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

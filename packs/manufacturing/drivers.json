@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "units",
+      "name": "Units produced",
+      "type": "volume_x_rate",
+      "unit": "units",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "scrap_pct",
+      "name": "Scrap %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "material_price",
+      "name": "Material price index",
+      "type": "manual",
+      "unit": "index",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    }
+  ]
+}

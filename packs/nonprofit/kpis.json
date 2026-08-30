@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "program_ratio",
+      "name": "Program Ratio %",
+      "unit": "pct",
+      "target": {
+        "value": 75,
+        "direction": "gte"
+      },
+      "definition": "Program Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "donor_retention",
+      "name": "Donor Retention %",
+      "unit": "pct",
+      "target": {
+        "value": 60,
+        "direction": "gte"
+      },
+      "definition": "Donor Retention % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cost_per_dollar",
+      "name": "Cost per $ Raised",
+      "unit": "money",
+      "target": {
+        "value": 0.18,
+        "direction": "gte"
+      },
+      "definition": "Cost per $ Raised — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "grant_coverage",
+      "name": "Grant Coverage (months)",
+      "unit": "months",
+      "target": {
+        "value": 6,
+        "direction": "gte"
+      },
+      "definition": "Grant Coverage (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

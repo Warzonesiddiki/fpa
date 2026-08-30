@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Contributions",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Government Grants",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Program Services",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Fundraising",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5200",
+      "name": "Management & General",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Pledges Receivable",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

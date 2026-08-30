@@ -1,0 +1,109 @@
+{
+  "app": {
+    "name": "OneFP&A",
+    "tagline": "Plan. Model. Consolidate. All local."
+  },
+  "common": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "success": "Done",
+    "cancel": "Cancel",
+    "save": "Save",
+    "next": "Next",
+    "back": "Back",
+    "close": "Close",
+    "search": "Search",
+    "open": "Open",
+    "remove": "Remove",
+    "optional": "optional",
+    "required": "required"
+  },
+  "unlock": {
+    "title": "Unlock OneFP&A",
+    "subtitle": "Enter your PIN to open your Company",
+    "pinLabel": "PIN",
+    "pinPlaceholder": "••••",
+    "submit": "Unlock",
+    "forgot": "Forgot your PIN? Use your Recovery Phrase",
+    "error": {
+      "invalid": "Incorrect PIN. Please try again.",
+      "locked": "Too many attempts. Try again in {{minutes}} min.",
+      "decrypt": "This Company file could not be decrypted. Choose a different file or restore a backup."
+    },
+    "populated": {
+      "recent": "Recent Companies",
+      "nothing": "No Companies yet"
+    }
+  },
+  "wizard": {
+    "title": "Set up your Company",
+    "steps": {
+      "company": "Company",
+      "pack": "Industry Pack",
+      "calendar": "Fiscal Calendar",
+      "coa": "Chart of Accounts",
+      "model": "Model"
+    },
+    "companyName": "Company name",
+    "companyNamePlaceholder": "e.g., Meridian Holdings",
+    "companyType": "Company type",
+    "single": "Single entity",
+    "group": "Group / Conglomerate",
+    "packLabel": "Industry Pack",
+    "packHint": "12 config-driven packs. Data only — never code (B15).",
+    "calendarLabel": "Fiscal Calendar",
+    "calendar12mo": "12 months — any start month",
+    "calendar454": "Retail 4-5-4 (NRF)",
+    "calendar445": "4-4-5",
+    "calendar544": "5-4-4",
+    "calendar3334": "3-3-3-4 (13 periods)",
+    "coaReview": "Accounts will be seeded from the Pack COA. You can adjust after creation.",
+    "planOnly": "Plan-Only (no actuals yet)",
+    "planOnlyHint": "You can attach Actuals later — import them in the Import Hub.",
+    "horizon": "Model horizon",
+    "horizon13w": "13-week",
+    "horizon1y": "1 year",
+    "horizon3y": "3 years",
+    "horizon5y": "5 years",
+    "create": "Create Company",
+    "creating": "Creating Company…"
+  },
+  "shell": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "data": "Data",
+      "model": "Model",
+      "plan": "Plan",
+      "analyze": "Analyze",
+      "reports": "Reports",
+      "governance": "Governance",
+      "settings": "Settings"
+    },
+    "searchA11y": "Global search",
+    "alerts": "Alerts",
+    "backup": "Backup",
+    "license": "License",
+    "version": "v"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "greeting": "{{company}} · {{period}}",
+    "kpi.revenue": "Revenue",
+    "kpi.grossMargin": "Gross Margin",
+    "kpi.ebitda": "EBITDA",
+    "kpi.cash": "Cash",
+    "kpi.attainment": "Budget Attainment",
+    "kpi.explainer": "How is this KPI computed?",
+    "empty.planOnly": "Plan-Only — showing driver-based Best / Base / Worst. Import Actuals when ready.",
+    "error.query": "Dashboard data could not be loaded. Retry.",
+    "actions.import": "Import",
+    "actions.model": "Open Model",
+    "actions.report": "Reports"
+  },
+  "errors": {
+    "code": "{{code}}",
+    "unknown": "An unexpected error occurred. Please try again."
+  }
+}

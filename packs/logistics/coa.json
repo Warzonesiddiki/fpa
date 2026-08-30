@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Freight Revenue",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Fuel",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Driver Payroll",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Maintenance",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1700",
+      "name": "Fleet",
+      "type": "asset",
+      "section": "Non-current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Accounts Payable",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

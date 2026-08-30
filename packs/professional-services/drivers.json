@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "fte",
+      "name": "FTEs",
+      "type": "headcount",
+      "unit": "count",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "rate",
+      "name": "Billable rate",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "utilization",
+      "name": "Utilization %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}

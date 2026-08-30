@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "donors",
+      "name": "Donors",
+      "type": "volume_x_rate",
+      "unit": "count",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "avg_gift",
+      "name": "Average gift",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "grant_renewal",
+      "name": "Grant renewal %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}

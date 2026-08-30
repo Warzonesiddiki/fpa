@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "nim",
+      "name": "Net Interest Margin %",
+      "unit": "pct",
+      "target": {
+        "value": 3.2,
+        "direction": "gte"
+      },
+      "definition": "Net Interest Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "mlr",
+      "name": "Medical Loss Ratio (insurance) %",
+      "unit": "pct",
+      "target": {
+        "value": 82,
+        "direction": "gte"
+      },
+      "definition": "Medical Loss Ratio (insurance) % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "loss_ratio",
+      "name": "Loss Ratio %",
+      "unit": "pct",
+      "target": {
+        "value": 62,
+        "direction": "gte"
+      },
+      "definition": "Loss Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cost_income",
+      "name": "Cost/Income %",
+      "unit": "pct",
+      "target": {
+        "value": 58,
+        "direction": "gte"
+      },
+      "definition": "Cost/Income % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "appropriation",
+      "name": "Appropriation",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "allocation",
+      "name": "Allocation %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "fte",
+      "name": "FTEs",
+      "type": "headcount",
+      "unit": "count",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}
