@@ -12,6 +12,7 @@ use commands::company::{company_create, company_delete, company_list, company_op
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
+use storage::keys::KeyVault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(SessionState::default())
+        // In-memory unlocked vault key (A02): never persisted, zeroised by `session.lock`.
+        .manage(KeyVault::default())
         .invoke_handler(tauri::generate_handler![
             session_status,
             session_unlock,
