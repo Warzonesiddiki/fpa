@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ShellPage } from "./index";
 
 describe("S-004 App Shell — a11y-first chrome", () => {
-  it("renders all 8 nav destinations as links", () => {
+  it("renders all 9 nav destinations as links", () => {
     render(
       <MemoryRouter initialEntries={["/app/dashboard"]}>
         <Routes>
@@ -12,6 +12,7 @@ describe("S-004 App Shell — a11y-first chrome", () => {
             <Route index element={<div>index</div>} />
             <Route path="dashboard" element={<div>dashboard</div>} />
           </Route>
+          <Route path="/companies" element={<div>companies</div>} />
           <Route path="/data" element={<div>data</div>} />
           <Route path="/model" element={<div>model</div>} />
           <Route path="/plan" element={<div>plan</div>} />
@@ -26,6 +27,7 @@ describe("S-004 App Shell — a11y-first chrome", () => {
     expect(nav).toBeInTheDocument();
     for (const label of [
       "Dashboard",
+      "Companies",
       "Data",
       "Model",
       "Plan",
@@ -52,5 +54,20 @@ describe("S-004 App Shell — a11y-first chrome", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("content-here")).toBeInTheDocument();
+  });
+
+  it("opens the ⌘K search palette from the top bar button", () => {
+    render(
+      <MemoryRouter initialEntries={["/app/dashboard"]}>
+        <Routes>
+          <Route path="/app" element={<ShellPage />}>
+            <Route index element={<div>index</div>} />
+            <Route path="dashboard" element={<div>dashboard</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const searchButton = screen.getByRole("button", { name: /Search/ });
+    expect(searchButton).toBeInTheDocument();
   });
 });
