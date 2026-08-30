@@ -241,7 +241,7 @@ pub fn company_create(
     // Chain payload = the stored `after_json` bytes → tamper detection is exact (audit.rs).
     let after_json = serde_json::json!({ "name": name, "pack": pack_key_clean }).to_string();
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
-    let prev = audited_hash(&tx)?;
+    let prev = audited_hash(&tx, &company_id)?;
     let hash = next_hash(&key, &prev, after_json.as_bytes());
     tx.execute(
         "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json,
@@ -309,8 +309,12 @@ pub fn company_open(
     keys::zeroize(&mut opened.key);
     keys::zeroize(&mut vault_key);
 
+    // AUTH-SPEC §2.5: switching the active Company re-runs the unlock-time chain check for it
+    // (the read-only flag is per-Company and dies with the re-minted session).
+    let chain_broken_at = verify_company_chain(&conn, &dir, &company_id)?;
+
     // Session switch (token re-minted per open — AUTH-SPEC §2).
-    crate::commands::session::mint_session(&state, company_id.clone(), stored_path.clone())?;
+    crate::commands::session::mint_session(&state, company_id.clone(), stored_path.clone(), chain_broken_at)?;
 
     let now = Utc::now().to_rfc3339();
     conn.execute("UPDATE companies SET updated_at = ?1 WHERE id = ?2", [&now, &company_id])
@@ -319,6 +323,11 @@ pub fn company_open(
     Ok(serde_json::json!({
         "data": {
             "company_id": company_id,
+            "read_only": chain_broken_at.is_some(),
+            "integrity": {
+                "audit_chain_ok": chain_broken_at.is_none(),
+                "broken_at_seq": chain_broken_at,
+            },
             "summary": {
                 "name": name,
                 "type": ctype,
@@ -336,10 +345,18 @@ pub fn company_open(
 /// or holds model/import content; otherwise removes the Company + its calendar/BU tree and
 /// excises its per-Company audit segment (F-033) inside one transaction.
 #[tauri::command(name = "company.delete", rename_all = "camelCase")]
-pub fn company_delete(app: AppHandle, company_id: String, reason: String) -> AppResult<serde_json::Value> {
+pub fn company_delete(
+    app: AppHandle,
+    company_id: String,
+    reason: String,
+    state: tauri::State<'_, crate::commands::session::SessionState>,
+) -> AppResult<serde_json::Value> {
     if reason.trim().is_empty() {
         return Err(AppError::invalid("COMPANY_DELETE_REASON_REQUIRED: a deletion reason is required for the audit".into()));
     }
+    // AUTH-SPEC §2.5: erasure is a mutation — a Company under read-only (chain break) cannot
+    // be deleted while its session is read-only; restore first, then erase (if still wanted).
+    crate::commands::session::require_company_write(&state, &company_id)?;
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
     let tx = conn.transaction().map_err(AppError::from)?;
@@ -391,7 +408,7 @@ pub fn company_delete(app: AppHandle, company_id: String, reason: String) -> App
     // Company's trail is removed with it; surviving Companies keep their own chain, F-033).
     let after_json = serde_json::json!({ "reason": reason.trim() }).to_string();
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
-    let prev = audited_hash(&tx)?;
+    let prev = audited_hash(&tx, &company_id)?;
     let hash = next_hash(&key, &prev, after_json.as_bytes());
     let now = Utc::now().to_rfc3339();
     tx.execute(
@@ -437,12 +454,57 @@ pub fn company_delete(app: AppHandle, company_id: String, reason: String) -> App
     Ok(serde_json::json!({ "data": { "deleted": true } }))
 }
 
-/// Last hash in the chain (genesis when empty) — all inside the same transaction.
-fn audited_hash(conn: &rusqlite::Transaction) -> Result<String, rusqlite::Error> {
+/// Last hash of THIS Company's audit chain (genesis when it has no events yet) — inside the
+/// same transaction. Chains are per-Company (F-033, "surviving Companies keep their own
+/// chain"): `company.delete` may excise a Company's whole audit segment without ever breaking
+/// a surviving Company's chain, which AUTH-SPEC §2.5 verifies at every unlock.
+pub(crate) fn audited_hash(
+    conn: &rusqlite::Transaction,
+    company_id: &str,
+) -> Result<String, rusqlite::Error> {
     let last: Option<String> = conn
-        .query_row("SELECT hash FROM audit_events ORDER BY seq DESC LIMIT 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT hash FROM audit_events WHERE company_id = ?1 ORDER BY seq DESC LIMIT 1",
+            [company_id],
+            |r| r.get(0),
+        )
         .ok();
     Ok(last.unwrap_or_else(|| GENESIS_HASH.to_string()))
+}
+
+/// Unlock-time chain verification (AUTH-SPEC §2.5 / ADR-011): replay the Company's audit
+/// events against the keychain-held HMAC key; return the `seq` of the first event that no
+/// longer verifies, or `None` when the chain is intact. Hash payloads are the stored
+/// `after_json` bytes — the exact bytes every writer chains (audit.rs::next_hash).
+pub(crate) fn verify_company_chain(
+    conn: &rusqlite::Connection,
+    data_dir: &Path,
+    company_id: &str,
+) -> AppResult<Option<i64>> {
+    let key = keystore::audit_hmac_key(data_dir).map_err(AppError::internal)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT seq, prev_hash, hash, COALESCE(after_json, '') FROM audit_events
+             WHERE company_id = ?1 ORDER BY seq ASC",
+        )
+        .map_err(AppError::from)?;
+    let rows = stmt
+        .query_map([company_id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+    let events: Vec<(String, String, Vec<u8>)> = rows
+        .iter()
+        .map(|(_, prev, hash, payload)| (prev.clone(), hash.clone(), payload.clone().into_bytes()))
+        .collect();
+    Ok(crate::core::audit::verify_chain(&key, &events).map(|broken_idx| rows[broken_idx].0))
 }
 
 #[cfg(test)]
@@ -504,5 +566,115 @@ mod tests {
             AppError::period_mapping_conflict("x").body().code,
             "CAL_PERIOD_MAPPING_CONFLICT"
         );
+    }
+
+    /* ── AUTH-SPEC §2.5 audit-chain verification (per-Company chains, F-033) ── */
+
+    const COMP_A: &str = "00000000-0000-0000-0000-00000000000a";
+    const COMP_B: &str = "00000000-0000-0000-0000-00000000000b";
+
+    fn audit_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("onefpa-audit-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn insert_company(conn: &rusqlite::Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO companies (id, name, type, default_currency_code, base_locale, pack_schema_version,
+                                    company_file_path, created_at, updated_at)
+             VALUES (?1, ?1, 'single', 'USD', 'en-IN', '1.0.0', ?2, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            rusqlite::params![id, format!("/tmp/{id}.fpa")],
+        )
+        .unwrap();
+    }
+
+    /// Append an event through the same writer primitives the commands use (HMAC key from the
+    /// keystore, per-Company prev-hash, payload = stored `after_json` bytes).
+    fn chain_append(conn: &rusqlite::Connection, dir: &Path, company_id: &str, payload: &str) {
+        let key = keystore::audit_hmac_key(dir).unwrap();
+        let prev: String = conn
+            .query_row(
+                "SELECT hash FROM audit_events WHERE company_id = ?1 ORDER BY seq DESC LIMIT 1",
+                [company_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap()
+            .unwrap_or_else(|| GENESIS_HASH.to_string());
+        let hash = next_hash(&key, &prev, payload.as_bytes());
+        conn.execute(
+            "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json,
+                                       prev_hash, hash, created_at)
+             VALUES (?1, 'owner', 'test.event', 'test', ?1, NULL, ?2, ?3, ?4, '2026-01-01T00:00:00Z')",
+            rusqlite::params![company_id, payload, prev, hash],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn per_company_chain_survives_excision_of_another_companys_segment() {
+        // F-033 erasure semantics: excising one Company's audit trail must never break a
+        // surviving Company's chain (verified at every unlock, AUTH-SPEC §2.5).
+        let dir = audit_dir("excision");
+        let conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        insert_company(&conn, COMP_B);
+        chain_append(&conn, &dir, COMP_A, "a-1");
+        chain_append(&conn, &dir, COMP_B, "b-1");
+        chain_append(&conn, &dir, COMP_A, "a-2");
+        chain_append(&conn, &dir, COMP_B, "b-2");
+        assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), None);
+        assert_eq!(verify_company_chain(&conn, &dir, COMP_B).unwrap(), None);
+
+        conn.execute("DELETE FROM audit_events WHERE company_id = ?1", [COMP_B]).unwrap();
+        assert_eq!(
+            verify_company_chain(&conn, &dir, COMP_A).unwrap(),
+            None,
+            "a global prev-hash chained A's events through B's — excision used to break A"
+        );
+        // … and A's chain keeps extending from A's own last event afterwards.
+        chain_append(&conn, &dir, COMP_A, "a-3");
+        assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), None);
+    }
+
+    #[test]
+    fn tampered_event_is_detected_with_its_seq() {
+        let dir = audit_dir("tamper");
+        let conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        chain_append(&conn, &dir, COMP_A, "original-1");
+        chain_append(&conn, &dir, COMP_A, "original-2");
+        let first_seq: i64 = conn
+            .query_row("SELECT seq FROM audit_events WHERE company_id = ?1 ORDER BY seq ASC LIMIT 1", [COMP_A], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        conn.execute("UPDATE audit_events SET after_json = 'EVIL-EDIT' WHERE seq = ?1", [first_seq]).unwrap();
+        assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), Some(first_seq));
+    }
+
+    #[test]
+    fn empty_chain_verifies_ok() {
+        let dir = audit_dir("empty");
+        let conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), None);
+    }
+
+    #[test]
+    fn audit_chain_break_body_matches_the_documented_contract() {
+        // ERROR-HANDLING.md §H: 409, not retryable, restore offer as the user text.
+        let body = AppError::audit_chain_break(41).body();
+        assert_eq!(body.code, "AUDIT_CHAIN_BREAK");
+        assert_eq!(body.http_status, 409);
+        assert!(!body.retryable);
+        assert_eq!(body.retry_after_ms, None);
+        assert_eq!(
+            body.user_message,
+            "Audit integrity check failed. Restore from the last verified Snapshot?"
+        );
+        assert_eq!(body.details["brokenAtSeq"], 41);
     }
 }

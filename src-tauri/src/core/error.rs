@@ -48,6 +48,8 @@ pub enum AppError {
     TransitAmbiguous(String),
     #[error("period mapping conflict: {0}")]
     PeriodMappingConflict(String),
+    #[error("audit chain verification failed at seq {at_seq}")]
+    AuditChainBreak { at_seq: i64 },
 }
 
 impl AppError {
@@ -69,6 +71,7 @@ impl AppError {
             AppError::CompanyRecentUse { .. } => ("COMPANY_IN_USE_RECENT", 409, false, None),
             AppError::TransitAmbiguous(_) => ("CAL_TRANSIT_AMBIGUOUS", 422, false, None),
             AppError::PeriodMappingConflict(_) => ("CAL_PERIOD_MAPPING_CONFLICT", 409, false, None),
+            AppError::AuditChainBreak { .. } => ("AUDIT_CHAIN_BREAK", 409, false, None),
         };
         let user_message = match self {
             AppError::PinInvalid => "Incorrect PIN. Please try again.",
@@ -105,6 +108,20 @@ impl AppError {
             }
             AppError::PeriodMappingConflict(_) => {
                 "Two BUs map the same Group period with different calendars — confirm the Transit Map."
+            }
+            AppError::AuditChainBreak { at_seq } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    // Exact documented text (ERROR-HANDLING.md §H) — the restore offer.
+                    user_message:
+                        "Audit integrity check failed. Restore from the last verified Snapshot?"
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "brokenAtSeq": at_seq }),
+                };
             }
         };
         ErrorBody {
@@ -152,6 +169,10 @@ impl AppError {
 
     pub fn period_mapping_conflict(msg: impl Into<String>) -> Self {
         AppError::PeriodMappingConflict(msg.into())
+    }
+
+    pub fn audit_chain_break(at_seq: i64) -> Self {
+        AppError::AuditChainBreak { at_seq }
     }
 }
 

@@ -5,8 +5,8 @@ use chrono::NaiveDate;
 use rusqlite::OptionalExtension;
 use uuid::Uuid;
 
-use crate::commands::company::{write_calendar, CalendarConfig};
-use crate::core::audit::{next_hash, GENESIS_HASH};
+use crate::commands::company::{audited_hash, write_calendar, CalendarConfig};
+use crate::core::audit::next_hash;
 use crate::core::calendar::{build_12month, build_week_based, CalendarPreset, WeekRule};
 use crate::core::error::{AppError, AppResult};
 use crate::storage::keystore;
@@ -118,7 +118,10 @@ pub fn calendar_apply(
     company_id: String,
     config: Vec<CalendarConfig>,
     bu_map: Vec<BuMapEntry>,
+    state: tauri::State<'_, crate::commands::session::SessionState>,
 ) -> AppResult<serde_json::Value> {
+    // AUTH-SPEC §2.5/§3: a read-only (audit-chain-broken) Company accepts no mutations.
+    crate::commands::session::require_company_write(&state, &company_id)?;
     let dir = crate::commands::company::app_data_dir(&app)?;
     let mut conn = crate::storage::db::open_at(&dir).map_err(AppError::from)?;
 
@@ -162,14 +165,10 @@ pub fn calendar_apply(
     let cal_id = Uuid::new_v4().to_string();
     write_calendar(&tx, &company_id, &cal_id, calendar, "1y")?;
 
-    // Audit (HMAC chain; key from keychain — never the DB).
+    // Audit (HMAC chain; key from keychain — never the DB; per-Company chain, F-033).
     let after_json = serde_json::json!({ "preset": calendar.preset }).to_string();
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
-    let prev: String = tx
-        .query_row("SELECT hash FROM audit_events ORDER BY seq DESC LIMIT 1", [], |r| r.get(0))
-        .optional()
-        .map_err(AppError::from)?
-        .unwrap_or_else(|| GENESIS_HASH.to_string());
+    let prev = audited_hash(&tx, &company_id).map_err(AppError::from)?;
     let hash = next_hash(&key, &prev, after_json.as_bytes());
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
