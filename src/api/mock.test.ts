@@ -134,4 +134,203 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     const clean = (await mockInvoke("session.status", {})) as { data: { read_only: boolean } };
     expect(clean.data.read_only).toBe(false);
   });
+
+  it("import.parse mirrors sheets, encodings and the sha256 source hash (S-030/S-031)", async () => {
+    const out = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/SAP_GL_Aug2026.xlsx",
+      kind: "gl_dump",
+    })) as {
+      data: {
+        parse_id: string;
+        sheets: { name: string; kind: string; row_count: number }[];
+        encodings: { encoding: string; bom: boolean; auto_detected: boolean }[];
+        row_counts: Record<string, number>;
+        source_hash: string;
+        headers: string[];
+      };
+    };
+    expect(out.data.parse_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(out.data.sheets[0]).toEqual({ name: "GL", kind: "gl", row_count: 3 });
+    expect(out.data.encodings[0]).toEqual({
+      scope: "GL",
+      encoding: "utf-8",
+      bom: true,
+      auto_detected: false,
+    });
+    expect(out.data.row_counts.GL).toBe(3);
+    expect(out.data.source_hash).toHaveLength(64);
+    expect(out.data.headers[0]).toBe("period");
+  });
+
+  it("import.parse mirrors the two documented unreadable-file errors (ERROR-HANDLING §C)", async () => {
+    const locked = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/locked_GL.xlsx",
+      kind: "gl_dump",
+    })) as { error: { code: string; httpStatus: number; userMessage: string; retryable: boolean } };
+    expect(locked.error.code).toBe("IMPORT_FILE_LOCKED");
+    expect(locked.error.httpStatus).toBe(422);
+    expect(locked.error.userMessage).toBe(
+      "This file is password-protected. Remove protection and export again.",
+    );
+    const unreadable = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/unreadable_GL.csv",
+      kind: "gl_dump",
+    })) as { error: { code: string; userMessage: string } };
+    expect(unreadable.error.code).toBe("IMPORT_FILE_UNREADABLE");
+    expect(unreadable.error.userMessage).toBe(
+      "This file could not be read. Export it again as .xlsx or .csv without a password.",
+    );
+  });
+
+  it("import.tieout reports a balanced fixture and names the diff row of an unbalanced one", async () => {
+    const balanced = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const tie = (await mockInvoke("import.tieout", {
+      parse_id: balanced.data.parse_id,
+      mapping_id: "canonical",
+    })) as {
+      data: {
+        debits_minor: number;
+        credits_minor: number;
+        balanced: boolean;
+        diff_rows: unknown[];
+      };
+    };
+    expect(tie.data.debits_minor).toBe(tie.data.credits_minor);
+    expect(tie.data.balanced).toBe(true);
+    expect(tie.data.diff_rows).toEqual([]);
+
+    const broken = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/unbalanced_GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const bad = (await mockInvoke("import.tieout", {
+      parse_id: broken.data.parse_id,
+      mapping_id: "canonical",
+    })) as {
+      data: {
+        debits_minor: number;
+        credits_minor: number;
+        balanced: boolean;
+        diff_rows: { line_no: number; posting_ref: string; residual_minor: number }[];
+      };
+    };
+    expect(bad.data.balanced).toBe(false);
+    expect(bad.data.debits_minor - bad.data.credits_minor).toBe(5);
+    // Attribution honesty: the difference is named on the row that carries a posting ref.
+    expect(bad.data.diff_rows).toHaveLength(1);
+    expect(bad.data.diff_rows[0].posting_ref).toBe("PO-8812");
+    expect(bad.data.diff_rows[0].residual_minor).toBe(5);
+  });
+
+  it("import.commit is blocked by the Tie-Out gate with the documented user text", async () => {
+    const parsed = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/unbalanced_GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const blocked = (await mockInvoke("import.commit", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+      name: "2026-08-30_001",
+      exclusions: [],
+    })) as {
+      error: {
+        code: string;
+        httpStatus: number;
+        retryable: boolean;
+        userMessage: string;
+        details: { diffRows: unknown[] };
+      };
+    };
+    expect(blocked.error.code).toBe("IMPORT_TIE_OUT_FAILED");
+    expect(blocked.error.httpStatus).toBe(422);
+    expect(blocked.error.retryable).toBe(false);
+    expect(blocked.error.userMessage).toBe(
+      "Import blocked: debits 6350000.05 vs credits 6350000.00. Review flagged rows below.",
+    );
+    expect(blocked.error.details.diffRows).toHaveLength(1);
+
+    // Excluding the offending row clears the gate and the exclusion is logged, not dropped.
+    const committed = (await mockInvoke("import.commit", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+      name: "2026-08-30_001",
+      exclusions: [{ line_no: 4, reason: "credit_line_rounding_conflict" }],
+    })) as { data: { tie_out_status: string; excluded_rows: number; audit_id: number } };
+    expect(committed.data.tie_out_status).toBe("excluded_rows_logged");
+    expect(committed.data.excluded_rows).toBe(1);
+    expect(committed.data.audit_id).toBeGreaterThan(0);
+  });
+
+  it("import.commit on a balanced fixture returns the API-SPEC §4 batch shape", async () => {
+    const parsed = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const out = (await mockInvoke("import.commit", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+      name: "2026-08-30_001",
+      exclusions: [],
+    })) as {
+      data: {
+        batch_id: string;
+        rows: number;
+        debits_minor: number;
+        credits_minor: number;
+        tie_out_status: string;
+        audit_id: number;
+        excluded_rows: number;
+      };
+    };
+    expect(out.data.batch_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(out.data.rows).toBe(3);
+    expect(out.data.debits_minor).toBe(out.data.credits_minor);
+    expect(out.data.tie_out_status).toBe("pass");
+    expect(out.data.excluded_rows).toBe(0);
+  });
+
+  it("import.validate mirrors IMPORT_PARSE_EXPIRED (410, retryable) for an unknown parse", async () => {
+    const unknown = "3f9f2c9e-9f8b-4e2d-9a1c-100000000999";
+    const validate = (await mockInvoke("import.validate", {
+      parse_id: unknown,
+      mapping_id: "canonical",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean; userMessage: string } };
+    expect(validate.error.code).toBe("IMPORT_PARSE_EXPIRED");
+    expect(validate.error.httpStatus).toBe(410);
+    expect(validate.error.retryable).toBe(true); // "the only retryable ingestion code"
+    expect(validate.error.userMessage).toBe("This parse session expired. Re-run the import.");
+    const commit = (await mockInvoke("import.commit", {
+      parse_id: unknown,
+      mapping_id: "canonical",
+      name: "batch",
+      exclusions: [],
+    })) as { error: { code: string } };
+    expect(commit.error.code).toBe("IMPORT_PARSE_EXPIRED");
+  });
+
+  it("import.rollback requires a reason and mirrors BATCH_ALREADY_ROLLED_BACK", async () => {
+    const batchId = "3f9f2c9e-9f8b-4e2d-9a1c-300000000777";
+    const noReason = (await mockInvoke("import.rollback", {
+      batch_id: batchId,
+      reason: " ",
+    })) as { error: { code: string } };
+    expect(noReason.error.code).toBe("VALUE_INVALID");
+
+    const first = (await mockInvoke("import.rollback", {
+      batch_id: batchId,
+      reason: "duplicate import",
+    })) as { data: { rolled_back_to: string | null } };
+    expect(first.data.rolled_back_to).toBeNull();
+
+    const second = (await mockInvoke("import.rollback", {
+      batch_id: batchId,
+      reason: "duplicate import",
+    })) as { error: { code: string; httpStatus: number; userMessage: string } };
+    expect(second.error.code).toBe("BATCH_ALREADY_ROLLED_BACK");
+    expect(second.error.httpStatus).toBe(409);
+    expect(second.error.userMessage).toBe("This batch was already rolled back.");
+  });
 });

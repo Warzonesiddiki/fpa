@@ -330,6 +330,171 @@ export type PackMeta = z.infer<typeof PackMeta>;
 export const PackListArgs = z.object({}).strict();
 export const PackListData = z.array(PackMeta).default([]);
 
+/* ── import.* (B19 — GL-Dump-first ingestion; GL-TEMPLATE-SPEC, DATABASE-SCHEMA §7) ── */
+
+/** `import_batches.kind` (DATABASE-SCHEMA §7 CHECK) restricted to file-borne kinds —
+ *  `connector_sync` / `collection` arrive from their own commands (M2). */
+export const ImportKind = z.enum([
+  "gl_dump",
+  "excel_csv",
+  "driver_data",
+  "opening_balances",
+  "dimension_master",
+]);
+export type ImportKind = z.infer<typeof ImportKind>;
+
+export const ImportParseArgs = z
+  .object({
+    file_path: z.string().min(1, "FILE_PATH_REQUIRED"),
+    kind: ImportKind,
+  })
+  .strict();
+
+export const ParsedSheet = z.object({
+  name: z.string(),
+  kind: z.string(),
+  row_count: z.number().int().nonnegative(),
+});
+
+/** Encoding detection is never silent: `auto_detected` Latin-1 must be confirmed in the preview
+ *  (GL-TEMPLATE-SPEC §1); an undetectable encoding is `ENCODING_UNSUPPORTED` (retryable). */
+export const ParseEncoding = z.object({
+  scope: z.string(),
+  encoding: z.string(),
+  bom: z.boolean(),
+  auto_detected: z.boolean(),
+});
+
+export const ImportParseData = z.object({
+  parse_id: Uuid,
+  sheets: z.array(ParsedSheet),
+  encodings: z.array(ParseEncoding),
+  row_counts: z.record(z.string(), z.number().int().nonnegative()),
+  // Additive detail for S-032 ("batch name/hash preview"): the locked shape keeps the four keys
+  // above; the Rust core adds the file facts the screen needs without re-reading the file.
+  source_name: z.string(),
+  source_hash: z.string().regex(/^[0-9a-f]{64}$/, "SOURCE_HASH_INVALID: sha256 hex expected"),
+  size_bytes: z.number().int().nonnegative(),
+  headers: z.array(z.string()),
+});
+
+/** A row-level (or batch-level — `line_no: null`) finding. `code` is always one of the 97 locked
+ *  ERROR-HANDLING codes; the specific reason rides in `message` / `details` (B20). */
+export const RowIssue = z.object({
+  code: z.string(),
+  message: z.string(),
+  line_no: z.number().int().positive().nullable(),
+  details: z.record(z.string(), z.unknown()),
+});
+export type RowIssue = z.infer<typeof RowIssue>;
+
+/** A mapped source row as the preview table shows it (SCREENS-SPEC S-031 — first 50 rows). */
+export const MappedPreviewRow = z.object({
+  line_no: z.number().int().positive(),
+  period_id: z.string().min(1),
+  account_id: Uuid,
+  account_code: z.string(),
+  business_unit_id: Uuid.nullable(),
+  amount_minor: MoneyMinor,
+  debit_minor: MoneyMinor.nullable(),
+  credit_minor: MoneyMinor.nullable(),
+  currency: z.string().length(3),
+  posting_ref: z.string().nullable(),
+  doc_type: z.string().nullable(),
+  is_ic: z.boolean(),
+});
+export type MappedPreviewRow = z.infer<typeof MappedPreviewRow>;
+
+/** The bundled "OneFP&A Canonical GL" template (GL-TEMPLATE-SPEC §7) — a file that follows the
+ *  template needs zero mapping steps; any other id is a saved `mapping_templates` row. */
+export const CANONICAL_MAPPING_ID = "canonical";
+
+export const ImportMappingRef = z.string().min(1, "MAPPING_ID_REQUIRED");
+
+export const ImportValidateArgs = z
+  .object({
+    parse_id: Uuid,
+    mapping_id: ImportMappingRef,
+  })
+  .strict();
+
+export const ImportValidateData = z.object({
+  hard: z.array(RowIssue),
+  warnings: z.array(RowIssue),
+  preview: z.array(MappedPreviewRow),
+  rows: z.number().int().nonnegative(),
+  mapping_version: z.string(),
+});
+
+export const ImportTieoutArgs = ImportValidateArgs;
+
+/** A row named by the Tie-Out gate: only rows carrying a `posting_ref` are ever attributed
+ *  (M5 attribution honesty — a difference is never spread onto arbitrary rows). */
+export const TieOutDiffRow = z.object({
+  line_no: z.number().int().positive(),
+  posting_ref: z.string().nullable(),
+  debit_minor: MoneyMinor.nullable(),
+  credit_minor: MoneyMinor.nullable(),
+  amount_minor: MoneyMinor,
+  residual_minor: MoneyMinor,
+});
+
+export const ImportTieoutData = z.object({
+  debits_minor: MoneyMinor,
+  credits_minor: MoneyMinor,
+  diff_rows: z.array(TieOutDiffRow),
+  balanced: z.boolean(),
+  rows: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+});
+
+/** Exclude-with-log: the row leaves the batch and the reason is written to the audit trail —
+ *  never a silent drop (GL-TEMPLATE-SPEC §3). */
+export const ImportExclusion = z
+  .object({
+    line_no: z.number().int().positive(),
+    reason: z.string().trim().min(1, "EXCLUSION_REASON_REQUIRED").max(500),
+  })
+  .strict();
+
+export const ImportCommitArgs = z
+  .object({
+    parse_id: Uuid,
+    mapping_id: ImportMappingRef,
+    name: z.string().trim().min(1, "BATCH_NAME_REQUIRED").max(120, "BATCH_NAME_TOO_LONG"),
+    exclusions: z.array(ImportExclusion).default([]),
+  })
+  .strict();
+
+export const TieOutStatus = z.enum(["pass", "fail", "excluded_rows_logged"]);
+export type TieOutStatus = z.infer<typeof TieOutStatus>;
+
+/** API-SPEC §4 — the documented `import.commit` success shape (plus the exclusion count and the
+ *  source hash the batch history table shows; new response fields stay additive, B20). */
+export const ImportCommitData = z.object({
+  batch_id: Uuid,
+  rows: z.number().int().nonnegative(),
+  debits_minor: MoneyMinor,
+  credits_minor: MoneyMinor,
+  tie_out_status: TieOutStatus,
+  audit_id: z.number().int().positive(),
+  excluded_rows: z.number().int().nonnegative(),
+  source_hash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+export const ImportRollbackArgs = z
+  .object({
+    batch_id: Uuid,
+    reason: z.string().trim().min(1, "ROLLBACK_REASON_REQUIRED").max(500),
+  })
+  .strict();
+
+/** `rolled_back_to` = the batch the Company's Actuals fall back to once this one is excised;
+ *  `null` when this was the only batch (the Company returns to "no Actuals"). */
+export const ImportRollbackData = z.object({
+  rolled_back_to: Uuid.nullable(),
+});
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -345,6 +510,11 @@ export const CommandArgs = {
   "calendar.apply": CalendarApplyArgs,
   "coa.list": CoaListArgs,
   "pack.list": PackListArgs,
+  "import.parse": ImportParseArgs,
+  "import.validate": ImportValidateArgs,
+  "import.tieout": ImportTieoutArgs,
+  "import.commit": ImportCommitArgs,
+  "import.rollback": ImportRollbackArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

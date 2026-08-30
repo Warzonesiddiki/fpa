@@ -7,7 +7,13 @@ import {
   CompanyCreateData,
   CoaListData,
   DecimalString,
+  ImportCommitData,
+  ImportParseData,
+  ImportRollbackData,
+  ImportTieoutData,
+  ImportValidateData,
   MoneyMinor,
+  RowIssue,
   SecurityPinSetupData,
   SessionStatusData,
   SessionUnlockData,
@@ -296,5 +302,247 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       ]).success,
     ).toBe(true);
     expect(CoaListData.safeParse([{ id: "x" }]).success).toBe(false);
+  });
+
+  it("import.parse accepts the 5 file-borne kinds and rejects an empty path", () => {
+    for (const kind of [
+      "gl_dump",
+      "excel_csv",
+      "driver_data",
+      "opening_balances",
+      "dimension_master",
+    ]) {
+      expect(
+        CommandArgs["import.parse"].safeParse({ file_path: "/tmp/GL.xlsx", kind }).success,
+      ).toBe(true);
+    }
+    expect(CommandArgs["import.parse"].safeParse({ file_path: "", kind: "gl_dump" }).success).toBe(
+      false,
+    );
+    expect(
+      CommandArgs["import.parse"].safeParse({ file_path: "/tmp/GL.xlsx", kind: "connector_sync" })
+        .success,
+    ).toBe(false); // "connector batches are not parsed from a file"
+    expect(CommandArgs["import.parse"].safeParse({ file_path: "/tmp/GL.xlsx" }).success).toBe(
+      false,
+    );
+  });
+
+  it("import.parse data carries sheets, encodings, row counts and the sha256 source hash", () => {
+    const parsed = ImportParseData.safeParse({
+      parse_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000001",
+      sheets: [
+        { name: "GL", kind: "gl", row_count: 47999 },
+        { name: "COA", kind: "coa", row_count: 12 },
+      ],
+      encodings: [{ scope: "GL", encoding: "utf-8", bom: true, auto_detected: false }],
+      row_counts: { GL: 47999, COA: 12 },
+      source_name: "SAP_GL_Aug2026.xlsx",
+      source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+      size_bytes: 4821136,
+      headers: ["period", "account_code", "debit", "credit"],
+    });
+    expect(parsed.success).toBe(true);
+    // Latin-1 is only ever offered as a detected encoding with a preview (GL-TEMPLATE-SPEC §1).
+    const detected = ImportParseData.safeParse({
+      parse_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000001",
+      sheets: [],
+      encodings: [{ scope: "file", encoding: "latin-1", bom: false, auto_detected: true }],
+      row_counts: {},
+      source_name: "gl.csv",
+      source_hash: "aa11",
+      size_bytes: 10,
+      headers: [],
+    });
+    expect(detected.success).toBe(false); // "source_hash must be sha256 hex"
+  });
+
+  it("RowIssue carries a locked error code and either a row or batch scope", () => {
+    const rowIssue = RowIssue.safeParse({
+      code: "MAP_ACCOUNT_AMBIGUOUS",
+      message: "ACCOUNT_AMBIGUOUS: '4000' resolves to several Accounts",
+      line_no: 47129,
+      details: { accountCode: "4000", list: ["a-1", "a-2"] },
+    });
+    expect(rowIssue.success).toBe(true);
+    const batchIssue = RowIssue.safeParse({
+      code: "UNIT_PERIOD_MISMATCH",
+      message: "DRIVER_PERIOD_WEEKLY: driver data is weekly but the calendar is monthly",
+      line_no: null,
+      details: {},
+    });
+    expect(batchIssue.success).toBe(true);
+    // line numbers are 1-based source rows (0 is not a source row)
+    expect(RowIssue.safeParse({ code: "X", message: "m", line_no: 0, details: {} }).success).toBe(
+      false,
+    );
+  });
+
+  it("import.validate data keeps money in integer minor units", () => {
+    const ok = ImportValidateData.safeParse({
+      hard: [],
+      warnings: [],
+      preview: [
+        {
+          line_no: 2,
+          period_id: "fp-2026-p08",
+          account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+          account_code: "4000",
+          business_unit_id: null,
+          amount_minor: -635000000,
+          debit_minor: null,
+          credit_minor: 635000000,
+          currency: "USD",
+          posting_ref: "INV-2001",
+          doc_type: "INVOICE",
+          is_ic: false,
+        },
+      ],
+      rows: 1,
+      mapping_version: "canonical-v1",
+    });
+    expect(ok.success).toBe(true);
+    const floatMoney = ImportValidateData.safeParse({
+      hard: [],
+      warnings: [],
+      preview: [
+        {
+          line_no: 2,
+          period_id: "fp-2026-p08",
+          account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+          account_code: "4000",
+          business_unit_id: null,
+          amount_minor: -6350000.5,
+          debit_minor: null,
+          credit_minor: 635000000,
+          currency: "USD",
+          posting_ref: null,
+          doc_type: null,
+          is_ic: false,
+        },
+      ],
+      rows: 1,
+      mapping_version: "v3",
+    });
+    expect(floatMoney.success).toBe(false); // "B18-2: money crosses IPC as integer minor units"
+  });
+
+  it("import.tieout data names diff rows with their residual", () => {
+    const ok = ImportTieoutData.safeParse({
+      debits_minor: 635000005,
+      credits_minor: 635000000,
+      diff_rows: [
+        {
+          line_no: 4,
+          posting_ref: "PO-8812",
+          debit_minor: 452500005,
+          credit_minor: null,
+          amount_minor: 452500005,
+          residual_minor: 5,
+        },
+      ],
+      balanced: false,
+      rows: 3,
+      currency: "USD",
+    });
+    expect(ok.success).toBe(true);
+    expect(
+      ImportTieoutData.safeParse({
+        debits_minor: 1,
+        credits_minor: 1,
+        diff_rows: [],
+        balanced: true,
+        rows: 0,
+        currency: "USD",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("import.commit args require a batch name and a reason on every exclusion", () => {
+    const base = {
+      parse_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000001",
+      mapping_id: "canonical",
+    };
+    expect(
+      CommandArgs["import.commit"].safeParse({ ...base, name: "2026-08-30_001" }).success,
+    ).toBe(true);
+    const withDefaults = CommandArgs["import.commit"].safeParse({ ...base, name: "batch-1" });
+    expect(withDefaults.success).toBe(true);
+    expect((withDefaults.data as { exclusions: unknown[] }).exclusions).toEqual([]);
+    expect(CommandArgs["import.commit"].safeParse({ ...base, name: "  " }).success).toBe(false);
+    expect(CommandArgs["import.commit"].safeParse({ ...base, name: "x".repeat(121) }).success).toBe(
+      false,
+    );
+    expect(
+      CommandArgs["import.commit"].safeParse({
+        ...base,
+        name: "batch-1",
+        exclusions: [{ line_no: 47129, reason: "credit_line_rounding_conflict" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      CommandArgs["import.commit"].safeParse({
+        ...base,
+        name: "batch-1",
+        exclusions: [{ line_no: 47129, reason: " " }],
+      }).success,
+    ).toBe(false); // "an exclusion is logged, never a silent drop"
+  });
+
+  it("import.commit data matches the API-SPEC §4 success shape", () => {
+    const ok = ImportCommitData.safeParse({
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 47999,
+      debits_minor: 4128300000,
+      credits_minor: 4128300000,
+      tie_out_status: "excluded_rows_logged",
+      audit_id: 99,
+      excluded_rows: 1,
+      source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+    });
+    expect(ok.success).toBe(true);
+    expect(
+      ImportCommitData.safeParse({
+        batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+        rows: 1,
+        debits_minor: 1,
+        credits_minor: 1,
+        tie_out_status: "unknown",
+        audit_id: 1,
+        excluded_rows: 0,
+        source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+      }).success,
+    ).toBe(false); // "tie_out_status is one of pass|fail|excluded_rows_logged (DATABASE-SCHEMA §7)"
+  });
+
+  it("import.rollback requires an audit reason and accepts a null fallback batch", () => {
+    const args = { batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001", reason: "duplicate import" };
+    expect(CommandArgs["import.rollback"].safeParse(args).success).toBe(true);
+    expect(
+      CommandArgs["import.rollback"].safeParse({
+        batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+        reason: " ",
+      }).success,
+    ).toBe(false);
+    expect(ImportRollbackData.safeParse({ rolled_back_to: null }).success).toBe(true);
+    expect(
+      ImportRollbackData.safeParse({
+        rolled_back_to: "3f9f2c9e-9f8b-4e2d-9a1c-300000000000",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("all five B19 ingestion commands are registered in the command table", () => {
+    for (const command of [
+      "import.parse",
+      "import.validate",
+      "import.tieout",
+      "import.commit",
+      "import.rollback",
+    ] as const) {
+      expect(CommandArgs[command]).toBeDefined();
+      // No ingestion command accepts an empty payload.
+      expect(CommandArgs[command].safeParse({}).success).toBe(false);
+    }
   });
 });
