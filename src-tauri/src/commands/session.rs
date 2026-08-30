@@ -8,6 +8,7 @@ use argon2::{
     Argon2,
 };
 use base64::Engine;
+use chrono::Utc;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::sync::Mutex;
@@ -44,6 +45,15 @@ pub fn hash_pin(pin: &str) -> Result<String, AppError> {
 pub fn verify_pin(pin: &str, stored_hash: &str) -> Result<bool, AppError> {
     let parsed = PasswordHash::new(stored_hash).map_err(|e| AppError::internal(format!("argon2 parse: {e}")))?;
     Ok(Argon2::default().verify_password(pin.as_bytes(), &parsed).is_ok())
+}
+
+/// Mint a fresh session token for `company_id` and swap it into the session state.
+/// Shared by `session.unlock` and `company.open` (S-020) — one place owns the token (AUTH-SPEC §2).
+pub fn mint_session(state: &State<'_, SessionState>, company_id: String) -> AppResult<String> {
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes());
+    let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
+    *guard = Some(Session { company_id, session_token: token.clone() });
+    Ok(token)
 }
 
 /// `session.status` — pre-unlock safe (no secrets).
@@ -140,9 +150,13 @@ pub fn session_unlock(
             [PIN_ROW_ID],
         )
         .map_err(AppError::from)?;
-        let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes());
-        let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-        *guard = Some(Session { company_id, session_token: token.clone() });
+        // Touch last-activity so company.list `last_opened_at` reflects the unlock (F-001 retention).
+        conn.execute(
+            "UPDATE companies SET updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![Utc::now().to_rfc3339(), company_id],
+        )
+        .map_err(AppError::from)?;
+        let token = mint_session(&state, company_id.clone())?;
         return Ok(serde_json::json!({ "data": { "company_id": company_id, "session_token": token } }));
     }
 

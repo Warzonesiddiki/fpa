@@ -6,8 +6,9 @@ pub mod commands;
 pub mod core;
 pub mod storage;
 
-use commands::calendar::calendar_preview;
-use commands::company::{company_create, company_list};
+use commands::calendar::{calendar_apply, calendar_preview};
+use commands::coa::coa_list;
+use commands::company::{company_create, company_delete, company_list, company_open};
 use commands::pack::pack_list;
 use commands::security::security_change_pin;
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
@@ -30,7 +31,11 @@ pub fn run() {
             security_change_pin,
             company_list,
             company_create,
+            company_open,
+            company_delete,
             calendar_preview,
+            calendar_apply,
+            coa_list,
             pack_list,
         ])
         .setup(|_app| {

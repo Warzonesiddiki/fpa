@@ -1,9 +1,15 @@
-//! `calendar.preview` — pure engine output (F-003). No DB writes: the UI previews before `calendar.apply`.
+//! `calendar.preview` / `calendar.apply` (F-003). preview is pure engine output — the UI
+//! previews before apply persists the config + generated years/periods for a Company.
 
 use chrono::NaiveDate;
+use rusqlite::OptionalExtension;
+use uuid::Uuid;
 
+use crate::commands::company::{write_calendar, CalendarConfig};
+use crate::core::audit::{next_hash, GENESIS_HASH};
 use crate::core::calendar::{build_12month, build_week_based, CalendarPreset, WeekRule};
 use crate::core::error::{AppError, AppResult};
+use crate::storage::keystore;
 
 fn parse_preset(s: &str) -> Result<CalendarPreset, AppError> {
     match s {
@@ -68,6 +74,116 @@ pub fn calendar_preview(
     Ok(serde_json::json!({ "data": { "fiscal_years": fiscal_years } }))
 }
 
+/// Transit-map row: how a BU period relates to a Group period (SCREENS-SPEC S-022).
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuMapEntry {
+    pub bu_id: String,
+    pub group_period_id: String,
+    pub bu_period_id: String,
+    pub mapping: String, // "exact" | "partial"
+    pub share_pct: Option<rust_decimal::Decimal>,
+}
+
+/// Validate the apply payload: exactly one Default-calendar config for a single-entity Company
+/// (more requires the BU matrix → CAL_PERIOD_MAPPING_CONFLICT) and a non-ambiguous transit map
+/// (partial mapping must carry an explicit share → CAL_TRANSIT_AMBIGUOUS).
+fn validate_apply(company_id: &str, config: &[CalendarConfig], bu_map: &[BuMapEntry]) -> AppResult<()> {
+    if config.len() != 1 {
+        return Err(AppError::period_mapping_conflict(format!(
+            "expected exactly 1 calendar config for company {company_id}, got {}",
+            config.len()
+        )));
+    }
+    for entry in bu_map {
+        if entry.mapping != "exact" && entry.mapping != "partial" {
+            return Err(AppError::invalid(format!("CAL_MAPPING_UNKNOWN: {}", entry.mapping)));
+        }
+        if entry.mapping == "partial" && entry.share_pct.is_none() {
+            return Err(AppError::transit_ambiguous(format!(
+                "bu_period {} spans two Group periods without a share_pct",
+                entry.bu_period_id
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// `calendar.apply` — {company_id, config[], bu_map[]}. Replaces the Company's 'Default'
+/// calendar with the validated config + generated years/periods (transactional + audited).
+/// bu_map is the Group-transit contract (empty for a single-entity Company in M1).
+#[tauri::command(name = "calendar.apply", rename_all = "camelCase")]
+pub fn calendar_apply(
+    app: tauri::AppHandle,
+    company_id: String,
+    config: Vec<CalendarConfig>,
+    bu_map: Vec<BuMapEntry>,
+) -> AppResult<serde_json::Value> {
+    let dir = crate::commands::company::app_data_dir(&app)?;
+    let mut conn = crate::storage::db::open_at(&dir).map_err(AppError::from)?;
+
+    validate_apply(&company_id, &config, &bu_map)?;
+    let calendar = &config[0];
+
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let exists: Option<String> = tx
+        .query_row("SELECT name FROM companies WHERE id = ?1", [&company_id], |r| r.get(0))
+        .optional()
+        .map_err(AppError::from)?;
+    if exists.is_none() {
+        return Err(AppError::file_corrupt());
+    }
+
+    // Replace the 'Default' calendar tree (FK order: maps → periods → years → calendars).
+    tx.execute(
+        "DELETE FROM bu_calendar_map WHERE company_id = ?1",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM fiscal_periods WHERE fiscal_year_id IN
+           (SELECT id FROM fiscal_years WHERE calendar_id IN
+             (SELECT id FROM fiscal_calendars WHERE company_id = ?1 AND name = 'Default'))",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM fiscal_years WHERE calendar_id IN
+           (SELECT id FROM fiscal_calendars WHERE company_id = ?1 AND name = 'Default')",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM fiscal_calendars WHERE company_id = ?1 AND name = 'Default'",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+
+    let cal_id = Uuid::new_v4().to_string();
+    write_calendar(&tx, &company_id, &cal_id, calendar, "1y")?;
+
+    // Audit (HMAC chain; key from keychain — never the DB).
+    let after_json = serde_json::json!({ "preset": calendar.preset }).to_string();
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let prev: String = tx
+        .query_row("SELECT hash FROM audit_events ORDER BY seq DESC LIMIT 1", [], |r| r.get(0))
+        .optional()
+        .map_err(AppError::from)?
+        .unwrap_or_else(|| GENESIS_HASH.to_string());
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    let now = chrono::Utc::now().to_rfc3339();
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json,
+                                   prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'calendar.apply', 'calendar', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![company_id, cal_id, after_json, prev, hash, now],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({ "data": { "applied": true } }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +227,65 @@ mod tests {
         let e = calendar_preview("12month".into(), None, None, None, None, "2026-04-01".into(), None)
             .unwrap_err();
         assert_eq!(e.body().code, "VALUE_INVALID");
+    }
+
+    fn cfg(preset: &str) -> CalendarConfig {
+        CalendarConfig {
+            preset: preset.into(),
+            fy_start_month: None,
+            week_start_day: Some(0),
+            anchor_rule: Some("sunday_near_feb_1".into()),
+            year_end_rule: Some("nrf_4_day".into()),
+        }
+    }
+
+    #[test]
+    fn apply_rejects_multiple_configs_with_mapping_conflict() {
+        let e = validate_apply("c1", &[cfg("454"), cfg("445")], &[]).unwrap_err();
+        assert_eq!(e.body().code, "CAL_PERIOD_MAPPING_CONFLICT");
+        assert_eq!(e.body().http_status, 409);
+    }
+
+    #[test]
+    fn apply_rejects_partial_transit_without_share() {
+        let e = validate_apply(
+            "c1",
+            &[cfg("454")],
+            &[BuMapEntry {
+                bu_id: "bu1".into(),
+                group_period_id: "gp1".into(),
+                bu_period_id: "bp1".into(),
+                mapping: "partial".into(),
+                share_pct: None,
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(e.body().code, "CAL_TRANSIT_AMBIGUOUS");
+        assert_eq!(e.body().http_status, 422);
+    }
+
+    #[test]
+    fn apply_accepts_exact_and_shared_partial_maps() {
+        let ok = validate_apply(
+            "c1",
+            &[cfg("454")],
+            &[
+                BuMapEntry {
+                    bu_id: "bu1".into(),
+                    group_period_id: "gp1".into(),
+                    bu_period_id: "bp1".into(),
+                    mapping: "exact".into(),
+                    share_pct: None,
+                },
+                BuMapEntry {
+                    bu_id: "bu2".into(),
+                    group_period_id: "gp1".into(),
+                    bu_period_id: "bp1".into(),
+                    mapping: "partial".into(),
+                    share_pct: Some(rust_decimal::Decimal::new(50, 2)),
+                },
+            ],
+        );
+        assert!(ok.is_ok());
     }
 }

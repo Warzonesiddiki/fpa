@@ -77,12 +77,34 @@ export const CompanyMeta = z.object({
   default_currency_code: z.string().length(3),
   base_locale: z.string(),
   last_opened_at: z.string().nullable(),
+  company_file_path: z.string().min(1),
   license_status: z.enum(["active", "grace", "expired", "invalid"]),
 });
 export type CompanyMeta = z.infer<typeof CompanyMeta>;
 
 export const CompanyListArgs = z.object({}).strict();
 export const CompanyListData = z.array(CompanyMeta).default([]);
+
+export const CompanyDeleteArgs = z
+  .object({
+    company_id: Uuid,
+    reason: z.string().trim().min(1, "COMPANY_DELETE_REASON_REQUIRED").max(500),
+  })
+  .strict();
+export const CompanyDeleteData = z.object({ deleted: z.literal(true) });
+
+export const CompanyOpenArgs = z.object({ path: z.string().min(1) }).strict();
+export const CompanyOpenData = z.object({
+  company_id: Uuid,
+  summary: z.object({
+    name: z.string().min(1),
+    type: z.enum(["single", "group"]),
+    default_currency_code: z.string().length(3),
+    base_locale: z.string(),
+    pack_schema_version: z.string(),
+    company_file_path: z.string(),
+  }),
+});
 
 export const CompanyCreateArgs = z
   .object({
@@ -134,6 +156,64 @@ export const CalendarPreviewData = z.object({
     }),
   ),
 });
+export type CalendarPreviewData = z.infer<typeof CalendarPreviewData>;
+
+export const CalendarApplyConfig = z
+  .object({
+    preset: z.enum(["12month", "454", "445", "544", "3334"]),
+    fy_start_month: z.number().int().min(1).max(12).nullable(),
+    week_start_day: z.number().int().min(0).max(6).default(0),
+    anchor_rule: z.enum(["sunday_near_feb_1", "nearest_weekday", "first_day"]).nullable(),
+    year_end_rule: z.enum(["nrf_4_day", "full_week"]).nullable(),
+  })
+  .strict();
+
+export const BuMapEntry = z
+  .object({
+    bu_id: Uuid,
+    group_period_id: z.string().min(1),
+    bu_period_id: z.string().min(1),
+    mapping: z.enum(["exact", "partial"]),
+    share_pct: z.number().finite().nullable(),
+  })
+  .strict();
+
+export const CalendarApplyArgs = z
+  .object({
+    company_id: Uuid,
+    config: z
+      .array(CalendarApplyConfig)
+      .min(1)
+      .max(1, "CAL_PERIOD_MAPPING_CONFLICT: single Default calendar"),
+    bu_map: z.array(BuMapEntry).default([]),
+  })
+  .strict();
+export const CalendarApplyData = z.object({ applied: z.literal(true) });
+
+/* ── coa.list ──────────────────────────────────────────────────── */
+
+export const AccountNode = z.object({
+  id: Uuid,
+  code: z.string(),
+  name: z.string(),
+  account_type: z.enum(["revenue", "cogs", "opex", "asset", "liability", "equity"]),
+  report_section: z.string(),
+  parent_id: Uuid.nullable(),
+  bu_id: Uuid.nullable(),
+  is_control: z.boolean(),
+  active: z.boolean(),
+  version: z.number().int(),
+  usage_count: z.number().int(),
+});
+export type AccountNode = z.infer<typeof AccountNode>;
+
+export const CoaListArgs = z
+  .object({
+    company_id: Uuid,
+    bu_id: Uuid.nullable().optional(),
+  })
+  .strict();
+export const CoaListData = z.array(AccountNode).default([]);
 
 /* ── pack.* ─────────────────────────────────────────────────────── */
 
@@ -157,7 +237,11 @@ export const CommandArgs = {
   "session.lock": SessionLockArgs,
   "company.list": CompanyListArgs,
   "company.create": CompanyCreateArgs,
+  "company.open": CompanyOpenArgs,
+  "company.delete": CompanyDeleteArgs,
   "calendar.preview": CalendarPreviewArgs,
+  "calendar.apply": CalendarApplyArgs,
+  "coa.list": CoaListArgs,
   "pack.list": PackListArgs,
 } as const;
 

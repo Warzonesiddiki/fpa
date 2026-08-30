@@ -36,46 +36,69 @@ pub enum AppError {
     Internal(String),
     #[error("53-week rule conflict: {0}")]
     CalendarConflict(String),
+    #[error("company file missing or corrupt")]
+    FileCorrupt,
+    #[error("company used recently — retention window applies")]
+    CompanyRecentUse { days: u16 },
+    #[error("transit mapping ambiguous: {0}")]
+    TransitAmbiguous(String),
+    #[error("period mapping conflict: {0}")]
+    PeriodMappingConflict(String),
 }
 
 impl AppError {
     pub fn body(&self) -> ErrorBody {
-        let (code, user_message, http_status, retryable, retry_after_ms) = match self {
-            AppError::PinInvalid => (
-                "AUTH_PIN_INVALID",
-                "Incorrect PIN. Please try again.",
-                401,
-                true,
-                None,
-            ),
-            AppError::Locked { retry_after_ms } => (
-                "AUTH_LOCKED",
-                "Too many attempts. Try again later.",
-                423,
-                false,
-                Some(*retry_after_ms),
-            ),
-            AppError::DecryptFailed => (
-                "STORAGE_DECRYPT_FAILED",
-                "This Company file could not be decrypted. Choose a different file or restore a backup.",
-                500,
-                false,
-                None,
-            ),
-            AppError::SessionRequired => {
-                ("SESSION_LOCKED", "The session is locked. Unlock first.", 401, true, None)
+        let (code, http_status, retryable, retry_after_ms) = match self {
+            AppError::PinInvalid => ("AUTH_PIN_INVALID", 401, true, None),
+            AppError::Locked { retry_after_ms } => ("AUTH_LOCKED", 423, false, Some(*retry_after_ms)),
+            AppError::DecryptFailed => ("STORAGE_DECRYPT_FAILED", 500, false, None),
+            AppError::SessionRequired => ("SESSION_LOCKED", 401, true, None),
+            AppError::InvalidArgument(_) => ("VALUE_INVALID", 422, false, None),
+            AppError::Scope(_) => ("VALUE_INVALID", 403, false, None),
+            AppError::Db(_) => ("INTERNAL", 500, true, None),
+            AppError::Internal(_) => ("INTERNAL", 500, true, None),
+            AppError::CalendarConflict(_) => ("CAL_53WEEK_CONFLICT", 422, false, None),
+            AppError::FileCorrupt => ("STORAGE_FILE_CORRUPT", 422, false, None),
+            AppError::CompanyRecentUse { .. } => ("COMPANY_IN_USE_RECENT", 409, false, None),
+            AppError::TransitAmbiguous(_) => ("CAL_TRANSIT_AMBIGUOUS", 422, false, None),
+            AppError::PeriodMappingConflict(_) => ("CAL_PERIOD_MAPPING_CONFLICT", 409, false, None),
+        };
+        let user_message = match self {
+            AppError::PinInvalid => "Incorrect PIN. Please try again.",
+            AppError::Locked { .. } => "Too many attempts. Try again later.",
+            AppError::DecryptFailed => {
+                "This Company file could not be decrypted. Choose a different file or restore a backup."
             }
-            AppError::InvalidArgument(_) => ("VALUE_INVALID", "Invalid arguments.", 422, false, None),
-            AppError::Scope(_) => ("VALUE_INVALID", "This operation is not permitted.", 403, false, None),
-            AppError::Db(_) => ("INTERNAL", "A database error occurred.", 500, true, None),
-            AppError::Internal(_) => ("INTERNAL", "An unexpected error occurred. Please try again.", 500, true, None),
-            AppError::CalendarConflict(_) => (
-                "CAL_53WEEK_CONFLICT",
-                "The 53rd week rule conflicts with your FY start. Choose NRF (4+ days) or full-week rule.",
-                422,
-                false,
-                None,
-            ),
+            AppError::SessionRequired => "The session is locked. Unlock first.",
+            AppError::InvalidArgument(_) => "Invalid arguments.",
+            AppError::Scope(_) => "This operation is not permitted.",
+            AppError::Db(_) => "A database error occurred.",
+            AppError::Internal(_) => "An unexpected error occurred. Please try again.",
+            AppError::CalendarConflict(_) => {
+                "The 53rd week rule conflicts with your FY start. Choose NRF (4+ days) or full-week rule."
+            }
+            AppError::FileCorrupt => {
+                "This Company file could not be verified. Restore from Backup? (pre-restore snapshot will be taken)"
+            }
+            AppError::CompanyRecentUse { days } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "This Company was used less than {days} days ago. Delete it or wait — recent Companies can't be deleted."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({}),
+                };
+            }
+            AppError::TransitAmbiguous(_) => {
+                "BU period spans two Group periods. Map both date ranges to proceed."
+            }
+            AppError::PeriodMappingConflict(_) => {
+                "Two BUs map the same Group period with different calendars — confirm the Transit Map."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -98,6 +121,22 @@ impl AppError {
 
     pub fn cal_53week_conflict() -> Self {
         AppError::CalendarConflict("nrf_4_day is exclusive to the 454 preset".into())
+    }
+
+    pub fn file_corrupt() -> Self {
+        AppError::FileCorrupt
+    }
+
+    pub fn company_recent_use(days: u16) -> Self {
+        AppError::CompanyRecentUse { days }
+    }
+
+    pub fn transit_ambiguous(msg: impl Into<String>) -> Self {
+        AppError::TransitAmbiguous(msg.into())
+    }
+
+    pub fn period_mapping_conflict(msg: impl Into<String>) -> Self {
+        AppError::PeriodMappingConflict(msg.into())
     }
 }
 
