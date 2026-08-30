@@ -142,6 +142,23 @@ pub fn require_company_write(state: &SessionState, company_id: &str) -> AppResul
     Ok(())
 }
 
+/// Commands that mutate the session Company but carry no `company_id` (the locked API catalog
+/// marks the whole `import.*` family `session` — API-SPEC §2): the target is the unlocked
+/// Company. Fails `SESSION_LOCKED` (401, retryable) when nothing is unlocked.
+pub fn require_unlocked(state: &SessionState) -> AppResult<String> {
+    let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
+    guard.as_ref().map(|s| s.company_id.clone()).ok_or(AppError::SessionRequired)
+}
+
+/// Write gate for session-scoped mutations without an explicit `company_id`: an unlocked
+/// Company must exist (`SESSION_LOCKED`) and must not be the read-only residue of a broken
+/// audit chain (`AUDIT_CHAIN_BREAK`, AUTH-SPEC §2.5 / §3 rule 2).
+pub fn require_session_write(state: &SessionState) -> AppResult<String> {
+    let company_id = require_unlocked(state)?;
+    require_company_write(state, &company_id)?;
+    Ok(company_id)
+}
+
 /// `session.status` — pre-unlock safe (no secrets).
 #[tauri::command(name = "session.status")]
 pub fn session_status(state: State<'_, SessionState>) -> AppResult<serde_json::Value> {
@@ -422,5 +439,28 @@ mod tests {
     fn write_gate_is_open_when_no_session_targets_the_company() {
         let state = SessionState::default();
         assert!(require_company_write(&state, "comp-a").is_ok());
+    }
+
+    #[test]
+    fn session_scoped_commands_need_an_unlocked_company() {
+        // The `import.*` family carries no company_id (API-SPEC §2): the target is the
+        // unlocked Company, so a locked session fails closed with SESSION_LOCKED (401).
+        let state = SessionState::default();
+        assert_eq!(require_unlocked(&state).unwrap_err().body().code, "SESSION_LOCKED");
+        assert_eq!(require_session_write(&state).unwrap_err().body().code, "SESSION_LOCKED");
+
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), None).unwrap();
+        assert_eq!(require_unlocked(&state).unwrap(), "comp-a");
+        assert_eq!(require_session_write(&state).unwrap(), "comp-a");
+    }
+
+    #[test]
+    fn session_scoped_write_gate_honours_the_chain_break() {
+        let state = SessionState::default();
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), Some(7)).unwrap();
+        // Read-only is a write gate, not a read gate: the Company is still addressable...
+        assert_eq!(require_unlocked(&state).unwrap(), "comp-a");
+        // ...but no session-scoped mutation may extend a chain that failed verification.
+        assert_eq!(require_session_write(&state).unwrap_err().body().code, "AUDIT_CHAIN_BREAK");
     }
 }

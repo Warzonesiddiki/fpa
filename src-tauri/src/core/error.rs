@@ -50,6 +50,32 @@ pub enum AppError {
     PeriodMappingConflict(String),
     #[error("audit chain verification failed at seq {at_seq}")]
     AuditChainBreak { at_seq: i64 },
+    // ── Ingestion (GL-TEMPLATE-SPEC §6 / ERROR-HANDLING §C/F) ─────────────────
+    // Only the 97 locked codes are ever emitted; row-level problems without a dedicated
+    // code (blank column, unparseable number, unknown currency) reuse VALUE_INVALID and
+    // carry the specific reason in `message`/`details` (B20: reuse, never invent).
+    #[error("file could not be read: {0}")]
+    ImportFileUnreadable(String),
+    #[error("workbook is password protected: {0}")]
+    ImportFileLocked(String),
+    #[error("encoding not detected: {0}")]
+    EncodingUnsupported(String),
+    #[error("parse session expired or unknown: {0}")]
+    ImportParseExpired(String),
+    #[error("import tie-out failed: debits {debits_minor} != credits {credits_minor}")]
+    ImportTieOutFailed { debits_minor: i64, credits_minor: i64, currency: String, diff_rows: serde_json::Value },
+    #[error("source file already imported as batch {existing_batch}")]
+    ImportBatchHashExists { existing_batch: String },
+    #[error("account code {} resolves to {} accounts", code, accounts.len())]
+    MapAccountAmbiguous { code: String, accounts: Vec<String> },
+    #[error("driver/period granularity mismatch: {0}")]
+    UnitPeriodMismatch(String),
+    #[error("opening balances already set: {0}")]
+    OpeningAlreadySet(String),
+    #[error("batch already rolled back")]
+    BatchAlreadyRolledBack,
+    #[error("period not found: {0}")]
+    PeriodNotFound(String),
 }
 
 impl AppError {
@@ -72,6 +98,18 @@ impl AppError {
             AppError::TransitAmbiguous(_) => ("CAL_TRANSIT_AMBIGUOUS", 422, false, None),
             AppError::PeriodMappingConflict(_) => ("CAL_PERIOD_MAPPING_CONFLICT", 409, false, None),
             AppError::AuditChainBreak { .. } => ("AUDIT_CHAIN_BREAK", 409, false, None),
+            AppError::ImportFileUnreadable(_) => ("IMPORT_FILE_UNREADABLE", 422, false, None),
+            AppError::ImportFileLocked(_) => ("IMPORT_FILE_LOCKED", 422, false, None),
+            // ERROR-HANDLING §C: the only ingestion code the UI may retry (pick an encoding).
+            AppError::EncodingUnsupported(_) => ("ENCODING_UNSUPPORTED", 422, true, None),
+            AppError::ImportParseExpired(_) => ("IMPORT_PARSE_EXPIRED", 410, true, None),
+            AppError::ImportTieOutFailed { .. } => ("IMPORT_TIE_OUT_FAILED", 422, false, None),
+            AppError::ImportBatchHashExists { .. } => ("IMPORT_BATCH_HASH_EXISTS", 409, false, None),
+            AppError::MapAccountAmbiguous { .. } => ("MAP_ACCOUNT_AMBIGUOUS", 422, false, None),
+            AppError::UnitPeriodMismatch(_) => ("UNIT_PERIOD_MISMATCH", 422, false, None),
+            AppError::OpeningAlreadySet(_) => ("OPENING_ALREADY_SET", 409, false, None),
+            AppError::BatchAlreadyRolledBack => ("BATCH_ALREADY_ROLLED_BACK", 409, false, None),
+            AppError::PeriodNotFound(_) => ("PERIOD_NOT_FOUND", 404, false, None),
         };
         let user_message = match self {
             AppError::PinInvalid => "Incorrect PIN. Please try again.",
@@ -123,6 +161,74 @@ impl AppError {
                     details: serde_json::json!({ "brokenAtSeq": at_seq }),
                 };
             }
+            AppError::ImportFileUnreadable(_) => {
+                "This file could not be read. Export it again as .xlsx or .csv without a password."
+            }
+            AppError::ImportFileLocked(_) => {
+                "This file is password-protected. Remove protection and export again."
+            }
+            AppError::EncodingUnsupported(_) => {
+                "Encoding not detected. Choose UTF-8 or Latin-1 (preview) and continue."
+            }
+            AppError::ImportParseExpired(_) => "This parse session expired. Re-run the import.",
+            AppError::ImportTieOutFailed { debits_minor, credits_minor, currency, diff_rows } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    // Exact documented text (ERROR-HANDLING §1 canonical example): money is
+                    // rendered from exact minor units, never from a float.
+                    user_message: format!(
+                        "Import blocked: debits {} vs credits {}. Review flagged rows below.",
+                        money_text(*debits_minor, currency),
+                        money_text(*credits_minor, currency),
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({
+                        "debitsMinor": debits_minor,
+                        "creditsMinor": credits_minor,
+                        "currency": currency,
+                        "diffRows": diff_rows,
+                    }),
+                };
+            }
+            AppError::ImportBatchHashExists { existing_batch } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "This exact file was already imported (batch {existing_batch}). Re-import? This will create a new batch — confirm: duplicate rows are excluded automatically."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "existingBatch": existing_batch }),
+                };
+            }
+            AppError::MapAccountAmbiguous { code: account_code, accounts } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Account code maps to multiple Accounts ({}). Confirm the intended Account.",
+                        accounts.join(", ")
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "accountCode": account_code, "list": accounts }),
+                };
+            }
+            AppError::UnitPeriodMismatch(_) => {
+                "Driver data is weekly but the calendar is monthly. Aggregate (sum) or reject?"
+            }
+            AppError::OpeningAlreadySet(_) => {
+                "Opening balances already exist for this period. Use a new Actuals batch to adjust."
+            }
+            AppError::BatchAlreadyRolledBack => "This batch was already rolled back.",
+            // Exact documented text (ERROR-HANDLING §2, 404 — never an invented message (B12)).
+            AppError::PeriodNotFound(_) => "Period not found in this calendar.",
         };
         ErrorBody {
             code: code.to_string(),
@@ -173,6 +279,69 @@ impl AppError {
 
     pub fn audit_chain_break(at_seq: i64) -> Self {
         AppError::AuditChainBreak { at_seq }
+    }
+
+    pub fn import_file_unreadable(msg: impl Into<String>) -> Self {
+        AppError::ImportFileUnreadable(msg.into())
+    }
+
+    pub fn import_file_locked(msg: impl Into<String>) -> Self {
+        AppError::ImportFileLocked(msg.into())
+    }
+
+    pub fn encoding_unsupported(msg: impl Into<String>) -> Self {
+        AppError::EncodingUnsupported(msg.into())
+    }
+
+    pub fn import_parse_expired(parse_id: &str) -> Self {
+        AppError::ImportParseExpired(parse_id.to_string())
+    }
+
+    pub fn import_tie_out_failed(
+        debits_minor: i64,
+        credits_minor: i64,
+        currency: &str,
+        diff_rows: serde_json::Value,
+    ) -> Self {
+        AppError::ImportTieOutFailed {
+            debits_minor,
+            credits_minor,
+            currency: currency.to_string(),
+            diff_rows,
+        }
+    }
+
+    pub fn import_batch_hash_exists(existing_batch: &str) -> Self {
+        AppError::ImportBatchHashExists { existing_batch: existing_batch.to_string() }
+    }
+
+    pub fn map_account_ambiguous(code: &str, accounts: Vec<String>) -> Self {
+        AppError::MapAccountAmbiguous { code: code.to_string(), accounts }
+    }
+
+    pub fn unit_period_mismatch(msg: impl Into<String>) -> Self {
+        AppError::UnitPeriodMismatch(msg.into())
+    }
+
+    pub fn opening_already_set(msg: impl Into<String>) -> Self {
+        AppError::OpeningAlreadySet(msg.into())
+    }
+
+    pub fn batch_already_rolled_back() -> Self {
+        AppError::BatchAlreadyRolledBack
+    }
+
+    pub fn period_not_found(msg: impl Into<String>) -> Self {
+        AppError::PeriodNotFound(msg.into())
+    }
+}
+
+/// Render exact minor units as a plain decimal string for user-facing text (MONEY-ROUNDING-SPEC
+/// §2: no float, no locale symbol — the UI applies locale formatting, the core stays ISO-neutral).
+fn money_text(minor: i64, currency: &str) -> String {
+    match crate::core::money::MoneyValue::new(minor, currency) {
+        Ok(m) => m.to_decimal_string(),
+        Err(_) => minor.to_string(),
     }
 }
 

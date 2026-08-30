@@ -7,7 +7,7 @@
  * The Rust core is the single owner of money/calendar logic (B14) — the mock mirrors
  * shapes, NOT semantics; it is not a spec of behaviour.
  */
-import type { CommandInput, CommandName } from "./schema";
+import { CANONICAL_MAPPING_ID, type CommandInput, type CommandName } from "./schema";
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -156,6 +156,128 @@ function previewFiscalYears(
     void end;
   }
   return { fiscal_years: years };
+}
+
+/** Dev mirror of the Rust error body (ERROR-HANDLING §1) — shape only, never semantics (B18-3). */
+function mockError(
+  code: string,
+  message: string,
+  userMessage: string,
+  httpStatus: number,
+  retryable = false,
+  details: Record<string, unknown> = {},
+) {
+  return {
+    error: { code, message, userMessage, httpStatus, retryable, retryAfterMs: null, details },
+  };
+}
+
+/* ── Import fixtures (B19) ────────────────────────────────────────────────────────────────
+ * Dev trigger, paralleling `WrongPin9!` / `AuditBrk9!`: a file path containing "unbalanced"
+ * parses a GL Dump whose debits and credits disagree by 5 minor units, so the Tie-Out gate,
+ * the exclude-with-log path and IMPORT_TIE_OUT_FAILED are all reachable in the browser preview.
+ * "locked" → IMPORT_FILE_LOCKED · "unreadable" → IMPORT_FILE_UNREADABLE.                     */
+export const MOCK_UNBALANCED_FILE = "unbalanced";
+
+const GL_TEMPLATE_HEADERS = [
+  "period",
+  "account_code",
+  "account_name",
+  "debit",
+  "credit",
+  "amount",
+  "cost_center",
+  "project",
+  "product",
+  "customer",
+  "business_unit",
+  "intercompany_tag",
+  "currency",
+  "posting_ref",
+  "doc_type",
+];
+
+const MOCK_SOURCE_HASH = "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900";
+const MOCK_REVENUE_MINOR = 635_000_000; // credit 6,350,000.00 USD (GL-TEMPLATE-SPEC §4 example)
+const MOCK_MATERIALS_MINOR = 182_500_000; // debit 1,825,000.00 USD
+const MOCK_OPEX_MINOR = 452_500_000; // debit 4,525,000.00 USD — balances the journal entry
+const MOCK_IMBALANCE_MINOR = 5; // the tie-out difference of the "unbalanced" dev fixture
+const MOCK_PARSE_ROWS = 3;
+
+interface MockParse {
+  kind: string;
+  rows: number;
+  balanced: boolean;
+}
+
+const parses = new Map<string, MockParse>();
+const rolledBackBatches = new Set<string>();
+let importSeq = 0;
+
+/** Deterministic dev uuid (the Rust core mints real v4 ids). */
+function nextImportId(group: string): string {
+  importSeq += 1;
+  return `3f9f2c9e-9f8b-4e2d-9a1c-${group}${String(importSeq).padStart(9, "0")}`;
+}
+
+function parseExpired() {
+  return mockError(
+    "IMPORT_PARSE_EXPIRED",
+    "parse session expired or unknown",
+    // ERROR-HANDLING §C: the only retryable ingestion code — the UI offers "Re-run the import".
+    "This parse session expired. Re-run the import.",
+    410,
+    true,
+  );
+}
+
+/** The preview table (SCREENS-SPEC S-031 shows the first 50 rows). */
+function mockPreviewRows(balanced: boolean) {
+  const opex = balanced ? MOCK_OPEX_MINOR : MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR;
+  return [
+    {
+      line_no: 2,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+      account_code: "4000",
+      business_unit_id: null,
+      amount_minor: -MOCK_REVENUE_MINOR,
+      debit_minor: null,
+      credit_minor: MOCK_REVENUE_MINOR,
+      currency: "USD",
+      posting_ref: "INV-2001",
+      doc_type: "INVOICE",
+      is_ic: false,
+    },
+    {
+      line_no: 3,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000002",
+      account_code: "4100",
+      business_unit_id: null,
+      amount_minor: MOCK_MATERIALS_MINOR,
+      debit_minor: MOCK_MATERIALS_MINOR,
+      credit_minor: null,
+      currency: "USD",
+      posting_ref: "PO-8811",
+      doc_type: "PURCHASE",
+      is_ic: false,
+    },
+    {
+      line_no: 4,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000003",
+      account_code: "5000",
+      business_unit_id: null,
+      amount_minor: opex,
+      debit_minor: opex,
+      credit_minor: null,
+      currency: "USD",
+      posting_ref: "PO-8812",
+      doc_type: "PURCHASE",
+      is_ic: false,
+    },
+  ];
 }
 
 export async function mockInvoke<C extends CommandName>(
@@ -353,6 +475,159 @@ export async function mockInvoke<C extends CommandName>(
           is_bundled: true,
         })),
       };
+    case "import.parse": {
+      const { file_path, kind } = args as { file_path: string; kind: string };
+      if (file_path.includes("locked")) {
+        return mockError(
+          "IMPORT_FILE_LOCKED",
+          "workbook is password protected",
+          "This file is password-protected. Remove protection and export again.",
+          422,
+        );
+      }
+      if (file_path.includes("unreadable")) {
+        return mockError(
+          "IMPORT_FILE_UNREADABLE",
+          "file could not be read",
+          "This file could not be read. Export it again as .xlsx or .csv without a password.",
+          422,
+        );
+      }
+      const parseId = nextImportId("100");
+      const balanced = !file_path.includes(MOCK_UNBALANCED_FILE);
+      parses.set(parseId, { kind, rows: MOCK_PARSE_ROWS, balanced });
+      return {
+        data: {
+          parse_id: parseId,
+          sheets: [
+            { name: "GL", kind: "gl", row_count: MOCK_PARSE_ROWS },
+            { name: "COA", kind: "coa", row_count: 12 },
+          ],
+          encodings: [{ scope: "GL", encoding: "utf-8", bom: true, auto_detected: false }],
+          row_counts: { GL: MOCK_PARSE_ROWS, COA: 12 },
+          source_name: file_path.split(/[\\/]/).pop() || file_path,
+          source_hash: MOCK_SOURCE_HASH,
+          size_bytes: 4_821_136,
+          headers: GL_TEMPLATE_HEADERS,
+        },
+      };
+    }
+    case "import.validate": {
+      const { parse_id, mapping_id } = args as { parse_id: string; mapping_id: string };
+      const parse = parses.get(parse_id);
+      if (!parse) return parseExpired();
+      return {
+        data: {
+          hard: [],
+          warnings: [],
+          preview: mockPreviewRows(parse.balanced),
+          rows: parse.rows,
+          mapping_version: mapping_id === CANONICAL_MAPPING_ID ? "canonical-v1" : "v3",
+        },
+      };
+    }
+    case "import.tieout": {
+      const { parse_id } = args as { parse_id: string };
+      const parse = parses.get(parse_id);
+      if (!parse) return parseExpired();
+      const debits = parse.balanced
+        ? MOCK_REVENUE_MINOR
+        : MOCK_REVENUE_MINOR + MOCK_IMBALANCE_MINOR;
+      const opex = parse.balanced ? MOCK_OPEX_MINOR : MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR;
+      return {
+        data: {
+          debits_minor: debits,
+          credits_minor: MOCK_REVENUE_MINOR,
+          // Attribution honesty: only the row carrying a posting_ref is named (M5).
+          diff_rows: parse.balanced
+            ? []
+            : [
+                {
+                  line_no: 4,
+                  posting_ref: "PO-8812",
+                  debit_minor: opex,
+                  credit_minor: null,
+                  amount_minor: opex,
+                  residual_minor: MOCK_IMBALANCE_MINOR,
+                },
+              ],
+          balanced: parse.balanced,
+          rows: parse.rows,
+          currency: "USD",
+        },
+      };
+    }
+    case "import.commit": {
+      const { parse_id, name, exclusions } = args as {
+        parse_id: string;
+        name: string;
+        exclusions: { line_no: number; reason: string }[];
+      };
+      const parse = parses.get(parse_id);
+      if (!parse) return parseExpired();
+      if (!name.trim()) {
+        return mockError("VALUE_INVALID", "BATCH_NAME_REQUIRED", "Invalid arguments.", 422);
+      }
+      // The Tie-Out gate: blocked until the difference is explained by an exclusion.
+      if (!parse.balanced && exclusions.length === 0) {
+        return mockError(
+          "IMPORT_TIE_OUT_FAILED",
+          "import tie-out failed: debits 635000005 != credits 635000000",
+          // Mirrors the Rust formatter (ERROR-HANDLING §1 canonical example).
+          "Import blocked: debits 6350000.05 vs credits 6350000.00. Review flagged rows below.",
+          422,
+          false,
+          {
+            debitsMinor: MOCK_REVENUE_MINOR + MOCK_IMBALANCE_MINOR,
+            creditsMinor: MOCK_REVENUE_MINOR,
+            currency: "USD",
+            diffRows: [
+              {
+                lineNo: 4,
+                postingRef: "PO-8812",
+                debitMinor: MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR,
+                creditMinor: null,
+                amountMinor: MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR,
+                residualMinor: MOCK_IMBALANCE_MINOR,
+              },
+            ],
+          },
+        );
+      }
+      return {
+        data: {
+          batch_id: nextImportId("300"),
+          rows: parse.rows,
+          debits_minor: MOCK_REVENUE_MINOR,
+          credits_minor: MOCK_REVENUE_MINOR,
+          tie_out_status: exclusions.length > 0 ? "excluded_rows_logged" : "pass",
+          audit_id: 99,
+          excluded_rows: exclusions.length,
+          source_hash: MOCK_SOURCE_HASH,
+        },
+      };
+    }
+    case "import.rollback": {
+      const { batch_id, reason } = args as { batch_id: string; reason: string };
+      if (!reason.trim()) {
+        return mockError(
+          "VALUE_INVALID",
+          "ROLLBACK_REASON_REQUIRED",
+          "A reason is required to roll back a batch.",
+          422,
+        );
+      }
+      if (rolledBackBatches.has(batch_id)) {
+        return mockError(
+          "BATCH_ALREADY_ROLLED_BACK",
+          "batch already rolled back",
+          "This batch was already rolled back.",
+          409,
+        );
+      }
+      rolledBackBatches.add(batch_id);
+      return { data: { rolled_back_to: null } };
+    }
     default:
       return {
         error: {
