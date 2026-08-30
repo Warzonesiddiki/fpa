@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "budget_execution",
+      "name": "Budget Execution %",
+      "unit": "pct",
+      "target": {
+        "value": 92,
+        "direction": "gte"
+      },
+      "definition": "Budget Execution % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "encumbrance",
+      "name": "Encumbrance %",
+      "unit": "pct",
+      "target": {
+        "value": 12,
+        "direction": "gte"
+      },
+      "definition": "Encumbrance % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "program_spend",
+      "name": "Program Spend %",
+      "unit": "pct",
+      "target": {
+        "value": 68,
+        "direction": "gte"
+      },
+      "definition": "Program Spend % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "timely_close",
+      "name": "Timely Close %",
+      "unit": "pct",
+      "target": {
+        "value": 90,
+        "direction": "gte"
+      },
+      "definition": "Timely Close % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

@@ -256,7 +256,7 @@
 
 ### S-053 Planning Cycle | `/plan/cycle`
 **Purpose:** F-021 cycle manager + Input Collection.
-**Elements:** cycle timeline (kickoff/submit/review/approve/baseline with dates), status board, Close Checklist (per-period tasks), Input Collection tab (export sheet buttons, uploaded collections, per-contributor status, conflict queue), milestone approvals.
+**Elements:** cycle timeline (kickoff/submit/review/approve/baseline with dates), status board, Close Checklist (per-period tasks), Input Collection tab (export sheet buttons, returned collections, per-contributor status, conflict queue), milestone approvals.
 - **Loading:** skeleton.
 - **Empty:** "Start a planning cycle".
 - **Error:** `CYCLE_TASK_BLOCKED`, `COLLECTION_CONFLICT` (queue).

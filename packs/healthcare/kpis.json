@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "cost_per_patient",
+      "name": "Cost per Patient",
+      "unit": "money",
+      "target": {
+        "value": 2400,
+        "direction": "gte"
+      },
+      "definition": "Cost per Patient — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "days_ar",
+      "name": "Net Days in AR",
+      "unit": "days",
+      "target": {
+        "value": 42,
+        "direction": "gte"
+      },
+      "definition": "Net Days in AR — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "denial_rate",
+      "name": "Denial Rate %",
+      "unit": "pct",
+      "target": {
+        "value": 8,
+        "direction": "gte"
+      },
+      "definition": "Denial Rate % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "payer_mix_pct",
+      "name": "Payer Mix (commercial) %",
+      "unit": "pct",
+      "target": {
+        "value": 55,
+        "direction": "gte"
+      },
+      "definition": "Payer Mix (commercial) % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

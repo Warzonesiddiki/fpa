@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "aum",
+      "name": "Assets under management",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "nim",
+      "name": "Net interest margin",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "claims",
+      "name": "Claims frequency",
+      "type": "ratio",
+      "unit": "x",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}

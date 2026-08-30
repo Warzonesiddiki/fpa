@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/*
+ * OneFP&A token bridge (DESIGN-SYSTEM §1) — Tailwind theme maps to src/theme/tokens.
+ * Dark mode is class-driven (`document.documentElement.classList.toggle('dark')`).
+ */
+@theme {
+  --color-oneprimary: #2563eb;
+  --color-oneprimaryhover: #1d4ed8;
+  --color-oneapp: #f8fafc;
+  --color-onesurface: #ffffff;
+  --color-onesurfacealt: #f1f5f9;
+  --color-oneborder: #e2e8f0;
+  --color-onetext: #0f172a;
+  --color-onetextsecondary: #475569;
+  --color-onetextmuted: #94a3b8;
+  --color-onerror: #dc2626;
+  --color-onewarning: #d97706;
+  --color-onefavorable: #15803d;
+  --color-oneunfavorable: #b91c1c;
+  --color-oneinfo: #0284c7;
+  --color-oneneutral: #64748b;
+}
+
+.dark {
+  --color-oneprimary: #3b82f6;
+  --color-oneprimaryhover: #60a5fa;
+  --color-oneapp: #0f172a;
+  --color-onesurface: #1e293b;
+  --color-onesurfacealt: #334155;
+  --color-oneborder: #334155;
+  --color-onetext: #f1f5f9;
+  --color-onetextsecondary: #cbd5e1;
+  --color-onetextmuted: #64748b;
+  --color-onerror: #f87171;
+  --color-onewarning: #fbbf24;
+  --color-onefavorable: #4ade80;
+  --color-oneunfavorable: #f87171;
+  --color-oneinfo: #38bdf8;
+  --color-oneneutral: #94a3b8;
+}
+
+/* Accessibility baseline: focus ring 2px / 2px offset (DESIGN-SYSTEM §1.3). */
+:focus-visible {
+  outline: 2px solid var(--color-oneprimary);
+  outline-offset: 2px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-oneapp);
+  color: var(--color-onetext);
+  font-family:
+    "Inter",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-feature-settings: "tnum"; /* tabular numbers for financial columns */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

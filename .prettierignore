@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+docs
+README.md
+package-lock.json
+src-tauri/target
+src-tauri/gen
+src-tauri/migrations
+packs
+assets
+src-tauri/src
+src-tauri/Cargo.toml
+src-tauri/build.rs
+.evil

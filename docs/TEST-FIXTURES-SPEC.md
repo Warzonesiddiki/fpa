@@ -34,13 +34,15 @@ Every fixture has a **`.expected.json`** sidecar with exact expected values (amo
 
 ## 2. ORACLE CALENDAR EXPECTATIONS (fixed — property + oracle)
 
-| Year (NRF 4-5-4, Sunday nearest Feb 1) | Weeks | Weeks pattern |
-|---|---|---|
-| 2024 | 52 | Q1 4-5-4 · Q2 4-5-4 · Q3 4-5-4 · Q4 4-5-4 |
-| 2025 | 53 | Q4 4-5-5 (53rd week appended per NRF 4-day rule) |
-| 2026 | 52 | standard |
-| 2027 | 52 | standard |
-| 2028 | 52 | standard (leap year — boundary date check) |
+Rule (NRF 4-5-4): fiscal start = Sunday nearest Feb 1 (tie → after; Feb 1 Sunday → Feb 1); a year is **53 weeks iff the next fiscal-year start is 371 days later** (NRF 53-week schedule: FY12, FY17, FY23, FY28, …); the 53rd week lands in Q4 (4-5-5).
+
+| Year (NRF 4-5-4, Sunday nearest Feb 1) | Start | Weeks | Weeks pattern |
+|---|---|---|---|
+| 2024 | 2024-02-04 | 52 | Q1 4-5-4 · Q2 4-5-4 · Q3 4-5-4 · Q4 4-5-4 |
+| 2025 | 2025-02-02 | 52 | 4-5-4 (standard) |
+| 2026 | 2026-02-01 | 52 | 4-5-4 (standard) |
+| 2027 | 2027-01-31 | 52 | 4-5-4 (standard) |
+| 2028 | 2028-01-30 | **53** | Q4 4-5-5 (53rd week per NRF 4-day rule) |
 
 Also: 12-month Apr-start 2026 (P01 = Apr 1), 3-3-3-4 (13 periods), 52-53 full-week rule variant. Calendar engine must return these exact period date ranges (oracle JSON).
 

@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "noi",
+      "name": "Net Operating Income",
+      "unit": "money",
+      "target": {
+        "value": 3800000,
+        "direction": "gte"
+      },
+      "definition": "Net Operating Income — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cap_rate",
+      "name": "Cap Rate %",
+      "unit": "pct",
+      "target": {
+        "value": 6.5,
+        "direction": "gte"
+      },
+      "definition": "Cap Rate % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "occupancy",
+      "name": "Occupancy %",
+      "unit": "pct",
+      "target": {
+        "value": 92,
+        "direction": "gte"
+      },
+      "definition": "Occupancy % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "rent_roll",
+      "name": "Rent Roll",
+      "unit": "money",
+      "target": {
+        "value": 9200000,
+        "direction": "gte"
+      },
+      "definition": "Rent Roll — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

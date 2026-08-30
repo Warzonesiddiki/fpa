@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "tariff_recovery",
+      "name": "Tariff Recovery %",
+      "unit": "pct",
+      "target": {
+        "value": 97,
+        "direction": "gte"
+      },
+      "definition": "Tariff Recovery % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "availability",
+      "name": "Plant Availability %",
+      "unit": "pct",
+      "target": {
+        "value": 88,
+        "direction": "gte"
+      },
+      "definition": "Plant Availability % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cost_per_mwh",
+      "name": "Cost per MWh",
+      "unit": "money",
+      "target": {
+        "value": 42,
+        "direction": "gte"
+      },
+      "definition": "Cost per MWh — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "hedge_ratio",
+      "name": "Hedge Ratio %",
+      "unit": "pct",
+      "target": {
+        "value": 70,
+        "direction": "gte"
+      },
+      "definition": "Hedge Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

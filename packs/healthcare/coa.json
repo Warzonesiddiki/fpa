@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Patient Service Revenue",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Cost of Care",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Clinical Salaries",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Facilities",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Patient AR",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2100",
+      "name": "Accrued Liabilities",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

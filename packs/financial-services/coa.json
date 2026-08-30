@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Interest Income",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Fee Income",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Interest Expense",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Staff Costs",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Loans & Advances",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Customer Deposits",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

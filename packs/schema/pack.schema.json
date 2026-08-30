@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onefpa.app/schema/pack.schema.json",
+  "title": "OneFP&A Industry Pack definition v1.0.0",
+  "description": "Industry Packs are DATA ONLY (B15). Every pack.json is validated here before load (PACK_SCHEMA_INVALID names the exact path).",
+  "type": "object",
+  "required": ["schema_version", "pack", "coa_template", "kpi_definitions", "driver_templates", "report_layouts", "gl_template", "group_rollup_maps"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "pack": {
+      "type": "object",
+      "required": ["key", "name", "version", "description", "default_calendar", "default_currency_hint", "locale_hint"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z_-]+$" },
+        "name": { "type": "string", "minLength": 2 },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "description": { "type": "string", "minLength": 10 },
+        "default_calendar": { "enum": ["12month", "454", "445", "544", "3334"] },
+        "default_currency_hint": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "locale_hint": { "type": "string", "pattern": "^[a-z]{2}-[A-Z]{2}$" }
+      },
+      "additionalProperties": false
+    },
+    "coa_template": { "type": "string" },
+    "kpi_definitions": { "type": "string" },
+    "driver_templates": { "type": "string" },
+    "report_layouts": { "type": "string" },
+    "gl_template": { "type": "string" },
+    "group_rollup_maps": { "type": "string" },
+    "seed_sql": { "type": "string" }
+  },
+  "additionalProperties": false
+}

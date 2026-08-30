@@ -1,0 +1,10 @@
+{
+  "columns": {
+    "period": "YYYY-MM",
+    "account_code": "code",
+    "amount": "signed",
+    "business_unit": "bu",
+    "currency": "ISO"
+  },
+  "note": "Map the source dump columns here (one click per Industry Pack baseline mapping)."
+}

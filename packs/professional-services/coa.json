@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Billable Revenue",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Salaries",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "Subcontractors",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5200",
+      "name": "Travel",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Accounts Receivable",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2100",
+      "name": "Accrued Payroll",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

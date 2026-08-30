@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "footfall",
+      "name": "Footfall",
+      "type": "volume_x_rate",
+      "unit": "visitors",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "conversion",
+      "name": "Conversion %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "aov",
+      "name": "Average Order Value",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    }
+  ]
+}

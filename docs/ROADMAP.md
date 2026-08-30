@@ -33,7 +33,7 @@ flowchart LR
 
 ## M1 — FOUNDATION (F-001…F-006) · L
 
-**Features:** Company/Workspace Manager · COA & Dimensions · Fiscal Calendar (all presets) · First-Run Wizard · Industry Pack loading + Pack Builder · Horizons/Sizing.
+**Features:** Company Manager · COA & Dimensions · Fiscal Calendar (all presets) · First-Run Wizard · Industry Pack loading + Pack Builder · Horizons/Sizing.
 **Docs:** PRD F-001–F-006 · SCREENS-SPEC S-001–S-023 · API-SPEC session/company/coa/calendar/model · DATABASE-SCHEMA §1–5 · AUTH-SPEC §2/3 · SECURITY §2.
 **Complexity:** Company S · COA M · Calendar M · Wizard M · Packs M · Security L (merged) — **total L**.
 **Exit criteria:** unlock → create company → wizard → calendar preview → grid opens; money/calendar property tests green; a11y gates on 4 screens; migration suite green.

@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "nrr",
+      "name": "Net Revenue Retention %",
+      "unit": "nrr_pct",
+      "target": {
+        "value": 115,
+        "direction": "gte"
+      },
+      "definition": "Net Revenue Retention % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "burn",
+      "name": "Burn Multiple",
+      "unit": "burn_x",
+      "target": {
+        "value": 1.2,
+        "direction": "gte"
+      },
+      "definition": "Burn Multiple — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "cac_payback",
+      "name": "CAC Payback (months)",
+      "unit": "months",
+      "target": {
+        "value": 18,
+        "direction": "gte"
+      },
+      "definition": "CAC Payback (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "arr",
+      "name": "Annual Recurring Revenue",
+      "unit": "money",
+      "target": {
+        "value": 12000000,
+        "direction": "gte"
+      },
+      "definition": "Annual Recurring Revenue — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

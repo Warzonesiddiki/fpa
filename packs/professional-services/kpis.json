@@ -1,0 +1,44 @@
+{
+  "kpis": [
+    {
+      "key": "utilization",
+      "name": "Utilization %",
+      "unit": "pct",
+      "target": {
+        "value": 72,
+        "direction": "gte"
+      },
+      "definition": "Utilization % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "rev_per_fte",
+      "name": "Revenue per FTE",
+      "unit": "money",
+      "target": {
+        "value": 210000,
+        "direction": "gte"
+      },
+      "definition": "Revenue per FTE — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "dso",
+      "name": "Days Sales Outstanding",
+      "unit": "days",
+      "target": {
+        "value": 45,
+        "direction": "gte"
+      },
+      "definition": "Days Sales Outstanding — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    },
+    {
+      "key": "pipeline",
+      "name": "Pipeline coverage",
+      "unit": "x",
+      "target": {
+        "value": 3,
+        "direction": "gte"
+      },
+      "definition": "Pipeline coverage — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+    }
+  ]
+}

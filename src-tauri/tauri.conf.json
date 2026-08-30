@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OneFP&A",
+  "version": "0.1.0",
+  "identifier": "com.onefpa.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OneFP&A",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 920,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "dmg", "appimage", "deb"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
+    "category": "Finance",
+    "shortDescription": "Local-first, encrypted, all-industry FP&A",
+    "longDescription": "OneFP&A \u2014 plan, model, consolidate and report entirely on your machine. GL-Dump-first ingestion for any ERP, Excel-parity formulas, 12 config-driven Industry Packs, audit-grade statements.",
+    "resources": ["../packs/**/*"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/Warzonesiddiki/fpa/releases/latest/download/latest.json"],
+      "pubkey": ""
+    }
+  }
+}

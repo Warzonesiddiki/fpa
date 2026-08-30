@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "miles",
+      "name": "Loaded miles",
+      "type": "volume_x_rate",
+      "unit": "miles",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "fuel_price",
+      "name": "Fuel price",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "utilization",
+      "name": "Fleet utilization %",
+      "type": "ratio",
+      "unit": "%",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}

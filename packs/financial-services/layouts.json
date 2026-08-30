@@ -1,0 +1,29 @@
+{
+  "layouts": [
+    {
+      "key": "financial-services_pl",
+      "name": "Financial Services P&L (000s)",
+      "rows": [
+        "revenue",
+        "cogs",
+        "gross_profit",
+        "opex",
+        "ebitda"
+      ],
+      "columns": [
+        {
+          "type": "ytd"
+        },
+        {
+          "type": "variance",
+          "compare": "budget"
+        }
+      ],
+      "format": {
+        "000s": true,
+        "negative": "paren",
+        "decimals": 0
+      }
+    }
+  ]
+}

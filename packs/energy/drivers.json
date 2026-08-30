@@ -1,0 +1,40 @@
+{
+  "drivers": [
+    {
+      "key": "volume_mwh",
+      "name": "Volume (MWh)",
+      "type": "volume_x_rate",
+      "unit": "MWh",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    },
+    {
+      "key": "tariff",
+      "name": "Tariff",
+      "type": "manual",
+      "unit": "money",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "manual",
+      "links": []
+    },
+    {
+      "key": "weather",
+      "name": "Weather adjustment",
+      "type": "ratio",
+      "unit": "index",
+      "bounds": {
+        "low": "0",
+        "high": "1000000000"
+      },
+      "default_method": "seasonal",
+      "links": []
+    }
+  ]
+}

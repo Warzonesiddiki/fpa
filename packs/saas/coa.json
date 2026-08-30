@@ -1,0 +1,60 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Subscription Revenue",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Professional Services",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "R&D Expense",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5100",
+      "name": "S&M Expense",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5300",
+      "name": "G&A Expense",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1200",
+      "name": "Accounts Receivable",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": false
+    },
+    {
+      "code": "2300",
+      "name": "Deferred Revenue",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}

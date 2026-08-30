@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Contract Revenue",
+      "type": "revenue",
+      "section": "Revenue",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "4100",
+      "name": "Cost of Contracts",
+      "type": "cogs",
+      "section": "COGS",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "5000",
+      "name": "Project Overhead",
+      "type": "opex",
+      "section": "OpEx",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "1300",
+      "name": "WIP",
+      "type": "asset",
+      "section": "Current Assets",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Billings in Excess",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": true
+    },
+    {
+      "code": "2100",
+      "name": "Retainage Payable",
+      "type": "liability",
+      "section": "Current Liabilities",
+      "dimensions": [],
+      "is_control": false
+    }
+  ]
+}
