@@ -10,7 +10,7 @@ use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::coa_list;
 use commands::company::{company_create, company_delete, company_list, company_open};
 use commands::pack::pack_list;
-use commands::security::security_change_pin;
+use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,6 +29,7 @@ pub fn run() {
             session_unlock,
             session_lock,
             security_change_pin,
+            security_pin_setup,
             company_list,
             company_create,
             company_open,

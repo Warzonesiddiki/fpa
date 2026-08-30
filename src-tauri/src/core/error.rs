@@ -36,6 +36,8 @@ pub enum AppError {
     Internal(String),
     #[error("53-week rule conflict: {0}")]
     CalendarConflict(String),
+    #[error("PIN does not meet the policy")]
+    PinPolicyWeak,
     #[error("company file missing or corrupt")]
     FileCorrupt,
     #[error("company used recently — retention window applies")]
@@ -57,6 +59,7 @@ impl AppError {
             AppError::Scope(_) => ("VALUE_INVALID", 403, false, None),
             AppError::Db(_) => ("INTERNAL", 500, true, None),
             AppError::Internal(_) => ("INTERNAL", 500, true, None),
+            AppError::PinPolicyWeak => ("PIN_POLICY_WEAK", 422, false, None),
             AppError::CalendarConflict(_) => ("CAL_53WEEK_CONFLICT", 422, false, None),
             AppError::FileCorrupt => ("STORAGE_FILE_CORRUPT", 422, false, None),
             AppError::CompanyRecentUse { .. } => ("COMPANY_IN_USE_RECENT", 409, false, None),
@@ -74,6 +77,7 @@ impl AppError {
             AppError::Scope(_) => "This operation is not permitted.",
             AppError::Db(_) => "A database error occurred.",
             AppError::Internal(_) => "An unexpected error occurred. Please try again.",
+            AppError::PinPolicyWeak => "PIN must be ≥8 characters with letters and digits.",
             AppError::CalendarConflict(_) => {
                 "The 53rd week rule conflicts with your FY start. Choose NRF (4+ days) or full-week rule."
             }
@@ -117,6 +121,10 @@ impl AppError {
 
     pub fn internal(msg: impl Into<String>) -> Self {
         AppError::Internal(msg.into())
+    }
+
+    pub fn pin_policy_weak() -> Self {
+        AppError::PinPolicyWeak
     }
 
     pub fn cal_53week_conflict() -> Self {

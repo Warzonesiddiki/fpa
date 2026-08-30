@@ -40,6 +40,78 @@ export const ApiEnvelope = z.union([
 ]);
 export type ApiEnvelope = z.infer<typeof ApiEnvelope>;
 
+/* ── PIN policy (AUTH-SPEC §2.1) ────────────────────────────────── */
+
+export const PIN_MIN_LEN = 8;
+export const PIN_MAX_LEN = 64;
+
+export type PinPolicyIssue = "too_short" | "too_long" | "one_class" | "sequence";
+
+function hasTwoClasses(pin: string): boolean {
+  const classes = [
+    /[a-z]/.test(pin),
+    /[A-Z]/.test(pin),
+    /[0-9]/.test(pin),
+    /[^a-zA-Z0-9]/.test(pin),
+  ].filter(Boolean).length;
+  return classes >= 2;
+}
+
+function hasSequentialRun4(pin: string): boolean {
+  for (let i = 0; i + 3 < pin.length; i += 1) {
+    const a = pin.charCodeAt(i);
+    const b = pin.charCodeAt(i + 1);
+    const c = pin.charCodeAt(i + 2);
+    const d = pin.charCodeAt(i + 3);
+    if (
+      (b === a + 1 && c === b + 1 && d === c + 1) || // ascending run
+      (b === a - 1 && c === b - 1 && d === c - 1) || // descending run
+      (b === a && c === a && d === a) // repeated run
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export interface PinPolicyChecks {
+  /** 8–64 chars */
+  length: boolean;
+  /** ≥2 classes (lower/upper/digit/symbol) */
+  classes: boolean;
+  /** no ascending/descending/repeated run of 4+ */
+  sequence: boolean;
+}
+
+/** Independent live checks for the setup screen hints (AUTH-SPEC §2.1). */
+export function pinPolicyChecks(pin: string): PinPolicyChecks {
+  return {
+    length: pin.length >= PIN_MIN_LEN && pin.length <= PIN_MAX_LEN,
+    classes: hasTwoClasses(pin),
+    sequence: !hasSequentialRun4(pin),
+  };
+}
+
+/** Same rules as the Rust core `validate_pin_policy` — single source per side (B14), mirrored exactly. */
+export function validatePinPolicy(pin: string): PinPolicyIssue | null {
+  if (pin.length < PIN_MIN_LEN) return "too_short";
+  if (pin.length > PIN_MAX_LEN) return "too_long";
+  if (!hasTwoClasses(pin)) return "one_class";
+  if (hasSequentialRun4(pin)) return "sequence";
+  return null;
+}
+
+export const PinPolicy = z
+  .string()
+  .min(PIN_MIN_LEN, "PIN_POLICY_WEAK: PIN must be ≥8 characters with letters and digits.")
+  .max(PIN_MAX_LEN, "PIN_POLICY_WEAK: PIN must be at most 64 characters.")
+  .refine(hasTwoClasses, {
+    message: "PIN_POLICY_WEAK: use at least two character classes (letters, digits, symbols).",
+  })
+  .refine((pin) => !hasSequentialRun4(pin), {
+    message: "PIN_POLICY_WEAK: no sequential runs of 4 or more (e.g. 1234, abcd).",
+  });
+
 /* ── session.* ──────────────────────────────────────────────────── */
 
 export const SessionStatusArgs = z.object({}).strict();
@@ -56,7 +128,7 @@ export const SessionStatusData = z.object({
 
 export const SessionUnlockArgs = z
   .object({
-    pin: z.string().min(4, "PIN_POLICY_WEAK").max(64),
+    pin: PinPolicy,
     company_id: Uuid,
   })
   .strict();
@@ -64,6 +136,20 @@ export const SessionUnlockData = z.object({
   company_id: Uuid,
   session_token: z.string().min(16),
 });
+
+/* ── security.* ─────────────────────────────────────────────────── */
+
+export const SecurityPinSetupArgs = z
+  .object({
+    pin: PinPolicy,
+    confirm: z.string().min(1, "PIN_CONFIRM_MISMATCH: confirm must equal pin"),
+  })
+  .strict()
+  .refine((v) => v.pin === v.confirm, {
+    path: ["confirm"],
+    message: "PIN_CONFIRM_MISMATCH: confirm must equal pin",
+  });
+export const SecurityPinSetupData = z.object({ ok: z.literal(true) });
 
 export const SessionLockArgs = z.object({}).strict();
 export const SessionLockData = z.object({ locked: z.literal(true) });
@@ -235,6 +321,7 @@ export const CommandArgs = {
   "session.status": SessionStatusArgs,
   "session.unlock": SessionUnlockArgs,
   "session.lock": SessionLockArgs,
+  "security.pin_setup": SecurityPinSetupArgs,
   "company.list": CompanyListArgs,
   "company.create": CompanyCreateArgs,
   "company.open": CompanyOpenArgs,

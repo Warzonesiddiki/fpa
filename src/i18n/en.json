@@ -35,7 +35,31 @@
     "populated": {
       "recent": "Recent Companies",
       "nothing": "No Companies yet"
-    }
+    },
+    "firstRun": "Set up my Company"
+  },
+  "pinSetup": {
+    "title": "Set your PIN",
+    "subtitle": "Your PIN protects every Company file on this device. It never leaves this computer.",
+    "pinLabel": "PIN",
+    "pinPlaceholder": "At least 8 characters",
+    "confirmLabel": "Confirm PIN",
+    "confirmPlaceholder": "Re-enter your PIN",
+    "show": "Show",
+    "hide": "Hide",
+    "toggleA11y": "Show or hide PIN",
+    "hint": "8+ characters with at least two classes (lowercase, uppercase, digits, symbols) and no 4-in-a-row sequence.",
+    "hintLength": "At least 8 characters",
+    "hintClasses": "Two or more character classes",
+    "hintSequence": "No sequences like 1234 or abcd",
+    "mismatch": "PINs do not match.",
+    "weak": "PIN must be ≥8 characters with letters and digits.",
+    "submit": "Set PIN",
+    "submitting": "Setting your PIN…",
+    "success": "PIN set — you're ready to create your first Company.",
+    "continue": "Continue to Company setup",
+    "alreadySet": "A PIN is already set for this installation. Use Change PIN to update it.",
+    "empty": "No PIN is set yet. Create one to protect your data."
   },
   "wizard": {
     "title": "Set up your Company",

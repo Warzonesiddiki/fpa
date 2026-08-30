@@ -47,7 +47,7 @@ function renderPage() {
     <MemoryRouter initialEntries={["/app/companies"]}>
       <Routes>
         <Route path="/app/companies" element={<CompaniesPage />} />
-        <Route path="/welcome" element={<div>wizard</div>} />
+        <Route path="/wizard" element={<div>wizard</div>} />
         <Route path="/app/dashboard" element={<div>dashboard</div>} />
       </Routes>
     </MemoryRouter>,

@@ -122,7 +122,7 @@ export function CompaniesPage() {
         state="empty"
         message={t("companies.empty.body")}
         actionLabel={t("companies.empty.action")}
-        onAction={() => navigate("/welcome")}
+        onAction={() => navigate("/wizard")}
       />
     );
   }
@@ -134,7 +134,7 @@ export function CompaniesPage() {
           <h1 className="text-xl font-semibold">{t("companies.title")}</h1>
           <p className="text-sm text-[var(--color-onetextsecondary)]">{t("companies.subtitle")}</p>
         </div>
-        <Button onClick={() => navigate("/welcome")}>
+        <Button onClick={() => navigate("/wizard")}>
           <Plus aria-hidden="true" className="h-4 w-4" />
           {t("companies.newCompany")}
         </Button>

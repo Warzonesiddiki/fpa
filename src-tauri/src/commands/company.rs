@@ -180,6 +180,19 @@ pub fn company_create(
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
 
+    // First-run gate (F-004): `security.pin_setup` must have registered the PIN before a
+    // Company can exist (AUTH-SPEC §2.1 — setup precedes company.create).
+    let pin_set: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pin_metadata WHERE id = 'default')",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+    if !pin_set {
+        return Err(AppError::invalid("PIN_NOT_SET: run security.pin_setup before creating a Company"));
+    }
+
     // Pack must be registered first (bundled seed on first run).
     crate::commands::pack::seed_bundled_packs(&app, &conn)?;
     let pack_key_clean = pack_key.trim().to_lowercase();

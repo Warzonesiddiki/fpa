@@ -25,8 +25,14 @@ describe("IPC bridge — Zod gate at the boundary (B12)", () => {
     expect(Object.keys(CommandArgs).length).toBeGreaterThanOrEqual(6);
     expect(
       CommandArgs["session.unlock"].parse({
-        pin: "1234",
+        pin: "Meridian2026",
         company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      }),
+    ).toBeTruthy();
+    expect(
+      CommandArgs["security.pin_setup"].parse({
+        pin: "Meridian#2026",
+        confirm: "Meridian#2026",
       }),
     ).toBeTruthy();
   });

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Input, Button, StatePanel } from "@/components/ui";
 import { useSessionStore } from "@/stores/session";
 import { call } from "@/api/bridge";
+import { validatePinPolicy } from "@/api/schema";
 
 type LoadPhase = "pending" | "ready" | "failed";
 
@@ -48,7 +49,7 @@ export function UnlockPage() {
             ? "populated"
             : "empty";
 
-  const canSubmit = pin.length >= 4 && companies.length > 0;
+  const canSubmit = validatePinPolicy(pin) === null && companies.length > 0;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,7 +90,7 @@ export function UnlockPage() {
               <Input
                 label={t("unlock.pinLabel")}
                 type="password"
-                inputMode="numeric"
+                inputMode="text"
                 autoComplete="current-password"
                 placeholder={t("unlock.pinPlaceholder")}
                 value={pin}
@@ -111,6 +112,11 @@ export function UnlockPage() {
             >
               {t("unlock.forgot")}
             </button>
+            {companies.length === 0 && (
+              <Button type="button" variant="secondary" onClick={() => navigate("/welcome")}>
+                {t("unlock.firstRun")}
+              </Button>
+            )}
           </form>
           {companies.length > 0 && (
             <ul

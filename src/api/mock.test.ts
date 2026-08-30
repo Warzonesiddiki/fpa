@@ -8,7 +8,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
 
   it("mirrors the documented error envelope for a wrong PIN", async () => {
     const out = (await mockInvoke("session.unlock", {
-      pin: "wrong",
+      pin: "WrongPin9!",
       company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
     })) as { error: { code: string } };
     expect(out.error.code).toBe("AUTH_PIN_INVALID");
@@ -16,10 +16,18 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
 
   it("mirrors STORAGE_DECRYPT_FAILED for an unknown company", async () => {
     const out = (await mockInvoke("session.unlock", {
-      pin: "1234",
+      pin: "Meridian2026",
       company_id: "00000000-0000-0000-0000-000000000000",
     })) as { error: { code: string } };
     expect(out.error.code).toBe("STORAGE_DECRYPT_FAILED");
+  });
+
+  it("security.pin_setup mirrors the documented {ok} success shape", async () => {
+    const out = (await mockInvoke("security.pin_setup", {
+      pin: "Meridian#2026",
+      confirm: "Meridian#2026",
+    })) as { data: { ok: boolean } };
+    expect(out.data.ok).toBe(true);
   });
 
   it("returns the Meridian demo company and NRF oracle sample", async () => {
