@@ -9,6 +9,8 @@ import {
   DecimalString,
   MoneyMinor,
   SecurityPinSetupData,
+  SessionStatusData,
+  SessionUnlockData,
   pinPolicyChecks,
   validatePinPolicy,
 } from "./schema";
@@ -230,6 +232,44 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       }).success,
     ).toBe(false);
     expect(CommandArgs["calendar.apply"].safeParse({ ...one, config: [] }).success).toBe(false);
+  });
+
+  it("unlock/status payloads carry the §2.5 integrity report (audit-chain verdict)", () => {
+    const verified = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      session_token: "dev-mock-session-token-0000000000000",
+      read_only: false,
+      integrity: { audit_chain_ok: true, broken_at_seq: null },
+    };
+    expect(SessionUnlockData.safeParse(verified).success).toBe(true);
+    // Degraded path: chain break → read-only + seq of the first unverifiable event (ADR-011).
+    const broken = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      session_token: "dev-mock-session-token-0000000000000",
+      read_only: true,
+      integrity: { audit_chain_ok: false, broken_at_seq: 41 },
+    };
+    expect(SessionUnlockData.safeParse(broken).success).toBe(true);
+    // The seq key is always sent by the core/mock (nullable, not optional): dropping the key
+    // entirely is malformed, an explicit null is tolerated (informational only).
+    expect(
+      SessionUnlockData.safeParse({
+        ...broken,
+        integrity: { audit_chain_ok: false, broken_at_seq: null },
+      }).success,
+    ).toBe(true);
+    expect(
+      SessionUnlockData.safeParse({ ...broken, integrity: { audit_chain_ok: false } }).success,
+    ).toBe(false);
+    expect(SessionUnlockData.safeParse({ ...verified, read_only: undefined }).success).toBe(false);
+    expect(
+      SessionStatusData.safeParse({
+        unlocked: true,
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+        read_only: true,
+        license: null,
+      }).success,
+    ).toBe(true);
   });
 
   it("coa.list accepts company scope and validates AccountNode data", () => {

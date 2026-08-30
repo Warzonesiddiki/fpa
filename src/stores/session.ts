@@ -8,6 +8,9 @@ interface SessionState {
   unlocked: boolean;
   companyId: string | null;
   companyName: string | null;
+  /** AUTH-SPEC §2.5: set when unlock-time audit-chain verification failed — the Company is
+   * read-only and the shell shows the restore offer (AUDIT_CHAIN_BREAK, never dismissible). */
+  readOnly: boolean;
   status: ScreenState;
   error: BridgeError | null;
   checking: boolean;
@@ -35,6 +38,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   unlocked: false,
   companyId: null,
   companyName: null,
+  readOnly: false,
   status: "loading",
   error: null,
   checking: false,
@@ -45,12 +49,14 @@ export const useSessionStore = create<SessionState>((set) => ({
       const data = (await call("session.status", {})) as {
         unlocked: boolean;
         company_id: string | null;
+        read_only?: boolean;
       };
       const companyName = data.company_id ? await resolveCompanyName(data.company_id) : null;
       set({
         unlocked: data.unlocked,
         companyId: data.company_id,
         companyName,
+        readOnly: data.read_only === true,
         status: "success",
         checking: false,
       });
@@ -63,12 +69,16 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       const data = (await call("session.unlock", { pin, company_id: companyId })) as {
         company_id: string;
+        read_only?: boolean;
+        integrity?: { audit_chain_ok: boolean; broken_at_seq: number | null };
       };
       const companyName = await resolveCompanyName(data.company_id);
       set({
         unlocked: true,
         companyId: data.company_id,
         companyName,
+        // Read-only when the core says so, or when the §2.5 integrity report flags a break.
+        readOnly: data.read_only === true || data.integrity?.audit_chain_ok === false,
         status: "populated",
         error: null,
       });
@@ -83,12 +93,15 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       const data = (await call("company.open", { path })) as {
         company_id: string;
+        read_only?: boolean;
+        integrity?: { audit_chain_ok: boolean; broken_at_seq: number | null };
         summary: { name: string };
       };
       set({
         unlocked: true,
         companyId: data.company_id,
         companyName: data.summary.name,
+        readOnly: data.read_only === true || data.integrity?.audit_chain_ok === false,
         status: "populated",
         error: null,
       });
@@ -101,7 +114,14 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   lock: async () => {
     await call("session.lock", {});
-    set({ unlocked: false, companyId: null, companyName: null, status: "empty", error: null });
+    set({
+      unlocked: false,
+      companyId: null,
+      companyName: null,
+      readOnly: false,
+      status: "empty",
+      error: null,
+    });
   },
 }));
 

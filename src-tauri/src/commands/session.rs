@@ -74,6 +74,16 @@ struct Session {
     /// The sealed `.fpa` container this session opened (A02) — held so `company.open`/lock
     /// know which file the in-memory keys belong to.
     container_path: String,
+    /// Unlock-time audit-chain verification (AUTH-SPEC §2.5): `Some(seq)` = the first event
+    /// that failed verification. The Company then stays read-only until restored
+    /// (`AUDIT_CHAIN_BREAK` → read-only + restore offer, ADR-011).
+    chain_broken_at: Option<i64>,
+}
+
+impl Session {
+    fn read_only(&self) -> bool {
+        self.chain_broken_at.is_some()
+    }
 }
 
 pub fn hash_pin(pin: &str) -> Result<String, AppError> {
@@ -92,15 +102,44 @@ pub fn verify_pin(pin: &str, stored_hash: &str) -> Result<bool, AppError> {
 
 /// Mint a fresh session token for `company_id` and swap it into the session state.
 /// Shared by `session.unlock` and `company.open` (S-020) — one place owns the token (AUTH-SPEC §2).
+/// `chain_broken_at` is the unlock-time audit-chain verdict (§2.5): `Some(seq)` opens the
+/// Company read-only so a trail that failed verification can never be silently extended.
 pub fn mint_session(
     state: &State<'_, SessionState>,
     company_id: String,
     container_path: String,
+    chain_broken_at: Option<i64>,
+) -> AppResult<String> {
+    mint_session_into(state.inner(), company_id, container_path, chain_broken_at)
+}
+
+/// The state-mutating core of `mint_session`, reachable from unit tests (no Tauri `State`).
+fn mint_session_into(
+    state: &SessionState,
+    company_id: String,
+    container_path: String,
+    chain_broken_at: Option<i64>,
 ) -> AppResult<String> {
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes());
     let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-    *guard = Some(Session { company_id, session_token: token.clone(), container_path });
+    *guard = Some(Session { company_id, session_token: token.clone(), container_path, chain_broken_at });
     Ok(token)
+}
+
+/// Read-only gate for a Company whose audit chain failed verification on unlock
+/// (AUTH-SPEC §2.5 / §3 rule 2 — object-level gates are checked in Rust, not the UI):
+/// the compromised Company accepts no mutations until it is restored, so a chain whose
+/// hashes no longer verify is never extended with new "trusted" events.
+pub fn require_company_write(state: &SessionState, company_id: &str) -> AppResult<()> {
+    let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
+    if let Some(session) = guard.as_ref() {
+        if session.company_id == company_id {
+            if let Some(at_seq) = session.chain_broken_at {
+                return Err(AppError::audit_chain_break(at_seq));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// `session.status` — pre-unlock safe (no secrets).
@@ -112,6 +151,9 @@ pub fn session_status(state: State<'_, SessionState>) -> AppResult<serde_json::V
         "data": {
             "unlocked": unlocked,
             "company_id": guard.as_ref().map(|s| s.company_id.clone()),
+            // AUTH-SPEC §2.5 degraded session: derived at unlock from the chain verdict, never
+            // from a UI flag (§3 rule 4 — no capability is granted on UI flags alone).
+            "read_only": guard.as_ref().map(|s| s.read_only()).unwrap_or(false),
             "license": null::<serde_json::Value>,
         }
     }))
@@ -210,8 +252,25 @@ pub fn session_unlock(
         vault.put(vault_key)?;
         keys::zeroize(&mut vault_key);
 
-        let token = mint_session(&state, company_id.clone(), container_path)?;
-        return Ok(serde_json::json!({ "data": { "company_id": company_id, "session_token": token } }));
+        // AUTH-SPEC §2.5 / ADR-011: on every unlock (after the PIN and container are proven),
+        // verify this Company's audit chain against the keychain-held HMAC key. A break does
+        // NOT refuse the unlock — the data may be intact and the user must still be able to
+        // read it — but the Company opens read-only with the restore offer surfaced to the UI,
+        // so a trail that failed verification can never be silently extended.
+        let chain_broken_at = crate::commands::company::verify_company_chain(&conn, &dir, &company_id)?;
+
+        let token = mint_session(&state, company_id.clone(), container_path, chain_broken_at)?;
+        return Ok(serde_json::json!({
+            "data": {
+                "company_id": company_id,
+                "session_token": token,
+                "read_only": chain_broken_at.is_some(),
+                "integrity": {
+                    "audit_chain_ok": chain_broken_at.is_none(),
+                    "broken_at_seq": chain_broken_at,
+                },
+            }
+        }));
     }
 
     // Wrong PIN: increment attempts; lockout at threshold (AUTH-SPEC §2).
@@ -325,5 +384,43 @@ mod tests {
         let a = hash_pin("Meridian#2026").unwrap();
         let b = hash_pin("Meridian#2026").unwrap();
         assert_ne!(a, b, "Argon2id must salt per hash (AUTH-SPEC §6)");
+    }
+
+    #[test]
+    fn read_only_session_blocks_writes_to_the_compromised_company_only() {
+        let state = SessionState::default();
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), Some(41)).unwrap();
+        let err = require_company_write(&state, "comp-a").unwrap_err();
+        assert_eq!(err.body().code, "AUDIT_CHAIN_BREAK");
+        assert_eq!(err.body().http_status, 409);
+        assert!(!err.body().retryable);
+        assert_eq!(
+            err.body().user_message,
+            "Audit integrity check failed. Restore from the last verified Snapshot?"
+        );
+        assert_eq!(err.body().details["brokenAtSeq"], 41);
+        assert!(
+            require_company_write(&state, "comp-b").is_ok(),
+            "a chain break sandboxes its own Company — other Companies stay writable"
+        );
+    }
+
+    #[test]
+    fn verified_session_allows_writes_and_reunlock_clears_the_break() {
+        let state = SessionState::default();
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), None).unwrap();
+        assert!(require_company_write(&state, "comp-a").is_ok());
+        // A restored Company re-unlocked with a clean chain replaces the session wholesale:
+        // no read-only residue survives the re-mint.
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), Some(7)).unwrap();
+        assert!(require_company_write(&state, "comp-a").is_err());
+        mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), None).unwrap();
+        assert!(require_company_write(&state, "comp-a").is_ok());
+    }
+
+    #[test]
+    fn write_gate_is_open_when_no_session_targets_the_company() {
+        let state = SessionState::default();
+        assert!(require_company_write(&state, "comp-a").is_ok());
     }
 }

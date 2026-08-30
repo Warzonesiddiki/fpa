@@ -16,9 +16,19 @@ export function isTauriRuntime(): boolean {
 interface MockSession {
   unlocked: boolean;
   company_id: string | null;
+  /** AUTH-SPEC §2.5 degraded session flag (mirror of the Rust core's chain verdict). */
+  read_only: boolean;
 }
 
-const session: MockSession = { unlocked: false, company_id: null };
+const session: MockSession = { unlocked: false, company_id: null, read_only: false };
+
+/**
+ * Dev trigger (mock-only, mirrors `WrongPin9!`): unlocking with the PIN "AuditBrk9!" answers
+ * the documented `AUDIT_CHAIN_BREAK` degraded state (AUTH-SPEC §2.5) — unlock succeeds but the
+ * Company is read-only and S-004 shows the restore offer. Shape mirror, not semantics (B18-3).
+ */
+export const MOCK_CHAIN_BREAK_PIN = "AuditBrk9!";
+const MOCK_BROKEN_SEQ = 41;
 
 const DEMO_ID = "3f9f2c9e-9f8b-4e2d-9a1c-000000000001";
 const SANDBOX_ID = "3f9f2c9e-9f8b-4e2d-9a1c-000000000002";
@@ -156,7 +166,12 @@ export async function mockInvoke<C extends CommandName>(
   switch (command) {
     case "session.status":
       return {
-        data: { unlocked: session.unlocked, company_id: session.company_id, license: null },
+        data: {
+          unlocked: session.unlocked,
+          company_id: session.company_id,
+          read_only: session.read_only,
+          license: null,
+        },
       };
     case "security.pin_setup":
       // Shape mirror only (B18-3): the Rust core owns policy + persistence.
@@ -192,10 +207,22 @@ export async function mockInvoke<C extends CommandName>(
       }
       session.unlocked = true;
       session.company_id = company_id;
-      return { data: { company_id, session_token: "dev-mock-session-token-0000000000000" } };
+      session.read_only = pin === MOCK_CHAIN_BREAK_PIN;
+      return {
+        data: {
+          company_id,
+          session_token: "dev-mock-session-token-0000000000000",
+          read_only: session.read_only,
+          integrity: {
+            audit_chain_ok: !session.read_only,
+            broken_at_seq: session.read_only ? MOCK_BROKEN_SEQ : null,
+          },
+        },
+      };
     }
     case "session.lock":
       session.unlocked = false;
+      session.read_only = false;
       return { data: { locked: true } };
     case "company.list":
       return { data: companies };
@@ -218,10 +245,13 @@ export async function mockInvoke<C extends CommandName>(
       }
       session.unlocked = true;
       session.company_id = company.id;
+      session.read_only = false;
       company.last_opened_at = new Date().toISOString();
       return {
         data: {
           company_id: company.id,
+          read_only: false,
+          integrity: { audit_chain_ok: true, broken_at_seq: null },
           summary: {
             name: company.name,
             type: company.type,
@@ -297,6 +327,7 @@ export async function mockInvoke<C extends CommandName>(
       });
       session.unlocked = true;
       session.company_id = id;
+      session.read_only = false;
       return { data: { company_id: id } };
     }
     case "calendar.preview": {

@@ -114,10 +114,20 @@ export const PinPolicy = z
 
 /* ── session.* ──────────────────────────────────────────────────── */
 
+/** Unlock-time audit-chain verdict (AUTH-SPEC §2.5): `broken_at_seq` is the first event whose
+ * HMAC no longer verifies; `audit_chain_ok: false` => the Company opened read-only with the
+ * restore offer (`AUDIT_CHAIN_BREAK`, ADR-011). */
+export const IntegrityReport = z.object({
+  audit_chain_ok: z.boolean(),
+  broken_at_seq: z.number().int().positive().nullable(),
+});
+export type IntegrityReport = z.infer<typeof IntegrityReport>;
+
 export const SessionStatusArgs = z.object({}).strict();
 export const SessionStatusData = z.object({
   unlocked: z.boolean(),
   company_id: Uuid.nullable(),
+  read_only: z.boolean(),
   license: z
     .object({
       status: z.enum(["active", "grace", "expired", "invalid"]),
@@ -135,6 +145,8 @@ export const SessionUnlockArgs = z
 export const SessionUnlockData = z.object({
   company_id: Uuid,
   session_token: z.string().min(16),
+  read_only: z.boolean(),
+  integrity: IntegrityReport,
 });
 
 /* ── security.* ─────────────────────────────────────────────────── */
@@ -182,6 +194,9 @@ export const CompanyDeleteData = z.object({ deleted: z.literal(true) });
 export const CompanyOpenArgs = z.object({ path: z.string().min(1) }).strict();
 export const CompanyOpenData = z.object({
   company_id: Uuid,
+  // Switching the active Company re-runs the §2.5 chain check for it (same payload as unlock).
+  read_only: z.boolean(),
+  integrity: IntegrityReport,
   summary: z.object({
     name: z.string().min(1),
     type: z.enum(["single", "group"]),

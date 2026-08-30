@@ -20,6 +20,8 @@ describe("i18n — v1 single-UI English (LOCALIZATION-SPEC A2)", () => {
       "wizard.title",
       "wizard.steps.company",
       "shell.nav.dashboard",
+      "shell.auditChainBroken",
+      "shell.readOnlyBadge",
       "dashboard.title",
       "common.loading",
       "common.retry",

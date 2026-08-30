@@ -1,9 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { useSessionStore } from "@/stores/session";
 import { ShellPage } from "./index";
 
 describe("S-004 App Shell — a11y-first chrome", () => {
+  beforeEach(() => {
+    // The zustand store persists across tests — never leak a degraded session into a case.
+    useSessionStore.setState({ readOnly: false });
+  });
+
   it("renders all 9 nav destinations as links", () => {
     render(
       <MemoryRouter initialEntries={["/app/dashboard"]}>
@@ -69,5 +75,40 @@ describe("S-004 App Shell — a11y-first chrome", () => {
     );
     const searchButton = screen.getByRole("button", { name: /Search/ });
     expect(searchButton).toBeInTheDocument();
+  });
+
+  it("no restore banner for a verified session", () => {
+    render(
+      <MemoryRouter initialEntries={["/app/dashboard"]}>
+        <Routes>
+          <Route path="/app" element={<ShellPage />}>
+            <Route path="dashboard" element={<div>dashboard</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the read-only + restore banner when the audit chain failed verification (§2.5)", () => {
+    useSessionStore.setState({ readOnly: true, unlocked: true, companyName: "Meridian" });
+    render(
+      <MemoryRouter initialEntries={["/app/dashboard"]}>
+        <Routes>
+          <Route path="/app" element={<ShellPage />}>
+            <Route path="dashboard" element={<div>dashboard</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const alert = screen.getByRole("alert");
+    // The banner leads with the exact documented AUDIT_CHAIN_BREAK user text and is never
+    // dismissible — tamper evidence is never silenceable (B18-5/6).
+    expect(alert).toHaveTextContent(
+      "Audit integrity check failed. Restore from the last verified Snapshot?",
+    );
+    expect(alert).toHaveTextContent("Read-only");
+    // Content still renders underneath: read-only does not hide the Company's data.
+    expect(screen.getByText("dashboard")).toBeInTheDocument();
   });
 });
