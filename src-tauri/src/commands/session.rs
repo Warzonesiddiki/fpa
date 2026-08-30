@@ -22,7 +22,43 @@ use crate::storage::db;
 const PIN_ROW_ID: &str = "default";
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 const LOCKOUT_MS: u64 = 30_000;
-const MIN_PIN_LEN: usize = 4;
+pub const MIN_PIN_LEN: usize = 8;
+pub const MAX_PIN_LEN: usize = 64;
+
+/// PIN policy (AUTH-SPEC §2.1): ≥8 chars, ≤64, ≥2 classes (lower/upper/digit/symbol),
+/// no sequential run ≥4 (ascending, descending, or repeated). Single owner for the
+/// policy — `session.unlock`, `security.pin_setup` and `security.change_pin` all use it.
+pub fn validate_pin_policy(pin: &str) -> AppResult<()> {
+    if pin.len() < MIN_PIN_LEN || pin.len() > MAX_PIN_LEN {
+        return Err(AppError::pin_policy_weak());
+    }
+    let mut classes = 0;
+    if pin.chars().any(|c| c.is_lowercase()) {
+        classes += 1;
+    }
+    if pin.chars().any(|c| c.is_uppercase()) {
+        classes += 1;
+    }
+    if pin.chars().any(|c| c.is_ascii_digit()) {
+        classes += 1;
+    }
+    if pin.chars().any(|c| !c.is_ascii_alphanumeric()) {
+        classes += 1;
+    }
+    if classes < 2 {
+        return Err(AppError::pin_policy_weak());
+    }
+    let code_points: Vec<u32> = pin.chars().map(|c| c as u32).collect();
+    for w in code_points.windows(4) {
+        let ascending = w[1] == w[0] + 1 && w[2] == w[1] + 1 && w[3] == w[2] + 1;
+        let descending = w[1] + 1 == w[0] && w[2] + 1 == w[1] && w[3] + 1 == w[2];
+        let repeated = w[1] == w[0] && w[2] == w[0] && w[3] == w[0];
+        if ascending || descending || repeated {
+            return Err(AppError::pin_policy_weak());
+        }
+    }
+    Ok(())
+}
 
 #[derive(Default)]
 pub struct SessionState(Mutex<Option<Session>>);
@@ -109,9 +145,7 @@ pub fn session_unlock(
     company_id: String,
     state: State<'_, SessionState>,
 ) -> AppResult<serde_json::Value> {
-    if pin.len() < MIN_PIN_LEN || pin.len() > 64 {
-        return Err(AppError::invalid("PIN_POLICY_WEAK".into()));
-    }
+    validate_pin_policy(&pin)?;
     let dir = app_data_dir(&app)?;
     let conn = db::open_at(&dir).map_err(AppError::from)?;
 
@@ -125,17 +159,9 @@ pub fn session_unlock(
 
     let row = match load_pin_row(&conn)? {
         Some(r) => r,
-        None => {
-            // First-run bootstrap: the Wizard "set PIN" step creates this row (F-004).
-            let hash = hash_pin(&pin)?;
-            conn.execute(
-                "INSERT INTO pin_metadata (id, argon2_params_json, recovery_phrase_hash, failed_attempts, locked_until)
-                 VALUES (?1, ?2, '', 0, NULL)",
-                rusqlite::params![PIN_ROW_ID, hash],
-            )
-            .map_err(AppError::from)?;
-            PinRow { hash, failed_attempts: 0, locked_until: None }
-        }
+        // F-004: no bootstrap — the PIN row is created only by the explicit
+        // `security.pin_setup` command (first-run screen before the wizard).
+        None => return Err(AppError::invalid("PIN_NOT_SET: run security.pin_setup before creating a Company")),
     };
 
     if let Some(until) = row.locked_until {
@@ -192,24 +218,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn argon2_round_trip_and_wrong_pin() {
-        let hash = hash_pin("1234").unwrap();
-        assert!(verify_pin("1234", &hash).unwrap());
-        assert!(!verify_pin("9999", &hash).unwrap());
+    fn pin_policy_accepts_spec_strong_pin() {
+        assert!(validate_pin_policy("Meridian#2026").is_ok());
+        assert!(validate_pin_policy("Meridian2026").is_ok(), "letters+digits = 2 classes");
+        assert!(validate_pin_policy("aB3!zQ9$xK").is_ok());
     }
 
     #[test]
-    fn hashes_are_salted_and_unique() {
-        let a = hash_pin("1234").unwrap();
-        let b = hash_pin("1234").unwrap();
-        assert_ne!(a, b, "Argon2id must salt per hash (AUTH-SPEC §6)");
+    fn pin_policy_rejects_short_pin() {
+        let err = validate_pin_policy("Ab1!").unwrap_err();
+        assert_eq!(err.body().code, "PIN_POLICY_WEAK");
+        assert_eq!(err.body().http_status, 422);
     }
 
     #[test]
-    fn first_run_bootstrap_writes_pin_row() {
+    fn pin_policy_rejects_one_class() {
+        for pin in ["abcdefgh", "ABCDEFGH", "12345678"] {
+            let err = validate_pin_policy(pin).unwrap_err();
+            assert_eq!(err.body().code, "PIN_POLICY_WEAK", "one class: {pin}");
+        }
+    }
+
+    #[test]
+    fn pin_policy_rejects_sequential_runs() {
+        for pin in ["abcd1234", "9876abCD", "a1!aaaa1", "ABcd1234"] {
+            let err = validate_pin_policy(pin).unwrap_err();
+            assert_eq!(err.body().code, "PIN_POLICY_WEAK", "sequential run: {pin}");
+        }
+    }
+
+    #[test]
+    fn pin_policy_rejects_over_64_chars() {
+        let long = format!("Ab1!{}", "x".repeat(61));
+        assert_eq!(validate_pin_policy(&long).unwrap_err().body().code, "PIN_POLICY_WEAK");
+    }
+
+    #[test]
+    fn pin_row_is_written_by_explicit_setup_not_unlock() {
         let conn = db::open_in_memory().unwrap();
-        // simulate wizard PIN setup
-        let hash = hash_pin("1234").unwrap();
+        // No row before registration — session.unlock must fail closed (no bootstrap F-004).
+        assert!(load_pin_row(&conn).unwrap().is_none());
+        // Simulate `security.pin_setup` (explicit first-run command).
+        let hash = hash_pin("Meridian#2026").unwrap();
         conn.execute(
             "INSERT INTO pin_metadata (id, argon2_params_json, recovery_phrase_hash, failed_attempts, locked_until)
              VALUES (?, ?, '', 0, NULL)",
@@ -217,8 +267,22 @@ mod tests {
         )
         .unwrap();
         let row = load_pin_row(&conn).unwrap().unwrap();
-        assert!(verify_pin("1234", &row.hash).unwrap());
+        assert!(verify_pin("Meridian#2026", &row.hash).unwrap());
         assert_eq!(row.failed_attempts, 0);
         assert!(row.locked_until.is_none());
+    }
+
+    #[test]
+    fn argon2_round_trip_and_wrong_pin() {
+        let hash = hash_pin("Meridian#2026").unwrap();
+        assert!(verify_pin("Meridian#2026", &hash).unwrap());
+        assert!(!verify_pin("WrongPin9!", &hash).unwrap());
+    }
+
+    #[test]
+    fn hashes_are_salted_and_unique() {
+        let a = hash_pin("Meridian#2026").unwrap();
+        let b = hash_pin("Meridian#2026").unwrap();
+        assert_ne!(a, b, "Argon2id must salt per hash (AUTH-SPEC §6)");
     }
 }
