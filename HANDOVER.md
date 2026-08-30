@@ -1,8 +1,9 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next M1 task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. Last updated by the session that shipped the
-> **encrypted `.fpa` container (SECURITY-CHECKLIST A02)** on branch `arena/01a053dd-fpa`.
+> state, design decisions, gates, and pitfalls. Last updated by the session that shipped
+> **AUTH-SPEC §2.5 unlock-time audit-chain verification + read-only gate** on branch
+> `arena/01a05468-fpa`.
 
 ---
 
@@ -16,7 +17,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **26 files / 137 tests**.
+   Expect **26 files / 146 tests**.
 
 ---
 
@@ -24,88 +25,78 @@
 
 Merged to `main`: **M0** (`902af9d`), **PR #4** (Rust core: company/coa/calendar/session, 12
 commands, `rust_decimal`, HMAC audit chains, `src/api/schema.ts` + `mock.ts`), **PR #5**
-(`5733c6b`) = F-004 first-run PIN (`security.pin_setup`, `validate_pin_policy`, PIN gate on
-`company.create`, `/welcome` + `/wizard` routes).
+(`5733c6b`) = F-004 first-run PIN, **PR #6** (`d8f6a98`) = A02 encrypted `.fpa` container
+(key hierarchy PIN→KEK→VK→CEK, checkpoint-then-seal single file, `SESSION_LOCKED` on
+`company.create` with an empty vault).
 
-**This session (branch `arena/01a053dd-fpa`, 3 commits) — A02 encrypted `.fpa` container:
+**This session (branch `arena/01a05468-fpa`, 2 commits) — AUTH-SPEC §2.5 on unlock:
 NOT YET MERGED at the time of writing (open PR).** Commits:
 
-| Commit    | Scope                                                                                                                                          |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `edfe833` | `storage/keys.rs` (new), `storage/container.rs` (new), `storage/mod.rs`, `storage/db.rs`, `storage/keystore.rs`, `core/error.rs`, `Cargo.toml` |
-| `e7a35d0` | `commands/session.rs`, `commands/security.rs`, `commands/company.rs`, `lib.rs`                                                                 |
-| `0fc51b1` | `src/api/mock.ts`, `src/api/mock.test.ts` (mock ↔ core status alignment)                                                                       |
+| Commit    | Scope                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------------------------------------- |
+| `2bf24d8` | Rust: `core/error.rs` (+`AuditChainBreak`), `commands/company.rs`, `commands/session.rs`, `commands/calendar.rs` |
+| `376ef7d` | TS: `schema.ts`, `mock.ts`, `stores/session.ts`, `s004-shell` banner, `en.json`, tests (+9 → 146)                |
 
-### What A02 changed (do not re-derive)
+### What §2.5 changed (do not re-derive)
 
-- **Key hierarchy — two tiers, deliberately:**
-  `PIN ──Argon2id(salt)──▶ KEK ──AES-256-GCM──▶ vault key (VK) ──AES-256-GCM──▶ Company key (CEK) ──▶ .fpa payload`
-  The PIN-derived key wraps **one** random vault key; the vault key wraps each Company's file
-  key. `security.change_pin` therefore re-wraps a single key instead of every Company file
-  (AUTH-SPEC §2.4). The KEK is zeroised immediately after each use; the VK lives only in the
-  in-memory `KeyVault` between unlock and lock.
-- **`pin_metadata.argon2_params_json` is now a JSON record**, not a bare PHC string:
-  `{phc, m, t, p, salt, nonce, wrappedVaultKey}` (camelCase, base64url). Both readers
-  (`session.rs::load_pin_row`, `security.rs::security_change_pin`) go through
-  `PinRecord::from_json`. A record whose `m/t/p` were weakened is rejected outright
-  (`params_are_spec`) — A02 "no weak mode".
-- **`.fpa` format v1** (`storage/container.rs`, documented in the module header):
-  `magic "ONEFPA01" | version 1 | cek_nonce 12B | cek_sealed 48B (AAD = 0..21) |
-payload_nonce 12B | payload (AAD = 0..69)`. Every header byte is either inside a GCM tag or
-  used as that tag's AAD.
-- **WAL decision (SECURITY-CHECKLIST §3 "WAL in same encrypted container"): checkpoint-then-seal,
-  single file.** The image is built from a `PRAGMA wal_checkpoint(TRUNCATE)`-ed database, so
-  journal bytes live inside the one sealed file; no `-wal`/`-shm` sidecar is ever stored beside
-  it, and no plaintext database is written next to the container — `session.lock` has nothing to
-  scrub (AUTH-SPEC §2.3). **M1 boundary:** `company.create` seals the image, `company.open`
-  authenticates it; nothing writes Company data into the image yet (that is M2 ingestion).
-- **Command wiring:** `session.unlock` unwraps the VK and proves the container opens with it
-  (`container::read_key`) before caching anything → a Company file sealed under another PIN is
-  `STORAGE_DECRYPT_FAILED` and nothing is cached. `company.create` seals **inside** the Company
-  transaction (row and file can never diverge) and refuses to overwrite (`STORAGE_FILE_EXISTS`).
-  `company.open` decrypts + checks the SQLite magic (`STORAGE_FILE_CORRUPT`). `company.delete`
-  removes the sealed file. `session.lock` clears + zeroises the vault.
-- **`company.create` now needs an unlocked vault** → returns `SESSION_LOCKED` when the vault is
-  empty. This is spec-correct (API-SPEC row 33 requires a session) and works in the real
-  first-run flow because `security.pin_setup` puts the VK in the vault for that process run.
+- **On every `session.unlock`** (after PIN verify + container header proof) and every
+  **`company.open`**, the Company's audit chain is replayed against the keychain-held HMAC
+  key (`company.rs::verify_company_chain` → `core/audit.rs::verify_chain`). Result rides the
+  session as `chain_broken_at: Option<i64>` (seq of the first unverifiable event).
+- **Break semantics = degraded success, not refusal** (`AUDIT_CHAIN_BREAK → read-only +
+restore offer`, ADR-011): unlock still succeeds (data may be intact and must stay
+  readable), the Company opens **read-only**, and the restore offer surfaces in the UI.
+  Payload is **additive** (the API-SPEC table stays at 96 commands / locked shapes):
+  `session.unlock` + `company.open` gain `read_only: bool` and
+  `integrity: { audit_chain_ok: bool, broken_at_seq: int|null }`; `session.status` gains
+  `read_only: bool`. Zod mirrors were extended in the same PR (never let them drift —
+  mock↔Rust envelope drift is a tested failure).
+- **Writes to the compromised Company are gated in Rust** (`session.rs::require_company_write`)
+  returning `AppError::AuditChainBreak` → `AUDIT_CHAIN_BREAK` 409 with the exact
+  ERROR-HANDLING §H text and `details.brokenAtSeq`. Currently wired into `calendar.apply` and
+  `company.delete` (the only session-company mutations that exist in M1); `company.create`
+  intentionally stays open (a fresh Company starts its own fresh chain). Every FUTURE
+  session-company mutation must call `require_company_write` first.
+- **Per-Company chains (latent defect fixed):** audit prev-hashes chained **globally** across
+  companies while `company.delete` excises the deleted Company's events — any interleaved
+  history would have broken the surviving Company's chain forever at the first §2.5
+  verification. `audited_hash` now scopes by `company_id` (F-033 "surviving Companies keep
+  their own chain"); `calendar.apply`, `company.create`, `company.delete` all write
+  per-Company. Docs never stated global; the code comment documented per-Company intent.
+- **UI (S-004):** persistent `role="alert"` banner with the exact documented
+  `AUDIT_CHAIN_BREAK` user text + `Read-only` badge, driven by `sessionStore.readOnly`.
+  Never dismissible (tamper evidence is never silenceable, B18-5/6). Content stays mounted
+  beneath it — read-only ≠ hidden. The actual `backup.restore` action is M6-9; the banner IS
+  the M1 restore offer.
+- **Mock:** dev trigger PIN `AuditBrk9!` answers the degraded read-only session (parallels
+  `WrongPin9!`); `session.lock`/`company.open`/`company.create` reset the mock flag.
+- Rust integrity on unlock otherwise unchanged: app-DB `PRAGMA integrity_check` at open
+  (`db::init`) + container header authentication via `container::read_key` (A02) already cover
+  DATABASE-SCHEMA §11.1 / SECURITY-CHECKLIST §3.
 
-### Three latent defects fixed along the way (the crate had never been compiled)
+### Known gaps (pre-existing; unchanged by §2.5)
 
-1. `db.rs::open_at/open_in_memory` returned `Result<_, String>`; there is no
-   `From<String> for AppError`, so **all 12 `db::open_at(...).map_err(AppError::from)?` call
-   sites failed to compile**. The openers now return `AppResult<Connection>`; the existing call
-   sites compile unchanged via the reflexive `From<T> for T`.
-2. `storage/keystore.rs` used `OsRng` without `use rand::rngs::OsRng;`.
-3. `AppError::DecryptFailed` emitted `STORAGE_DECRYPT_FAILED` as **500** with the wrong text.
-   ERROR-HANDLING.md §B (locked) says **401** and `"The Company file cannot be decrypted with
-this PIN."` — both Rust and the dev mock now match, and `mock.test.ts` asserts all four
-   envelope fields so they cannot drift again.
-
-Added `AppError::FileExists` → `STORAGE_FILE_EXISTS` (409) — a pre-defined code, reused.
-
-### Known gap (pre-existing, now with a second symptom)
-
-Restarting the app **after** `security.pin_setup` but **before** any Company exists lands on
-S-001 with no companies → "first run" → `/welcome` → `security.pin_setup` → `PIN_ALREADY_SET`.
-With A02 this path also cannot reach `company.create` (vault empty after restart →
-`SESSION_LOCKED`). Both symptoms have one root cause: there is no app-scope (pre-Company)
-unlock command. Fixing it needs `session.unlock` to accept an empty `company_id` (its
-API-SPEC arg list is `pin` only) **plus** an S-001 affordance to enter the PIN when the company
-list is empty. Not done here — out of A02's scope.
+- **Restart before first Company:** lands on S-001 with no companies → `/welcome` →
+  `security.pin_setup` → `PIN_ALREADY_SET`; and `company.create` needs the vault
+  (empty after restart → `SESSION_LOCKED`). Root cause: no app-scope (pre-Company) unlock.
+  Fix = `session.unlock` accepting an empty `company_id` + an S-001 affordance to enter the
+  PIN when the list is empty (deliberately deferred from A02).
+- **`security.pin_setup`'s settings-marker** (`settings` row `audit.security.pin_setup`) is an
+  app-scope HMAC marker, not part of any Company chain (documented in `security.rs`). It is
+  NOT covered by §2.5 verification (company chains are). Revisit when S-070 audit screen
+  (M6-8) defines its display.
 
 ---
 
 ## 2. NEXT TASKS (M1, in order; one commit + PR each)
 
-1. **AUTH-SPEC §2.5 on unlock** — `integrity_check` + audit-chain verification
-   (`AUDIT_CHAIN_BREAK` → read-only + restore offer). Small now that unlock is centralised.
-2. **Import foundation (B19)** — `import.parse / validate / tieout / commit / rollback`,
+1. **Import foundation (B19)** — `import.parse / validate / tieout / commit / rollback`,
    GL-Dump-first pipeline. `gl_lines` + `import_batches` exist in `migrations/001_initial.sql`;
    codes exist (`IMPORT_FILE_UNREADABLE` 422 …). New `commands/import.rs`.
-3. **Model grid** — `model.cell.set.v1`, `model.recalc`; `FORMULA_CYCLE` + `REFERENCE_BROKEN`
+2. **Model grid** — `model.cell.set.v1`, `model.recalc`; `FORMULA_CYCLE` + `REFERENCE_BROKEN`
    already in ERROR-HANDLING. HyperFormula is pinned; define the contract in `schema.ts`, then a
    thin Rust echo/validate, then the grid UI (S-041).
-4. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
+3. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
 
@@ -114,9 +105,9 @@ list is empty. Not done here — out of A02's scope.
 ## 3. GATES (all must pass; run in `/home/user/fpa`)
 
 ```bash
-npx vitest run                                     # 26 files / 137 tests
-npx vitest run --coverage                          # ≥85/80/80/85  (now 92.25/85.82/87.78/94.39)
-npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.68/97.19/100/99.27)
+npx vitest run                                     # 26 files / 146 tests
+npx vitest run --coverage                          # ≥85/80/80/85  (now 92.45/86.14/87.83/94.58)
+npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.69/97.29/100/99.27)
 npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
@@ -137,7 +128,7 @@ Brace/balance check after **every** Rust edit (note: strip only string literals 
 stripping `'…'` breaks Rust lifetimes like `State<'_>` and produces false failures):
 
 ```bash
-python3 - <<'EOF'
+python3 - $(find src-tauri/src -name '*.rs') <<'EOF'
 import re,sys
 for path in sys.argv[1:]:
     s=open(path).read()
@@ -146,7 +137,6 @@ for path in sys.argv[1:]:
     print(('OK  ' if (s2.count('{')-s2.count('}'), s2.count('(')-s2.count(')'))==(0,0) else 'FAIL'),
           s2.count('{')-s2.count('}'), s2.count('(')-s2.count(')'), path)
 EOF
-$(find src-tauri/src -name '*.rs')
 ```
 
 ---
@@ -157,7 +147,8 @@ $(find src-tauri/src -name '*.rs')
    `STORAGE_DECRYPT_FAILED` is 500; the locked ERROR-HANDLING.md says 401. The doc wins.
 2. **Assume the Rust core has never been compiled.** When you touch it, re-read every function
    you depend on for a possible pre-existing break (`From` impls, missing imports). Two such
-   defects shipped before A02 and sat in 12 call sites.
+   defects shipped before A02 and sat in 12 call sites; §2.5 found a third class (global
+   audit prev-hash vs excision).
 3. **`node_modules` wipes mid-session.** Reinstall and re-run; don't debug ghosts.
 4. **`npm install` rewrites `package-lock.json`** (`dev` → `devOptional` churn from newer npm).
    `git checkout -- package-lock.json` before committing if you did not intend a lockfile change.
@@ -175,7 +166,15 @@ $(find src-tauri/src -name '*.rs')
    `src-tauri/src/`; `.toFixed(` only in `utils/money.ts`.
 10. **Vitest quirks:** keep error-path and flow-path tests in separate files; the first pack
     auto-selects in S-023 (scope by role+regex); multiple companies → `getAllByRole(...)[0]`;
-    debounced/async flows need `findBy*`/`waitFor`.
+    debounced/async flows need `findBy*`/`waitFor`. **The zustand session store persists across
+    tests in a file — `setState` shallow-merges, so reset new state fields in `beforeEach`.**
+11. **API contracts extend ADDITIVELY only** (docs locked at 96 commands / 97 codes): new
+    response fields are fine (subset tables in API-SPEC are not exhaustive; zod response
+    schemas are mirrors, not runtime gates — the bridge validates ARGS only); new commands,
+    new error codes, or changed documented shapes are docs changes — forbidden (B20).
+12. **Session read-only is per-Company and dies with `mint_session`** — any new session-company
+    mutation must take `State<SessionState>` and call `session::require_company_write` in Rust
+    (AUTH-SPEC §3 rule 2). The mock's `read_only` flag mirrors it for the dev preview only.
 
 ---
 
@@ -209,7 +208,8 @@ npm install
 ```
 
 Known anchors: `085359b` (pre-PR#4) → merge → `902af9d`; F-004 ended at `5733c6b`; A02 commits
-`edfe833` → `e7a35d0` → `0fc51b1` on `arena/01a053dd-fpa`.
+`edfe833` → `e7a35d0` → `0fc51b1` on `arena/01a053dd-fpa`; §2.5 commits `2bf24d8` → `376ef7d`
+on `arena/01a05468-fpa`.
 
 ---
 
