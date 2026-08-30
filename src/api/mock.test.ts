@@ -99,4 +99,39 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(packs.data).toHaveLength(12);
     expect(packs.data.map((p) => p.key)).toContain("real-estate");
   });
+
+  it("a verified unlock reports an intact chain and a writable session (AUTH-SPEC §2.5)", async () => {
+    const out = (await mockInvoke("session.unlock", {
+      pin: "Meridian#2026",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as {
+      data: {
+        read_only: boolean;
+        integrity: { audit_chain_ok: boolean; broken_at_seq: number | null };
+      };
+    };
+    expect(out.data.read_only).toBe(false);
+    expect(out.data.integrity).toEqual({ audit_chain_ok: true, broken_at_seq: null });
+    await mockInvoke("session.lock", {});
+  });
+
+  it("mock chain-break PIN answers the degraded read-only session + restore offer shape", async () => {
+    const out = (await mockInvoke("session.unlock", {
+      pin: "AuditBrk9!",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as {
+      data: {
+        read_only: boolean;
+        integrity: { audit_chain_ok: boolean; broken_at_seq: number | null };
+      };
+    };
+    expect(out.data.read_only).toBe(true);
+    expect(out.data.integrity).toEqual({ audit_chain_ok: false, broken_at_seq: 41 });
+    const status = (await mockInvoke("session.status", {})) as { data: { read_only: boolean } };
+    expect(status.data.read_only).toBe(true);
+    // Locking clears the degraded flag — the next unlock re-derives it from the chain check.
+    await mockInvoke("session.lock", {});
+    const clean = (await mockInvoke("session.status", {})) as { data: { read_only: boolean } };
+    expect(clean.data.read_only).toBe(false);
+  });
 });

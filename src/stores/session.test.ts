@@ -33,6 +33,7 @@ describe("session store — IPC state machine (B12)", () => {
       unlocked: false,
       companyId: null,
       companyName: null,
+      readOnly: false,
       status: "loading",
       error: null,
       checking: false,
@@ -123,6 +124,7 @@ describe("session store — IPC state machine (B12)", () => {
       unlocked: true,
       companyId: COMPANY_ID,
       companyName: "Meridian Holdings",
+      readOnly: true,
       status: "populated",
     });
     await useSessionStore.getState().lock();
@@ -130,7 +132,71 @@ describe("session store — IPC state machine (B12)", () => {
     expect(s.unlocked).toBe(false);
     expect(s.companyId).toBeNull();
     expect(s.companyName).toBeNull();
+    expect(s.readOnly).toBe(false);
     expect(s.status).toBe("empty");
+  });
+
+  it("unlock() with a broken audit chain sets readOnly (AUTH-SPEC §2.5)", async () => {
+    installLiveMocks();
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "session.unlock")
+        return Promise.resolve({
+          company_id: COMPANY_ID,
+          session_token: "dev-mock-session-token-0000000000000",
+          read_only: true,
+          integrity: { audit_chain_ok: false, broken_at_seq: 41 },
+        });
+      if (cmd === "company.list") return Promise.resolve(COMPANIES);
+      return Promise.reject({ code: "INTERNAL", userMessage: "unexpected" });
+    });
+    const ok = await useSessionStore.getState().unlock("AuditBrk9!", COMPANY_ID);
+    expect(ok).toBe(true);
+    const s = useSessionStore.getState();
+    expect(s.unlocked).toBe(true);
+    expect(s.readOnly).toBe(true);
+    // A chain-broken session never blocks the unlock — data stays readable, writes are gated
+    // in the Rust core (read-only + restore offer, ADR-011).
+    expect(s.status).toBe("populated");
+  });
+
+  it("unlock() with an intact chain leaves readOnly false", async () => {
+    installLiveMocks();
+    const ok = await useSessionStore.getState().unlock("Meridian#2026", COMPANY_ID);
+    expect(ok).toBe(true);
+    expect(useSessionStore.getState().readOnly).toBe(false);
+  });
+
+  it("check() mirrors the core's read_only session flag", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "session.status")
+        return Promise.resolve({
+          unlocked: true,
+          company_id: COMPANY_ID,
+          read_only: true,
+          license: null,
+        });
+      return Promise.resolve(COMPANIES);
+    });
+    await useSessionStore.getState().check();
+    const s = useSessionStore.getState();
+    expect(s.unlocked).toBe(true);
+    expect(s.readOnly).toBe(true);
+  });
+
+  it("open() with an integrity report of a broken chain sets readOnly", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "company.open")
+        return Promise.resolve({
+          company_id: COMPANY_ID,
+          read_only: true,
+          integrity: { audit_chain_ok: false, broken_at_seq: 7 },
+          summary: { name: "Meridian Holdings" },
+        });
+      return Promise.resolve(COMPANIES);
+    });
+    const ok = await useSessionStore.getState().open("/tmp/Meridian.fpa");
+    expect(ok).toBe(true);
+    expect(useSessionStore.getState().readOnly).toBe(true);
   });
 
   it("rejects unknown screen states", () => {

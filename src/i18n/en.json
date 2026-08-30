@@ -120,6 +120,8 @@
     "searchA11y": "Global search",
     "search": "Search",
     "companyUnknown": "No Company open",
+    "auditChainBroken": "Audit integrity check failed. Restore from the last verified Snapshot?",
+    "readOnlyBadge": "Read-only",
     "alerts": "Alerts",
     "backup": "Backup",
     "license": "License",

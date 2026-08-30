@@ -9,6 +9,7 @@ import {
   BarChart3,
   FileBarChart2,
   ShieldCheck,
+  ShieldAlert,
   Settings,
   Building2,
   Search,
@@ -32,10 +33,26 @@ const NAV = [
 export function ShellPage() {
   const { t } = useTranslation();
   const companyName = useSessionStore((s) => s.companyName);
+  const readOnly = useSessionStore((s) => s.readOnly);
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
+      {/* AUTH-SPEC §2.5 / ADR-011: audit-chain break → read-only + restore offer.
+          Persistent (never dismissible) until the Company is restored — tamper evidence is
+          never silenceable (B18-5/6). */}
+      {readOnly && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-center gap-2 border-b border-[var(--color-oneerror)] bg-[var(--color-onesurface)] px-4 py-2 text-sm text-[var(--color-onerror)]"
+        >
+          <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <span>{t("shell.auditChainBroken")}</span>
+          <span className="ml-auto rounded border border-current px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+            {t("shell.readOnlyBadge")}
+          </span>
+        </div>
+      )}
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-4">
         <span className="truncate text-sm font-medium text-[var(--color-onetext)]">
           {companyName ?? t("shell.companyUnknown")}
