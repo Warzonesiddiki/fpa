@@ -30,7 +30,7 @@ const SCREEN_INDEX: { id: string; path: string }[] = [
   { id: "coa", path: "/app/model/coa" },
   { id: "calendar", path: "/app/model/calendar" },
   { id: "packs", path: "/app/model/packs" },
-  { id: "wizard", path: "/welcome" },
+  { id: "wizard", path: "/wizard" },
 ];
 
 function readHistory(): HistoryEntry[] {

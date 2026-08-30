@@ -5,7 +5,7 @@ import App from "./App";
 
 /**
  * App-level flow through the real mock bridge (dev preview semantics):
- * S-001 unlock → wrong PIN error → 1234 → S-004 shell + S-010 dashboard.
+ * S-001 unlock → wrong PIN error → policy-valid PIN → S-004 shell + S-010 dashboard.
  * This is the P0 acceptance path without the native shell (CI runs the Tauri e2e too).
  */
 describe("App — Unlock → Shell → Dashboard flow (P0)", () => {
@@ -15,7 +15,7 @@ describe("App — Unlock → Shell → Dashboard flow (P0)", () => {
     expect(await screen.findByText("Meridian Holdings (Demo)")).toBeInTheDocument();
 
     const pin = screen.getByLabelText("PIN");
-    await userEvent.type(pin, "wrong");
+    await userEvent.type(pin, "WrongPin9!");
     await userEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
     // mock AUTH_PIN_INVALID (120ms simulated latency)
@@ -28,7 +28,7 @@ describe("App — Unlock → Shell → Dashboard flow (P0)", () => {
   it("unlocks with the demo PIN and lands on the dashboard", async () => {
     render(<App />);
     await screen.findByText("Meridian Holdings (Demo)");
-    await userEvent.type(screen.getByLabelText("PIN"), "1234");
+    await userEvent.type(screen.getByLabelText("PIN"), "Meridian2026");
     await userEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();

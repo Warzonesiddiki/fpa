@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
 import { ShellPage } from "@/pages/s004-shell";
@@ -14,7 +15,8 @@ import { PacksPage } from "@/pages/s023-packs";
  */
 export const router = createBrowserRouter([
   { path: "/", element: <UnlockPage /> },
-  { path: "/welcome", element: <WizardPage /> },
+  { path: "/welcome", element: <FirstRunPinPage /> },
+  { path: "/wizard", element: <WizardPage /> },
   {
     path: "/app",
     element: <ShellPage />,
