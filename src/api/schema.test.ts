@@ -5,6 +5,7 @@ import {
   CalendarPreviewData,
   CommandArgs,
   CompanyCreateData,
+  CoaListData,
   DecimalString,
   MoneyMinor,
 } from "./schema";
@@ -106,5 +107,78 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       ],
     });
     expect(data.success).toBe(true);
+  });
+
+  it("company.delete requires a reason and returns {deleted: true}", () => {
+    expect(
+      CommandArgs["company.delete"].safeParse({
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+        reason: "superseded",
+      }).success,
+    ).toBe(true);
+    expect(
+      CommandArgs["company.delete"].safeParse({
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+        reason: " ",
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["company.delete"].safeParse({ company_id: "not-a-uuid", reason: "x" }).success,
+    ).toBe(false);
+  });
+
+  it("company.open takes a file path and returns a summary", () => {
+    expect(CommandArgs["company.open"].safeParse({ path: "/tmp/Meridian.fpa" }).success).toBe(true);
+    expect(CommandArgs["company.open"].safeParse({ path: "" }).success).toBe(false);
+  });
+
+  it("calendar.apply accepts one config + empty bu_map; rejects multiple configs", () => {
+    const one = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      config: [
+        {
+          preset: "454",
+          fy_start_month: null,
+          week_start_day: 0,
+          anchor_rule: "sunday_near_feb_1",
+          year_end_rule: "nrf_4_day",
+        },
+      ],
+      bu_map: [],
+    };
+    expect(CommandArgs["calendar.apply"].safeParse(one).success).toBe(true);
+    expect(
+      CommandArgs["calendar.apply"].safeParse({
+        ...one,
+        config: [one.config[0], one.config[0]],
+      }).success,
+    ).toBe(false);
+    expect(CommandArgs["calendar.apply"].safeParse({ ...one, config: [] }).success).toBe(false);
+  });
+
+  it("coa.list accepts company scope and validates AccountNode data", () => {
+    expect(
+      CommandArgs["coa.list"].safeParse({
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      }).success,
+    ).toBe(true);
+    expect(
+      CoaListData.safeParse([
+        {
+          id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000099",
+          code: "4000",
+          name: "Revenue",
+          account_type: "revenue",
+          report_section: "Income Statement",
+          parent_id: null,
+          bu_id: null,
+          is_control: false,
+          active: true,
+          version: 1,
+          usage_count: 0,
+        },
+      ]).success,
+    ).toBe(true);
+    expect(CoaListData.safeParse([{ id: "x" }]).success).toBe(false);
   });
 });
