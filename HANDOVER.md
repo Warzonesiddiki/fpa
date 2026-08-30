@@ -25,6 +25,7 @@ conglomerates. Repo: `Warzonesiddiki/fpa` (GitHub). Personal home-folder repo pa
   locked (B13/B14), local-first with no network in shipped code (B18-9), UX must be production-grade.
 
 ### What is already DONE (merged to main, all verified)
+
 - **Frontend scaffold (green):** Vite 8 + React 19 + TS 5.9 + Tailwind 4 + zod-4 IPC registry +
   i18next + zustand + react-router 7 + decimal.js + HyperFormula/AG-Grid/ECharts pinned in
   `package.json`. Screens: S-001 Unlock, S-002 5-step Wizard, S-004 Shell (8 nav sections),
@@ -57,6 +58,7 @@ conglomerates. Repo: `Warzonesiddiki/fpa` (GitHub). Personal home-folder repo pa
   2. Manually copy `infra/ci.yml` into `.github/workflows/ci.yml` on the default branch.
 
 ### Known pitfalls (do not retry / do not repeat)
+
 - **No Rust toolchain in the sandbox** (rustup/apt/crates.io network-blocked). Never attempt
   `cargo build` locally; write Rust per spec and let CI verify. Every Rust change is therefore
   hand-reviewed — keep files small and review `cargo fmt --check` + `clippy -D warnings` + tests
@@ -80,6 +82,7 @@ conglomerates. Repo: `Warzonesiddiki/fpa` (GitHub). Personal home-folder repo pa
   several userEvent/act flows share a file — keep error-path and flow-path tests in separate files.
 
 ### IMMEDIATE NEXT WORK — Milestone M1 (acceptance in docs/ROADMAP.md)
+
 1. Merge/fix any CI findings on PR #1 (first real `cargo test` + clippy run).
 2. Wire the frontend to the real Rust commands: `company.list/create` already exist; add
    `calendar.preview` UI (Wizard step 3 currently previews via mock), S-023 Pack Studio
@@ -103,6 +106,7 @@ conglomerates. Repo: `Warzonesiddiki/fpa` (GitHub). Personal home-folder repo pa
 ## PROMPT END
 
 ### Verification one-liners (run in `/home/user/fpa`)
+
 ```bash
 npm run typecheck && npm run lint && npm run fmt:check
 npm run test && npm run test:coverage && npm run test:coverage:critical
@@ -113,10 +117,12 @@ npm run fixtures:gen   # regenerates GL dump samples + asserts tie-out
 ```
 
 ### Live preview (browser, mock core)
+
 `npm run dev` → http://localhost:5173 — Unlock with `1234` (or `wrong` to see the error state),
 then Shell + Dashboard; Wizard at `/welcome`.
 
 ### Useful counts (keep exact in any new docs/scans)
+
 - 12 Industry Packs · 56 DB tables · 10 currency seeds · 53 docs · 42 screens (`S-***`) ·
   96 command rows in API-SPEC · 97 error codes · 38 MVP features (F-001…F-038) ·
   20 V2 (V-001…V-020) · 8 FUTURE · 12-item NOT-BUILDING list · B1–B20 · Q1–Q8 · I1–I10.
