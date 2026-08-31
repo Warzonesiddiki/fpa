@@ -1,9 +1,9 @@
 # OneFP&A — Session Handover
 
-> Read this file first, then continue the next M1 task. It is written to be self-contained:
+> Read this file first, then continue the next M3 task. It is written to be self-contained:
 > state, design decisions, gates, and pitfalls. Last updated by the session that shipped
-> **F-012 Model-grid engine contract — `model.cell.set.v1` + `model.recalc`** on branch
-> `arena/01a0552b-fpa`.
+> **M3-2 Formula inspection + cycle/ref detection — `model.inspect` + S-042** on branch
+> `arena/01a0559a-fpa` (PR #10 → `0c0c33d`).
 
 ---
 
@@ -17,7 +17,8 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **26 files / 171 tests**.
+   Expect **32 files / 227 tests**. (Counts drift up as tests are added — the invariant is that
+   every gate above PASSES on a clean tree, not the exact number.)
 
 ---
 
@@ -122,13 +123,61 @@ changed_cells, issues[]}` (API-SPEC §2 list row), not the §3 `recalc` wrapper.
 
 ---
 
-## 2. NEXT TASKS (M1, in order; one commit + PR each)
+### M3-1 HyperFormula worker + S-041 grid (`arena/01a0559a-fpa` commit `08de759`) — 🚧 PARTIAL
 
-1. ~~**Import foundation (B19)** — `import.parse / validate / tieout / commit / rollback`~~
-   **DONE this session** (see §1). Follow-ups are M2 screens (S-030–S-034) + the vault.
-2. ~~**Model grid** — `model.cell.set.v1`, `model.recalc`~~ **DONE this session** (see §1).
-   Follow-up is the grid UI (S-041) + HyperFormula worker (M3-1).
-3. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
+Shipped in the same PR stream as M3-2 (PR #10 squash `0c0c33d`). The TS-side is **complete and
+green** — the **Rust DB persistence is the open blocker**:
+
+- **`src/workers/modelEngine.ts`** — real HyperFormula 3.4.0 graph in a Web Worker
+  (`modelEngine.worker.ts`), `loadGrid`/`setCell`/`recalc`/`getGrid`/`getDerived`. Money crosses
+  the engine boundary only as `new Decimal(input.value).toNumber()` (documented, non-money float —
+  the exact decimal string stays authoritative in `manualAmounts`). YTD/FY derived columns via
+  `=SUM(...)`.
+- **`src/workers/protocol.ts`** — typed EngineRequest/EngineResponse dispatch (`loadGrid`/`setCell`/
+  `recalc`/`getGrid`/`getDerived`/`inspectCell`). **`modelEngineClient.ts`** — single-flight
+  promise client; `WorkerTransport` in browser, in-process transport (same `handleEngineMessage`)
+  in jsdom.
+- **`src/stores/model.ts`** — zustand `useModelGridStore`: 5 states, `load` (coa.list +
+  calendar.preview), `setCell` (model.cell.set.v1 + engine), `inspectCell`, `recalcAll`, `retry`,
+  `reset`. Pinned working scenario/model UUIDs (S-050 scenario picker is a later milestone).
+- **S-041 page** (`src/pages/s041-model-grid/`) — AG Grid code-split (`lazy.tsx`), formula bar,
+  edit via `model.cell.set.v1`, audit badge, axe-clean.
+- **BLOCKER → DONE gate (i):** `model.cell.set.v1` persists only the HMAC **audit event**, not
+  the cell into `model_values`. The Rust `ModelCellStore` is `Mutex<HashMap<...>>` (in-memory);
+  parent `model_lines`/`scenarios` are not seeded. DoD requires real DB persistence. **Needs the
+  Rust toolchain (cargo), which is unavailable in this sandbox** — rustup/static.rust-lang.org are
+  network-blocked (see §3). The Rust change must be hand-review-only until a toolchain exists; it
+  is NOT verifiable here, so M3-1 stays `PARTIAL`/`BLOCKED` (never mark it DONE).
+
+### M3-2 Formula inspection + cycle/ref detection (S-042) — ✅ DONE (PR #10 → `0c0c33d`)
+
+- **`model.inspect`** command: `{line_id, period_id}` → `{formula, computed_text, error_code,
+  precedents[], dependents[], cycle[], is_cycle}`. Schema (`ModelInspectArgs/Data/CellRef` in
+  `src/api/schema.ts`) + dev mock (`src/api/mock.ts` — inspects cells written via `cell.set.v1`,
+  read-only, no mutation).
+- **Engine `inspectCell`** (`modelEngine.ts`): HF `getCellPrecedents`/`getCellDependents` filtered
+  to single-cell refs, `resolveRef` → grid `{line_id, period_id, sheet, col, row}`, deep-trace
+  cycle path (`traceCyclePath`), `FORMULA_CYCLE` / `REFERENCE_BROKEN`. Protocol op + client method.
+- **S-042 page** (`src/pages/s042-formula-inspector/`) — code-split route `/app/model/inspect`,
+  `ModelSectionNav` tab, i18n `inspectorPage.*`, 5 states, precedents/dependents/cycle-path
+  rendering, user-facing error text (never raw `error.message`).
+- **Tests:** engine 18, protocol 6, client 6, store 8, S-042 page 8 (axe 0), schema 32, mock 21 —
+  **227 total**. Coverage 89.7/81.8/85.9/92.1 + critical ≥95/90. All gates green.
+
+---
+
+## 2. NEXT TASKS (one commit + PR each; do in dependency order)
+
+1. **M3-3 Driver tables + federation + bounds (S-043)** — next unblocked unit.
+   `driver.*` commands are documented in API-SPEC but not built. Follow the M3-2 shape: schema +
+   mock → engine (driver values feed formulas via a named driver sheet) → store → S-043 page
+   (5 states) → tests → TASKBOARD in the same commit.
+2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
+   toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
+   is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked
+   units.
+3. ~~**M3-2 Formula inspection**~~ **DONE** (see §1).
+4. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
 
@@ -137,9 +186,9 @@ changed_cells, issues[]}` (API-SPEC §2 list row), not the §3 `recalc` wrapper.
 ## 3. GATES (all must pass; run in `/home/user/fpa`)
 
 ```bash
-npx vitest run                                     # 26 files / 171 tests
-npx vitest run --coverage                          # ≥85/80/80/85  (now 92.87/85.48/87.87/94.83)
-npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.95/97.52/100/99.42)
+npx vitest run                                     # 32 files / 227 tests
+npx vitest run --coverage                          # ≥85/80/80/85  (now 89.74/81.79/85.86/92.07)
+npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.97/97.52/100/99.43)
 npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
