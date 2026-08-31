@@ -825,6 +825,44 @@ export const DriverImportData = z.object({
   batch_id: Uuid,
 });
 
+/** Assumption Register row (F-014 · DATABASE-SCHEMA §6). Values remain exact decimals. */
+export const AssumptionDef = z
+  .object({
+    id: z
+      .string()
+      .regex(/^as-[a-zA-Z0-9_-]+$/)
+      .optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .regex(/^[a-z_][a-z0-9_]*$/),
+    unit: z.string().trim().max(40).nullable(),
+    owner: z.string().trim().min(1).max(120),
+    source: z.string().trim().max(120).nullable(),
+    bounds_low: DecimalString.nullable().optional(),
+    bounds_high: DecimalString.nullable().optional(),
+    effective_from: FiscalPeriodId.nullable().optional(),
+    effective_to: FiscalPeriodId.nullable().optional(),
+    values: z.record(FiscalPeriodId, DecimalString).default({}),
+  })
+  .strict();
+export type AssumptionDef = z.infer<typeof AssumptionDef>;
+export const AssumptionUpsertArgs = z
+  .object({ model_id: Uuid, assumption: AssumptionDef })
+  .strict();
+export const AssumptionUpsertData = z.object({
+  assumption_id: z.string().regex(/^as-/),
+  created: z.boolean(),
+});
+export const AssumptionFindUsagesArgs = z
+  .object({ assumption_id: z.string().regex(/^as-/) })
+  .strict();
+export const AssumptionFindUsagesData = z.object({
+  cells: z.array(z.object({ line_id: z.string(), period_id: z.string(), formula: z.string() })),
+});
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -851,6 +889,8 @@ export const CommandArgs = {
   "driver.upsert": DriverUpsertArgs,
   "driver.set_value": DriverSetValueArgs,
   "driver.import": DriverImportArgs,
+  "assumption.upsert": AssumptionUpsertArgs,
+  "assumption.find_usages": AssumptionFindUsagesArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;
