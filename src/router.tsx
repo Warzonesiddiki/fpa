@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { ModelGridPage } from "@/pages/s041-model-grid/lazy";
 import { FormulaInspectorPage } from "@/pages/s042-formula-inspector/lazy";
 import { DriverTablesPage } from "@/pages/s043-drivers/lazy";
+import { AssumptionsPage } from "@/pages/s044-assumptions";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
             <FormulaInspectorPage />
           </Suspense>
         ),
+      },
+      {
+        path: "model/assumptions",
+        element: <AssumptionsPage />,
       },
       {
         path: "model/drivers",

@@ -247,6 +247,7 @@ let modelAuditSeq = 100;
 
 /** In-memory `drivers` rows keyed by driver_id. */
 const mockDrivers = new Map<string, DriverDef>();
+const mockAssumptions = new Map<string, import("./schema").AssumptionDef>();
 /** `driver_values` rows keyed `${driver_id}:${scenario_id}:${period_id}` → exact decimal string. */
 const mockDriverValues = new Map<string, string>();
 
@@ -872,6 +873,21 @@ export async function mockInvoke<C extends CommandName>(
           value_decimal,
         },
       };
+    }
+    case "assumption.upsert": {
+      const { assumption } = args as {
+        model_id: string;
+        assumption: import("./schema").AssumptionDef;
+      };
+      const id = assumption.id ?? `as-${assumption.name}`;
+      const created = !mockAssumptions.has(id);
+      mockAssumptions.set(id, { ...assumption, id });
+      return { data: { assumption_id: id, created } };
+    }
+    case "assumption.find_usages": {
+      const { assumption_id } = args as { assumption_id: string };
+      const name = mockAssumptions.get(assumption_id)?.name;
+      return { data: { cells: name ? [] : [] } };
     }
     case "driver.import": {
       const { file_path } = args as { file_path: string; mapping_id: string };

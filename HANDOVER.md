@@ -203,7 +203,8 @@ recalc, value_decimal}`; `driver.import` `{file_path, mapping_id}` → `{batch_i
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
 1. ~~**M3-3 Driver tables + federation + bounds (S-043)**~~ **🚧 PARTIAL (TS-side green)** — see §1.
-   The next unblocked unit is **M3-4 Assumption Register (S-044)** (`assumption.*` documented, not
+   M3-4 Assumption Register (S-044) TS contract, dev mock, store, and route are now built; Rust persistence and
+   full editing/usage UI remain open. The next unblocked unit is **M3-4 Assumption Register (S-044)** (`assumption.*` documented, not
    built; reuse the driver store/page shape). When a Rust toolchain appears, resume M3-1's
    `model_values` persistence and then M3-3's `drivers`/`driver_values` persistence.
 2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
