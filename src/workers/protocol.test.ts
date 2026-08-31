@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ModelEngine } from "./modelEngine";
 import { handleEngineMessage, parseEngineError } from "./protocol";
-import type { ModelGridLine, ModelGridPeriod } from "./modelEngine";
+import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
 const LINES: ModelGridLine[] = [
   { id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000010", label: "4000 · Revenue", method: "manual" },
@@ -9,6 +9,19 @@ const LINES: ModelGridLine[] = [
 const PERIODS: ModelGridPeriod[] = [
   { id: "fp-2026-p01", code: "P01" },
   { id: "fp-2026-p02", code: "P02" },
+];
+
+const DRIVERS: DriverDef[] = [
+  {
+    id: "dr-units",
+    name: "units",
+    driver_type: "volume_x_rate",
+    unit: "units",
+    source: "global",
+    is_core: true,
+    bounds_low: "0",
+    bounds_high: "100000",
+  },
 ];
 
 describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
@@ -114,5 +127,53 @@ describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
       // =B2+5 references B2 (col 1, row 2 = LINES[0]:PERIODS[0]) — resolved as single cell.
       expect(r.precedents.length).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it("dispatches loadDrivers → setDriverValue → getDriverGrid → getDriverImpact", () => {
+    const engine = new ModelEngine();
+    engine.loadGrid({ lines: LINES, periods: PERIODS });
+    const load = handleEngineMessage(engine, {
+      id: 10,
+      op: "loadDrivers",
+      args: { drivers: DRIVERS, periods: PERIODS },
+    });
+    expect(load).toEqual({ id: 10, ok: true, data: null });
+
+    const set = handleEngineMessage(engine, {
+      id: 11,
+      op: "setDriverValue",
+      args: { driver_id: "dr-units", period_id: PERIODS[0].id, value_decimal: "12000" },
+    });
+    expect(set.ok).toBe(true);
+    if (set.ok) {
+      expect((set.data as { ok: boolean; recalc: { dirty_cells: number } }).ok).toBe(true);
+    }
+
+    const grid = handleEngineMessage(engine, { id: 12, op: "getDriverGrid" });
+    expect(grid.ok).toBe(true);
+    if (grid.ok) {
+      const rows = grid.data as { driver_id: string; amount_text: string | null }[];
+      expect(rows[0]?.amount_text).toBe("12000");
+    }
+
+    const impact = handleEngineMessage(engine, {
+      id: 13,
+      op: "getDriverImpact",
+      args: { driver_id: "dr-units" },
+    });
+    expect(impact.ok).toBe(true);
+    if (impact.ok) expect(Array.isArray(impact.data)).toBe(true);
+  });
+
+  it("maps a DRIVER_OUT_OF_BOUNDS engine error to the locked code", () => {
+    const engine = new ModelEngine();
+    engine.loadGrid({ lines: LINES, periods: PERIODS });
+    engine.loadDrivers(DRIVERS, PERIODS);
+    const res = handleEngineMessage(engine, {
+      id: 14,
+      op: "setDriverValue",
+      args: { driver_id: "dr-units", period_id: PERIODS[0].id, value_decimal: "200000" },
+    });
+    expect(res).toMatchObject({ id: 14, ok: false, error: { code: "DRIVER_OUT_OF_BOUNDS" } });
   });
 });

@@ -7,11 +7,13 @@
  * The Rust core is the single owner of money/calendar logic (B14) — the mock mirrors
  * shapes, NOT semantics; it is not a spec of behaviour.
  */
+import Decimal from "decimal.js";
 import {
   CANONICAL_MAPPING_ID,
   findUnsupportedFunction,
   type CommandInput,
   type CommandName,
+  type DriverDef,
 } from "./schema";
 
 export function isTauriRuntime(): boolean {
@@ -240,6 +242,22 @@ function mockToMinorUnits(value: string): number {
 
 const modelCells = new Map<string, MockModelCell>();
 let modelAuditSeq = 100;
+
+/* ── Driver Tables (B14 shape mirror only · F-013 · M3-3) ── */
+
+/** In-memory `drivers` rows keyed by driver_id. */
+const mockDrivers = new Map<string, DriverDef>();
+/** `driver_values` rows keyed `${driver_id}:${scenario_id}:${period_id}` → exact decimal string. */
+const mockDriverValues = new Map<string, string>();
+
+/** Exact decimal comparison for bounds (never float — B3). */
+function decimalCmp(a: string, b: string): number {
+  const x = new Decimal(a);
+  const y = new Decimal(b);
+  if (x.lessThan(y)) return -1;
+  if (x.greaterThan(y)) return 1;
+  return 0;
+}
 
 /** Deterministic dev uuid (the Rust core mints real v4 ids). */
 function nextImportId(group: string): string {
@@ -759,6 +777,121 @@ export async function mockInvoke<C extends CommandName>(
           is_cycle: false,
         },
       };
+    }
+    case "driver.upsert": {
+      const { driver } = args as {
+        model_id: string;
+        driver: {
+          id?: string;
+          name: string;
+          driver_type: string;
+          unit?: string | null;
+          source: string;
+          is_core?: boolean;
+          bounds_low?: string | null;
+          bounds_high?: string | null;
+        };
+      };
+      // DRIVER_FEED_MISSING mirror (ERROR-HANDLING §E): a `collection`/`imported` driver with no
+      // feed source cannot be saved. Dev trigger: name contains "nofeed".
+      if (driver.source === "collection" && driver.name.includes("nofeed")) {
+        return mockError(
+          "DRIVER_FEED_MISSING",
+          "driver has no data and no feed source",
+          "Driver has no data and no feed source. Import, collect, or set a static value.",
+          422,
+        );
+      }
+      const id = driver.id ?? `dr-${driver.name.toLowerCase()}`;
+      const created = !mockDrivers.has(id);
+      const def: DriverDef = {
+        id,
+        name: driver.name,
+        driver_type: driver.driver_type as DriverDef["driver_type"],
+        unit: driver.unit ?? null,
+        source: driver.source as DriverDef["source"],
+        is_core: driver.is_core ?? false,
+        bounds_low: driver.bounds_low ?? null,
+        bounds_high: driver.bounds_high ?? null,
+      };
+      mockDrivers.set(id, def);
+      return { data: { driver_id: id, created } };
+    }
+    case "driver.set_value": {
+      const { driver_id, scenario_id, period_id, value_decimal } = args as {
+        driver_id: string;
+        scenario_id: string;
+        period_id: string;
+        value_decimal: string;
+      };
+      const def = mockDrivers.get(driver_id);
+      if (!def) {
+        return mockError(
+          "REFERENCE_BROKEN",
+          "unknown driver",
+          "This driver does not exist. Create it first.",
+          422,
+        );
+      }
+      // Bounds enforcement mirror (DRIVER_OUT_OF_BOUNDS · ERROR-HANDLING §E) — exact decimal, no float.
+      if (def.bounds_low != null && decimalCmp(value_decimal, def.bounds_low) < 0) {
+        return mockError(
+          "DRIVER_OUT_OF_BOUNDS",
+          `value ${value_decimal} below bounds ${def.bounds_low}`,
+          `Driver value ${value_decimal} is outside its bounds [${def.bounds_low}, ${
+            def.bounds_high ?? "∞"
+          }]. Update bounds (audited) or fix the value.`,
+          422,
+          false,
+          { driver_id, value: value_decimal, low: def.bounds_low, high: def.bounds_high },
+        );
+      }
+      if (def.bounds_high != null && decimalCmp(value_decimal, def.bounds_high) > 0) {
+        return mockError(
+          "DRIVER_OUT_OF_BOUNDS",
+          `value ${value_decimal} above bounds ${def.bounds_high}`,
+          `Driver value ${value_decimal} is outside its bounds [${
+            def.bounds_low ?? "0"
+          }, ${def.bounds_high}]. Update bounds (audited) or fix the value.`,
+          422,
+          false,
+          { driver_id, value: value_decimal, low: def.bounds_low, high: def.bounds_high },
+        );
+      }
+      mockDriverValues.set(`${driver_id}:${scenario_id}:${period_id}`, value_decimal);
+      return {
+        data: {
+          ok: true,
+          recalc: {
+            dirty_cells: 1,
+            cycles: [],
+            changed_cells: [driver_id],
+            issues: [],
+            duration_ms: 0,
+          },
+          value_decimal,
+        },
+      };
+    }
+    case "driver.import": {
+      const { file_path } = args as { file_path: string; mapping_id: string };
+      if (file_path.includes("locked")) {
+        return mockError(
+          "IMPORT_FILE_LOCKED",
+          "workbook is password protected",
+          "This file is password-protected. Remove protection and export again.",
+          422,
+        );
+      }
+      if (file_path.includes("unreadable")) {
+        return mockError(
+          "IMPORT_FILE_UNREADABLE",
+          "file could not be read",
+          "This file could not be read. Export it again as .xlsx or .csv without a password.",
+          422,
+        );
+      }
+      return { data: { batch_id: nextImportId("400") } };
     }
     default:
       return {

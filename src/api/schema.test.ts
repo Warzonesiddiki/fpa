@@ -19,6 +19,12 @@ import {
   ModelInspectData,
   ModelRecalcArgs,
   ModelRecalcData,
+  DriverUpsertArgs,
+  DriverSetValueArgs,
+  DriverImportArgs,
+  DriverSetValueData,
+  DriverImportData,
+  CORE_DRIVER_ADVISORY_MAX,
   MoneyMinor,
   RowIssue,
   SecurityPinSetupData,
@@ -694,5 +700,78 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
         precedents: [{ line_id: "x", period_id: "y", sheet: 0, col: 1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it("driver.upsert validates model_id + driver body and rejects an invalid name/type", () => {
+    const valid = {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      driver: {
+        name: "units_sold",
+        driver_type: "volume_x_rate",
+        unit: "units",
+        source: "global",
+        is_core: true,
+        bounds_low: "0",
+        bounds_high: "100000",
+      },
+    };
+    expect(DriverUpsertArgs.safeParse(valid).success).toBe(true);
+    // Optional id (create) and a slug id (update) both parse.
+    expect(
+      DriverUpsertArgs.safeParse({ ...valid, driver: { ...valid.driver, id: "dr-units" } }).success,
+    ).toBe(true);
+    // Name must be lowercase snake_case; type/source must be the locked CHECK enums.
+    expect(
+      DriverUpsertArgs.safeParse({ ...valid, driver: { ...valid.driver, name: "Units Sold" } })
+        .success,
+    ).toBe(false);
+    expect(
+      DriverUpsertArgs.safeParse({ ...valid, driver: { ...valid.driver, driver_type: "float" } })
+        .success,
+    ).toBe(false);
+    // Registered for the IPC dispatcher; strict — unknown keys are rejected.
+    expect(CommandArgs["driver.upsert"]).toBeDefined();
+    expect(
+      DriverUpsertArgs.safeParse({ ...valid, driver: { ...valid.driver, extra: true } }).success,
+    ).toBe(false);
+  });
+
+  it("driver.set_value validates the exact decimal value and rejects an empty/float", () => {
+    const valid = {
+      driver_id: "dr-units",
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      value_decimal: "12000.50",
+    };
+    expect(DriverSetValueArgs.safeParse(valid).success).toBe(true);
+    expect(DriverSetValueArgs.safeParse({ ...valid, value_decimal: "not-a-number" }).success).toBe(
+      false,
+    );
+    expect(DriverSetValueArgs.safeParse({ ...valid, value_decimal: "12.50.20" }).success).toBe(
+      false,
+    );
+    // Note: value_decimal is always an exact decimal string (B3) — never a JS number.
+    expect(
+      DriverSetValueData.safeParse({ ok: true, value_decimal: "12.50", recalc: {} }).success,
+    ).toBe(false);
+    expect(CommandArgs["driver.set_value"]).toBeDefined();
+  });
+
+  it("driver.import validates file_path + mapping_id and returns a batch_id", () => {
+    expect(
+      DriverImportArgs.safeParse({ file_path: "/tmp/drivers.xlsx", mapping_id: "canonical" })
+        .success,
+    ).toBe(true);
+    expect(DriverImportArgs.safeParse({ file_path: "", mapping_id: "canonical" }).success).toBe(
+      false,
+    );
+    expect(CommandArgs["driver.import"]).toBeDefined();
+    expect(
+      DriverImportData.safeParse({ batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001" }).success,
+    ).toBe(true);
+  });
+
+  it("exposes the core-driver advisory constant (≤7)", () => {
+    expect(CORE_DRIVER_ADVISORY_MAX).toBe(7);
   });
 });

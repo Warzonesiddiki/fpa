@@ -110,6 +110,41 @@ export interface EngineRecalcReport {
   duration_ms: number;
 }
 
+/** A Driver Table definition (F-013 · DATABASE-SCHEMA §6 `drivers` row). */
+export interface DriverDef {
+  /** `dr-…` slug (DB `drivers.id`). */
+  id: string;
+  name: string;
+  driver_type:
+    | "volume_x_rate"
+    | "headcount"
+    | "growth"
+    | "seasonal"
+    | "spread"
+    | "ratio"
+    | "manual";
+  unit: string | null;
+  source: "global" | "bu_override" | "collection" | "imported";
+  is_core: boolean;
+  /** Exact decimal string bounds (nullable when unbounded). */
+  bounds_low: string | null;
+  bounds_high: string | null;
+}
+
+/** A rendered Driver Table value (exact decimal string — never a float at this boundary). */
+export interface DriverValueView {
+  driver_id: string;
+  period_id: string;
+  amount_text: string | null;
+}
+
+/** A model-grid cell that references a driver's value (S-043 "driver → lines impact"). */
+export interface DriverImpactRow {
+  line_id: string;
+  period_id: string;
+  formula: string | null;
+}
+
 export interface SetCellResult {
   recalc: EngineRecalcReport;
   cell: GridCellView;
@@ -152,6 +187,23 @@ export class ModelEngine {
   /** Reverse lookup: col index → period_id. */
   private colPeriod = new Map<number, string>();
 
+  /** The dedicated "Drivers" sheet (M3-3 · MODELING-METHODS-SPEC §2) — driver values live in the
+   *  same HyperFormula workbook as the Model grid so formulas can reference `Drivers!B2` etc. */
+  private driversSheetId: number | null = null;
+  /** Loaded driver definitions, indexed by driver_id. */
+  private driverDefs = new Map<string, DriverDef>();
+  /** driver_id → row index in the Drivers sheet (header row 0, drivers from row 1). */
+  private driverRow = new Map<string, number>();
+  /** Reverse lookup: driver sheet row index → driver_id. */
+  private rowDriver = new Map<number, string>();
+  /** Exact decimal strings for driver values keyed `driver_id:period_id` (B3 — never float here). */
+  private driverAmounts = new Map<string, string>();
+  /** Model lines loaded for the impact scan (mirrors `this.lines`). */
+  private modelLines: ModelGridLine[] = [];
+  /** Periods backing the Drivers sheet (mirrors the model grid's periods; separate so the Driver
+   *  table is usable even before `loadGrid` runs). */
+  private driverPeriods: ModelGridPeriod[] = [];
+
   constructor(scale = 2) {
     this.hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
     this.scale = scale;
@@ -168,6 +220,7 @@ export class ModelEngine {
    */
   loadGrid(layout: GridLayout): void {
     this.lines = [...layout.lines];
+    this.modelLines = [...layout.lines];
     this.periods = [...layout.periods];
     this.lineRow.clear();
     this.periodCol.clear();
@@ -318,6 +371,186 @@ export class ModelEngine {
     const ytd = this.hfValueToText(this.hf.getCellValue({ sheet: sheetId, col: ytdCol, row }));
     const fy = this.hfValueToText(this.hf.getCellValue({ sheet: sheetId, col: fyCol, row }));
     return { ytd, fy };
+  }
+
+  /* ── Driver Tables (M3-3 · F-013 · MODELING-METHODS-SPEC §2) ───────────────────────────
+   * Driver values live in a dedicated "Drivers" sheet in the same HyperFormula workbook, so a
+   * Model formula can reference them (`=Drivers!B2 * price`) and recompute when a value changes.
+   * Every value is stored as the exact decimal string; bounds are enforced at `setDriverValue`
+   * (DRIVER_OUT_OF_BOUNDS, never a silent clamp). */
+
+  /**
+   * (Re)build the Drivers sheet: one row per driver (name label at col 0), one column per period.
+   * Removes any prior Drivers sheet first, so repeated loads are idempotent.
+   */
+  loadDrivers(drivers: DriverDef[], periods: ModelGridPeriod[]): void {
+    if (this.driversSheetId !== null) {
+      this.hf.removeSheet(this.driversSheetId);
+    }
+    this.driverDefs.clear();
+    this.driverRow.clear();
+    this.rowDriver.clear();
+    this.driverAmounts.clear();
+    this.driverPeriods = [...periods];
+    if (drivers.length === 0) {
+      this.driversSheetId = null;
+      return;
+    }
+    const sheetName = this.hf.addSheet("Drivers");
+    const sheetId = this.hf.getSheetId(sheetName);
+    if (sheetId === undefined) {
+      throw new Error("INTERNAL: could not resolve the Drivers sheet id");
+    }
+    this.driversSheetId = sheetId;
+    this.hf.setCellContents({ sheet: sheetId, col: 0, row: 0 }, "Driver");
+    periods.forEach((p, ci) => {
+      this.hf.setCellContents({ sheet: sheetId, col: ci + 1, row: 0 }, p.code);
+    });
+    drivers.forEach((d, ri) => {
+      const row = ri + 1;
+      this.driverRow.set(d.id, row);
+      this.rowDriver.set(row, d.id);
+      this.driverDefs.set(d.id, d);
+      this.hf.setCellContents({ sheet: sheetId, col: 0, row }, d.name);
+    });
+  }
+
+  /**
+   * Write a driver value for a period. Enforces the driver's bounds_low/bounds_high →
+   * DRIVER_OUT_OF_BOUNDS (exact decimal comparison, never a float clamp), stores the exact string,
+   * and recomputes the graph so dependent Model formulas update.
+   */
+  setDriverValue(
+    driverId: string,
+    periodId: string,
+    valueText: string,
+  ): { ok: true; recalc: EngineRecalcReport } {
+    const sheetId = this.driversSheetId;
+    const def = this.driverDefs.get(driverId);
+    const row = this.driverRow.get(driverId);
+    if (sheetId === null || def === undefined || row === undefined) {
+      throw new Error("DRIVER_FEED_MISSING: driver is not loaded (define it first)");
+    }
+    const ci = this.driverPeriods.findIndex((p) => p.id === periodId);
+    if (ci === -1) {
+      throw new Error("REFERENCE_BROKEN: unknown period in the driver table");
+    }
+
+    const bounds = this.driverBounds(def);
+    const parsed = new Decimal(valueText);
+    if (bounds.low !== null && parsed.lessThan(bounds.low)) {
+      throw new Error(
+        `DRIVER_OUT_OF_BOUNDS: value ${valueText} is below its lower bound ${bounds.low.toString()}`,
+      );
+    }
+    if (bounds.high !== null && parsed.greaterThan(bounds.high)) {
+      throw new Error(
+        `DRIVER_OUT_OF_BOUNDS: value ${valueText} is above its upper bound ${bounds.high.toString()}`,
+      );
+    }
+
+    const started = performance.now();
+    const col = ci + 1;
+    const cellKey = this.driverKey(driverId, periodId);
+    // HF's numeric cell is float-based (Excel parity); the exact decimal string stays authoritative
+    // in `driverAmounts` and is what `getDriverValue` returns. Non-money driver values (units,
+    // headcount) are surfaced verbatim — never a rounded float at this boundary.
+    this.hf.setCellContents({ sheet: sheetId, col, row }, parsed.toNumber());
+    this.driverAmounts.set(cellKey, valueText);
+    this.hf.rebuildAndRecalculate();
+
+    return { ok: true, recalc: this.driverRecalcReport(driverId, started) };
+  }
+
+  /** Read a driver value back as the exact decimal string (or null when unset). */
+  getDriverValue(driverId: string, periodId: string): string | null {
+    return this.driverAmounts.get(this.driverKey(driverId, periodId)) ?? null;
+  }
+
+  /** Snapshot all driver values (driver × period) for the S-043 table. */
+  getDriverGrid(): DriverValueView[] {
+    const out: DriverValueView[] = [];
+    for (const driverId of this.driverRow.keys()) {
+      for (const period of this.driverPeriods) {
+        out.push({
+          driver_id: driverId,
+          period_id: period.id,
+          amount_text: this.getDriverValue(driverId, period.id),
+        });
+      }
+    }
+    return out;
+  }
+
+  /** The loaded driver definitions (works alongside the store's own working set). */
+  getDrivers(): DriverDef[] {
+    return [...this.driverDefs.values()];
+  }
+
+  /**
+   * Which model-grid cells reference a driver's value (S-043 "driver → lines impact"). Scans the
+   * loaded Model grid's single-cell precedents for an address in the Drivers sheet at the driver's
+   * row. Returns [] when the Model grid is not loaded or the driver has no referencing cells.
+   */
+  getDriverImpact(driverId: string): DriverImpactRow[] {
+    if (this.sheetId === null) return [];
+    const driverRow = this.driverRow.get(driverId);
+    const driversSheet = this.hf.getSheetId("Drivers");
+    if (driverRow === undefined || driversSheet === undefined) return [];
+    const rows: DriverImpactRow[] = [];
+    for (const line of this.modelLines) {
+      for (const period of this.driverPeriods) {
+        const row = this.lineRow.get(line.id);
+        const col = this.periodCol.get(period.id);
+        if (row === undefined || col === undefined) continue;
+        const pre = this.hf.getCellPrecedents({ sheet: this.sheetId, col, row });
+        const referencesDriver = pre.some(
+          (a) => "col" in a && a.sheet === driversSheet && a.row === driverRow,
+        );
+        if (referencesDriver) {
+          rows.push({
+            line_id: line.id,
+            period_id: period.id,
+            formula: this.hf.getCellFormula({ sheet: this.sheetId, col, row }) ?? null,
+          });
+        }
+      }
+    }
+    return rows;
+  }
+
+  private driverKey(driverId: string, periodId: string): string {
+    return `${driverId}:${periodId}`;
+  }
+
+  /** Decimal bounds as a `{low, high}` pair (null when unbounded) for comparison. */
+  private driverBounds(def: DriverDef): { low: Decimal | null; high: Decimal | null } {
+    return {
+      low: def.bounds_low === null ? null : new Decimal(def.bounds_low),
+      high: def.bounds_high === null ? null : new Decimal(def.bounds_high),
+    };
+  }
+
+  /** Standard recalc envelope after a driver value change, marking dependent lines dirty. */
+  private driverRecalcReport(driverId: string, started: number): EngineRecalcReport {
+    if (this.sheetId !== null) {
+      const driverRow = this.driverRow.get(driverId);
+      const driversSheet = this.hf.getSheetId("Drivers");
+      if (driverRow !== undefined && driversSheet !== undefined) {
+        for (const line of this.modelLines) {
+          for (const period of this.driverPeriods) {
+            const row = this.lineRow.get(line.id);
+            const col = this.periodCol.get(period.id);
+            if (row === undefined || col === undefined) continue;
+            const pre = this.hf.getCellPrecedents({ sheet: this.sheetId, col, row });
+            if (pre.some((a) => "col" in a && a.sheet === driversSheet && a.row === driverRow)) {
+              this.dirtyLines.add(line.id);
+            }
+          }
+        }
+      }
+    }
+    return this.recalcReport([driverId], started);
   }
 
   /**

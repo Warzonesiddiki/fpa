@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 // the grid + inspector routes are code-split so the shell never pays for them on first paint.
 import { ModelGridPage } from "@/pages/s041-model-grid/lazy";
 import { FormulaInspectorPage } from "@/pages/s042-formula-inspector/lazy";
+import { DriverTablesPage } from "@/pages/s043-drivers/lazy";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -43,6 +44,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
             <FormulaInspectorPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "model/drivers",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <DriverTablesPage />
           </Suspense>
         ),
       },

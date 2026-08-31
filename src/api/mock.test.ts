@@ -429,4 +429,105 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     };
     expect(again.data.computed_text).toBe("42.50");
   });
+
+  it("driver.upsert creates and updates a driver (exact decimal bounds)", async () => {
+    const created = (await mockInvoke("driver.upsert", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      driver: {
+        name: "units_upsert",
+        driver_type: "volume_x_rate",
+        unit: "units",
+        source: "global",
+        is_core: true,
+        bounds_low: "0",
+        bounds_high: "100000",
+      },
+    })) as { data: { driver_id: string; created: boolean } };
+    expect(created.data.driver_id).toBe("dr-units_upsert");
+    expect(created.data.created).toBe(true);
+
+    const updated = (await mockInvoke("driver.upsert", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      driver: {
+        id: "dr-units_upsert",
+        name: "units_upsert",
+        driver_type: "ratio",
+        unit: null,
+        source: "bu_override",
+        is_core: false,
+        bounds_low: "10",
+      },
+    })) as { data: { driver_id: string; created: boolean } };
+    expect(updated.data.driver_id).toBe("dr-units_upsert");
+    expect(updated.data.created).toBe(false);
+  });
+
+  it("driver.upsert refuses a collection driver with no feed source (DRIVER_FEED_MISSING)", async () => {
+    const out = (await mockInvoke("driver.upsert", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      driver: {
+        name: "nofeed",
+        driver_type: "manual",
+        unit: null,
+        source: "collection",
+        is_core: false,
+      },
+    })) as { error: { code: string; userMessage: string } };
+    expect(out.error.code).toBe("DRIVER_FEED_MISSING");
+    expect(out.error.userMessage).toMatch(/no data and no feed source/);
+  });
+
+  it("driver.set_value stores the exact decimal and enforces bounds (DRIVER_OUT_OF_BOUNDS)", async () => {
+    const set = (await mockInvoke("driver.upsert", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      driver: {
+        name: "units_bound",
+        driver_type: "volume_x_rate",
+        unit: "units",
+        source: "global",
+        is_core: false,
+        bounds_low: "0",
+        bounds_high: "100",
+      },
+    })) as { data: { driver_id: string } };
+    const id = set.data.driver_id;
+    // Out of bounds → no `ok` field; the envelope carries a `DRIVER_OUT_OF_BOUNDS` error.
+    const bad = (await mockInvoke("driver.set_value", {
+      driver_id: id,
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      value_decimal: "200000",
+    })) as { error: { code: string } };
+    expect(bad.error.code).toBe("DRIVER_OUT_OF_BOUNDS");
+
+    const good = (await mockInvoke("driver.set_value", {
+      driver_id: id,
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      value_decimal: "50",
+    })) as { data: { ok: boolean; value_decimal: string } };
+    expect(good.data.ok).toBe(true);
+    expect(good.data.value_decimal).toBe("50");
+
+    const unknown = (await mockInvoke("driver.set_value", {
+      driver_id: "dr-nope",
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      value_decimal: "1",
+    })) as { error: { code: string } };
+    expect(unknown.error.code).toBe("REFERENCE_BROKEN");
+  });
+
+  it("driver.import passes the IMPORT_* errors through and returns a batch id", async () => {
+    const locked = (await mockInvoke("driver.import", {
+      file_path: "/tmp/locked.xlsx",
+      mapping_id: "canonical",
+    })) as { error: { code: string } };
+    expect(locked.error.code).toBe("IMPORT_FILE_LOCKED");
+    const ok = (await mockInvoke("driver.import", {
+      file_path: "/tmp/drivers.xlsx",
+      mapping_id: "canonical",
+    })) as { data: { batch_id: string } };
+    expect(ok.data.batch_id).toMatch(/^3f9f2c9e-[0-9a-f-]+$/);
+  });
 });

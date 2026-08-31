@@ -9,9 +9,13 @@
 import { ModelEngine } from "./modelEngine";
 import type {
   CellInspectResult,
+  DriverDef,
+  DriverImpactRow,
+  DriverValueView,
   EngineRecalcReport,
   GridCellView,
   GridLayout,
+  ModelGridPeriod,
   SetCellInput,
   SetCellResult,
 } from "./modelEngine";
@@ -24,6 +28,15 @@ export interface ModelEngineClient {
   getGrid(): Promise<GridCellView[]>;
   getDerived(lineId: string): Promise<{ ytd: string | null; fy: string | null }>;
   inspectCell(lineId: string, periodId: string): Promise<CellInspectResult>;
+  loadDrivers(drivers: DriverDef[], periods: ModelGridPeriod[]): Promise<void>;
+  setDriverValue(
+    driverId: string,
+    periodId: string,
+    valueText: string,
+  ): Promise<{ ok: true; recalc: EngineRecalcReport }>;
+  getDriverGrid(): Promise<DriverValueView[]>;
+  getDrivers(): Promise<DriverDef[]>;
+  getDriverImpact(driverId: string): Promise<DriverImpactRow[]>;
   destroy(): void;
 }
 
@@ -70,6 +83,29 @@ class SingleFlight implements ModelEngineClient {
   }
   inspectCell(lineId: string, periodId: string): Promise<CellInspectResult> {
     return this.enqueue("inspectCell", { line_id: lineId, period_id: periodId });
+  }
+  loadDrivers(drivers: DriverDef[], periods: ModelGridPeriod[]): Promise<void> {
+    return this.enqueue("loadDrivers", { drivers, periods });
+  }
+  setDriverValue(
+    driverId: string,
+    periodId: string,
+    valueText: string,
+  ): Promise<{ ok: true; recalc: EngineRecalcReport }> {
+    return this.enqueue("setDriverValue", {
+      driver_id: driverId,
+      period_id: periodId,
+      value_decimal: valueText,
+    });
+  }
+  getDriverGrid(): Promise<DriverValueView[]> {
+    return this.enqueue("getDriverGrid", undefined);
+  }
+  getDrivers(): Promise<DriverDef[]> {
+    return this.enqueue("getDrivers", undefined);
+  }
+  getDriverImpact(driverId: string): Promise<DriverImpactRow[]> {
+    return this.enqueue("getDriverImpact", { driver_id: driverId });
   }
   destroy(): void {
     this.transport.destroy();

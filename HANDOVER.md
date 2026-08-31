@@ -2,8 +2,8 @@
 
 > Read this file first, then continue the next M3 task. It is written to be self-contained:
 > state, design decisions, gates, and pitfalls. Last updated by the session that shipped
-> **M3-2 Formula inspection + cycle/ref detection — `model.inspect` + S-042** on branch
-> `arena/01a0559a-fpa` (PR #10 → `0c0c33d`).
+> **M3-3 Driver tables + federation + bounds — `driver.*` + S-043 (🚧 PARTIAL, TS-side green)** on
+> the `arena/01a05772-fpa` working branch. M3-2 (S-042) shipped in PR #10 → `0c0c33d`.
 
 ---
 
@@ -17,7 +17,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **32 files / 227 tests**. (Counts drift up as tests are added — the invariant is that
+   Expect **34 files / 262 tests**. (Counts drift up as tests are added — the invariant is that
    every gate above PASSES on a clean tree, not the exact number.)
 
 ---
@@ -152,7 +152,7 @@ green** — the **Rust DB persistence is the open blocker**:
 ### M3-2 Formula inspection + cycle/ref detection (S-042) — ✅ DONE (PR #10 → `0c0c33d`)
 
 - **`model.inspect`** command: `{line_id, period_id}` → `{formula, computed_text, error_code,
-  precedents[], dependents[], cycle[], is_cycle}`. Schema (`ModelInspectArgs/Data/CellRef` in
+precedents[], dependents[], cycle[], is_cycle}`. Schema (`ModelInspectArgs/Data/CellRef` in
   `src/api/schema.ts`) + dev mock (`src/api/mock.ts` — inspects cells written via `cell.set.v1`,
   read-only, no mutation).
 - **Engine `inspectCell`** (`modelEngine.ts`): HF `getCellPrecedents`/`getCellDependents` filtered
@@ -164,14 +164,48 @@ green** — the **Rust DB persistence is the open blocker**:
 - **Tests:** engine 18, protocol 6, client 6, store 8, S-042 page 8 (axe 0), schema 32, mock 21 —
   **227 total**. Coverage 89.7/81.8/85.9/92.1 + critical ≥95/90. All gates green.
 
+### M3-3 Driver tables + federation + bounds (S-043) — 🚧 PARTIAL (TS-side complete & green)
+
+Shipped in one commit on `arena/01a05772-fpa`. The **TS-side is complete and green**; the **Rust
+`driver.*` command handlers + real `drivers`/`driver_values` persistence are the open blocker**
+(no cargo toolchain in the sandbox — the same class as M3-1; never mark it DONE while unverifiable).
+
+- **Schema** (`src/api/schema.ts`): `driver.upsert` `{model_id, driver{...}}` → `{driver_id,
+created}`; `driver.set_value` `{driver_id, scenario_id, period_id, value_decimal}` → `{ok,
+recalc, value_decimal}`; `driver.import` `{file_path, mapping_id}` → `{batch_id}`. Types mirror the
+  `drivers` CHECK enums (`DriverType`/`DriverSource`), exact-decimal bounds, `CORE_DRIVER_ADVISORY_MAX
+= 7`, `DriverDef` (id optional on create). Registered in `CommandArgs`.
+- **Mock** (`src/api/mock.ts`): in-memory `drivers`/`value` maps; `driver.upsert`
+  (`DRIVER_FEED_MISSING` mirror), `driver.set_value` (exact-decimal bounds → `DRIVER_OUT_OF_BOUNDS`),
+  `driver.import` (`IMPORT_*` mirror + batch id).
+- **Engine** (`modelEngine.ts`): a dedicated "Drivers" sheet in the same HyperFormula workbook, so
+  driver values feed Model formulas (`=Drivers!B2 * price`) and recompute on change. `loadDrivers`
+  (idempotent rebuild), `setDriverValue` (bounds enforced → DRIVER_OUT_OF_BOUNDS; exact string stored
+  in `driverAmounts`), `getDriverValue`, `getDriverGrid`, `getDrivers`, `getDriverImpact` (scans the
+  Model grid's precedents for a Drivers-sheet address at the driver's row → S-043 impact list).
+  Protocol ops + client methods added (`loadDrivers`/`setDriverValue`/`getDriverGrid`/`getDrivers`/
+  `getDriverImpact`).
+- **Store** (`src/stores/drivers.ts`): `useDriverStore` — 5 states, `load` (calendar.preview periods +
+  engine Drivers sheet), `upsertDriver`, `setValue`, `importDrivers`, `retry`, `reset`. Reuses the
+  model store's engine client (`getModelEngineClient`) so the share the SAME HyperFormula graph. Working
+  set is session-scoped (no `driver.list` command — the table starts empty, matching the S-043
+  "Create your first Driver" empty state). `getModelEngineClient()` was exported from `stores/model.ts`.
+- **S-043 page** (`src/pages/s043-drivers/`): code-split route `/app/model/drivers`, `ModelSectionNav`
+  tab (`drivers`), i18n `driversPage.*`, 5 states, driver table (name/type/source/unit/period-value
+  cells), core-driver count indicator (≤7), add/edit/import, driver→lines impact list. Never surfaces
+  raw `error.message` (locked userMessage / error panel with retry).
+- **Tests:** engine 26, protocol 8, client 8, store 7, S-043 page 8 (axe 0), schema 36, mock 25 —
+  **262 total** (+35). Coverage 88.6/81.1/84.3/90.9 (≥85/80/80/85) + critical 99.0/97.5/100/99.5
+  (≥95/90/90/95). All gates green (lint/tsc/prettier/docs:verify/packs/money:ast/security/build).
+
 ---
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **M3-3 Driver tables + federation + bounds (S-043)** — next unblocked unit.
-   `driver.*` commands are documented in API-SPEC but not built. Follow the M3-2 shape: schema +
-   mock → engine (driver values feed formulas via a named driver sheet) → store → S-043 page
-   (5 states) → tests → TASKBOARD in the same commit.
+1. ~~**M3-3 Driver tables + federation + bounds (S-043)**~~ **🚧 PARTIAL (TS-side green)** — see §1.
+   The next unblocked unit is **M3-4 Assumption Register (S-044)** (`assumption.*` documented, not
+   built; reuse the driver store/page shape). When a Rust toolchain appears, resume M3-1's
+   `model_values` persistence and then M3-3's `drivers`/`driver_values` persistence.
 2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
    toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
    is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked
@@ -186,9 +220,9 @@ green** — the **Rust DB persistence is the open blocker**:
 ## 3. GATES (all must pass; run in `/home/user/fpa`)
 
 ```bash
-npx vitest run                                     # 32 files / 227 tests
-npx vitest run --coverage                          # ≥85/80/80/85  (now 89.74/81.79/85.86/92.07)
-npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.97/97.52/100/99.43)
+npx vitest run                                     # 34 files / 262 tests
+npx vitest run --coverage                          # ≥85/80/80/85  (now 88.56/81.09/84.30/90.85)
+npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 99.02/97.52/100/99.46)
 npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build

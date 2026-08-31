@@ -10,7 +10,18 @@
  */
 import type { ModelEngine } from "./modelEngine";
 
-export type EngineOp = "loadGrid" | "setCell" | "recalc" | "getGrid" | "getDerived" | "inspectCell";
+export type EngineOp =
+  | "loadGrid"
+  | "setCell"
+  | "recalc"
+  | "getGrid"
+  | "getDerived"
+  | "inspectCell"
+  | "loadDrivers"
+  | "setDriverValue"
+  | "getDriverGrid"
+  | "getDrivers"
+  | "getDriverImpact";
 
 export interface EngineRequest {
   id: number;
@@ -55,6 +66,34 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
       case "inspectCell": {
         const { line_id, period_id } = req.args as { line_id: string; period_id: string };
         return { id: req.id, ok: true, data: engine.inspectCell(line_id, period_id) };
+      }
+      case "loadDrivers": {
+        const { drivers, periods } = req.args as {
+          drivers: Parameters<ModelEngine["loadDrivers"]>[0];
+          periods: Parameters<ModelEngine["loadDrivers"]>[1];
+        };
+        engine.loadDrivers(drivers, periods);
+        return { id: req.id, ok: true, data: null };
+      }
+      case "setDriverValue": {
+        const { driver_id, period_id, value_decimal } = req.args as {
+          driver_id: string;
+          period_id: string;
+          value_decimal: string;
+        };
+        return {
+          id: req.id,
+          ok: true,
+          data: engine.setDriverValue(driver_id, period_id, value_decimal),
+        };
+      }
+      case "getDriverGrid":
+        return { id: req.id, ok: true, data: engine.getDriverGrid() };
+      case "getDrivers":
+        return { id: req.id, ok: true, data: engine.getDrivers() };
+      case "getDriverImpact": {
+        const { driver_id } = req.args as { driver_id: string };
+        return { id: req.id, ok: true, data: engine.getDriverImpact(driver_id) };
       }
       default:
         return {
