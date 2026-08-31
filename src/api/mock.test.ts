@@ -393,4 +393,40 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(recalc.data.dirty_cells).toBe(1);
     expect(recalc.data.changed_cells).toEqual(["line-a"]);
   });
+
+  it("model.inspect reflects a cell written through model.cell.set.v1 (read-only, no mutation)", async () => {
+    // Distinct line so the cross-scenario lookup doesn't collide with the earlier test's cell.
+    const line = "3f9f2c9e-9f8b-4e2d-9a1c-400000000021";
+    const period = "fp-2027-p08";
+    await mockInvoke("model.cell.set.v1", {
+      line_id: line,
+      scenario_id: "sc-inspect",
+      period_id: period,
+      value: "42.50",
+      manual_override: false,
+    });
+    const out = (await mockInvoke("model.inspect", { line_id: line, period_id: period })) as {
+      data: {
+        line_id: string;
+        period_id: string;
+        formula: string | null;
+        computed_text: string | null;
+        error_code: string | null;
+        precedents: unknown[];
+        dependents: unknown[];
+        cycle: unknown[] | null;
+        is_cycle: boolean;
+      };
+    };
+    expect(out.data.line_id).toBe(line);
+    expect(out.data.period_id).toBe(period);
+    expect(out.data.computed_text).toBe("42.50");
+    expect(out.data.formula).toBeNull();
+    expect(out.data.error_code).toBeNull();
+    // Read-only inspection never mutates the cell store.
+    const again = (await mockInvoke("model.inspect", { line_id: line, period_id: period })) as {
+      data: { computed_text: string | null };
+    };
+    expect(again.data.computed_text).toBe("42.50");
+  });
 });

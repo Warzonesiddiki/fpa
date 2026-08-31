@@ -15,6 +15,8 @@ import {
   FormulaText,
   ModelCellSetArgs,
   ModelCellSetData,
+  ModelInspectArgs,
+  ModelInspectData,
   ModelRecalcArgs,
   ModelRecalcData,
   MoneyMinor,
@@ -630,5 +632,67 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
     ).toBe(true);
     // duration_ms and dirty_cells are non-negative — never a negative recalc.
     expect(ModelRecalcData.safeParse({ ...recalc, duration_ms: -1 }).success).toBe(false);
+  });
+
+  it("model.inspect args accept a line+period and reject a missing/invalid scope", () => {
+    expect(
+      ModelInspectArgs.safeParse({
+        line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+        period_id: "fp-2027-p08",
+      }).success,
+    ).toBe(true);
+    expect(ModelInspectArgs.safeParse({ period_id: "fp-2027-p08" }).success).toBe(false);
+    expect(
+      ModelInspectArgs.safeParse({ line_id: "not-a-uuid", period_id: "fp-2027-p08" }).success,
+    ).toBe(false);
+    // Strict: unknown keys are rejected.
+    expect(
+      ModelInspectArgs.safeParse({
+        line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+        period_id: "fp-2027-p08",
+        extra: true,
+      }).success,
+    ).toBe(false);
+    // Registered in the command table for the IPC dispatcher.
+    expect(CommandArgs["model.inspect"]).toBeDefined();
+  });
+
+  it("model.inspect data carries precedence/dependency refs and an optional cycle path", () => {
+    const data = {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+      period_id: "fp-2027-p08",
+      formula: "=B2+5",
+      computed_text: "10.00",
+      error_code: null,
+      precedents: [
+        {
+          line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+          period_id: "fp-2027-p08",
+          sheet: 0,
+          col: 1,
+          row: 1,
+        },
+      ],
+      dependents: [{ line_id: null, period_id: null, sheet: 0, col: 2, row: 3 }],
+      cycle: null,
+      is_cycle: false,
+    };
+    expect(ModelInspectData.safeParse(data).success).toBe(true);
+    // A non-empty cycle path is valid for a circular cell.
+    expect(
+      ModelInspectData.safeParse({
+        ...data,
+        error_code: "FORMULA_CYCLE",
+        is_cycle: true,
+        cycle: [{ line_id: null, period_id: null, sheet: 0, col: 1, row: 1 }],
+      }).success,
+    ).toBe(true);
+    // Every ref needs sheet/col/row integers (address-space coordinates).
+    expect(
+      ModelInspectData.safeParse({
+        ...data,
+        precedents: [{ line_id: "x", period_id: "y", sheet: 0, col: 1 }],
+      }).success,
+    ).toBe(false);
   });
 });

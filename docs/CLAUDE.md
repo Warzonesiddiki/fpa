@@ -12,7 +12,7 @@ OneFP&A replaces Excel + BI + cloud EPM for the full FP&A cycle: **import (GL Du
 ## 2. EXACT TECH STACK (canonical — TECH-STACK.md)
 
 - Rust 1.85 (edition 2024) core; Tauri 2.11; tauri-specta (typed IPC); rusqlite 0.32 (WAL) + rusqlite_migration; rust_decimal 1.36; calamine 0.26; rust_xlsxwriter 0.79; typst 0.12; reqwest 0.12; oauth2/1; keyring 3.6; aes-gcm/argon2/ed25519-dalek/hmac/sha2; tokio 1.40.
-- TypeScript 5.9 strict; React 19.2.8; Vite 8; Tailwind 4.3; AG Grid 35.3; ECharts 5.6; HyperFormula 3.0.4 (web worker); Zod 4.4; Zustand 5.0.13.
+- TypeScript 5.9 strict; React 19.2.8; Vite 8; Tailwind 4.3; AG Grid 36.1; ECharts 5.6; HyperFormula 3.4.0 (web worker); Zod 4.4; Zustand 5.0.13.
 - Tests: Vitest 4.1 + Testing Library + vitest-axe; Playwright 1.60 (+ tauri-driver); cargo test + proptest.
 
 ## 3. FILE STRUCTURE (exact tree: ARCHITECTURE.md §2)

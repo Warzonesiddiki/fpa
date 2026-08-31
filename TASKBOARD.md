@@ -88,18 +88,18 @@ the product path (B18-3).
 
 ## 5. M3 — MODELING (F-012…F-020)
 
-| ID    | Feature                                           | Status     | Notes / next action                                                                                                             |
-| ----- | ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| M3-1  | Multi-sheet + HyperFormula worker + cell.set      | 🚧 PARTIAL | **`model.cell.set.v1` + `model.recalc` contract, whitelist, exact money, audit built**; HyperFormula worker + S-041 grid UI not |
-| M3-2  | Formula inspection + cycle/ref detection          | ❗ TODO    | error codes defined; engine not                                                                                                 |
-| M3-3  | Driver tables + federation + bounds               | ❗ TODO    | schema present; `driver.*` not built                                                                                            |
-| M3-4  | Assumption Register + hardcode detection          | ❗ TODO    | schema present; `assumption.*` not built                                                                                        |
-| M3-5  | Methods + spread + bootstrap/copy                 | ❗ TODO    | error codes defined                                                                                                             |
-| M3-6  | Headcount (S-045)                                 | ❗ TODO    | model.schedule path                                                                                                             |
-| M3-7  | Capital/debt/WC/13-week + covenants (S-046)       | ❗ TODO    | `model.schedule.upsert` documented                                                                                              |
-| M3-8  | Production/inventory/backlog + revrec (S-047/048) | ❗ TODO    | `REVREC_COST_ESTIMATE_INVALID` etc. defined                                                                                     |
-| M3-9  | Excel-parity grid UX (keys/fill/undo/redo)        | ❗ TODO    | S-041                                                                                                                           |
-| M3-10 | Analysis functions + named ranges                 | 🚧 PARTIAL | whitelist has CAGR/MOVINGAVG/TREND/SEASONALITY; engine not                                                                      |
+| ID    | Feature                                           | Status     | Notes / next action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----- | ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M3-1  | Multi-sheet + HyperFormula worker + cell.set      | 🚧 PARTIAL | HF worker + S-041 grid built: real HF 3.4.0 engine, protocol, single-flight client, store, 5-state code-split grid — engine 14/14, protocol 5/5, client 5/5, store 7/7, page 7/7 (audit emit + axe 0); lint/tsc/money-ast/build green. **Blocker → DONE**: `model.cell.set.v1` persists only the HMAC audit event, not the cell into `model_values` (in-memory store; parent `model_lines`/`scenarios` not seeded). Needs Rust `model_values` upsert + seed + cargo tests — **no cargo toolchain in sandbox**, so the Rust change is hand-review-only/unverifiable. |
+| M3-2  | Formula inspection + cycle/ref detection          | ✅ DONE    | `model.inspect` built end-to-end: engine `inspectCell` (HF `getCellPrecedents`/`getCellDependents` traced to grid refs, cycle path via deep-trace, `FORMULA_CYCLE`/`REFERENCE_BROKEN`), protocol op, single-flight client, store selector (read-only, no audit), S-042 code-split page wired (route + nav + i18n, 5 states), mock + schema. Tests: engine 18/18, protocol 6/6, client 6/6, store 8/8, S-042 page 8/8 (axe 0), schema + mock; 227 total, coverage 89.7/81.8/85.9/92.1 (≥85/80/80/85) + critical ≥95/90.                                              |
+| M3-3  | Driver tables + federation + bounds               | ❗ TODO    | schema present; `driver.*` not built                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| M3-4  | Assumption Register + hardcode detection          | ❗ TODO    | schema present; `assumption.*` not built                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| M3-5  | Methods + spread + bootstrap/copy                 | ❗ TODO    | error codes defined                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| M3-6  | Headcount (S-045)                                 | ❗ TODO    | model.schedule path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| M3-7  | Capital/debt/WC/13-week + covenants (S-046)       | ❗ TODO    | `model.schedule.upsert` documented                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| M3-8  | Production/inventory/backlog + revrec (S-047/048) | ❗ TODO    | `REVREC_COST_ESTIMATE_INVALID` etc. defined                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| M3-9  | Excel-parity grid UX (keys/fill/undo/redo)        | ❗ TODO    | S-041                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| M3-10 | Analysis functions + named ranges                 | 🚧 PARTIAL | whitelist has CAGR/MOVINGAVG/TREND/SEASONALITY; engine not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## 6. M4 — PLANNING (F-021…F-023)
 
@@ -152,29 +152,29 @@ the product path (B18-3).
 
 ## 10. SCREEN TRACKER (42 screens)
 
-| Screen                | Status     | Screen                  | Status  |
-| --------------------- | ---------- | ----------------------- | ------- |
-| S-001 Unlock          | ✅ DONE    | S-041 Model Grid        | ❗ TODO |
-| S-002 Wizard          | ✅ DONE    | S-042 Formula Inspector | ❗ TODO |
-| S-003 Global Search   | 🚧 PARTIAL | S-043 Drivers           | ❗ TODO |
-| S-004 App Shell       | ✅ DONE    | S-044 Assumptions       | ❗ TODO |
-| S-010 Dashboard       | 🚧 PARTIAL | S-045 Headcount         | ❗ TODO |
-| S-020 Companies       | 🚧 PARTIAL | S-046 Capital/Debt/WC   | ❗ TODO |
-| S-021 COA             | 🚧 PARTIAL | S-047 Production        | ❗ TODO |
-| S-022 Calendar        | ✅ DONE    | S-048 RevRec            | ❗ TODO |
-| S-023 Packs           | 🚧 PARTIAL | S-050 Scenarios         | ❗ TODO |
-| S-030 Import Hub      | 🚧 PARTIAL | S-051 Compare           | ❗ TODO |
-| S-031 Mapping         | 🚧 PARTIAL | S-052 What-If           | ❗ TODO |
-| S-032 Commit          | 🚧 PARTIAL | S-053 Cycle/Collection  | ❗ TODO |
-| S-033 Connectors      | ❗ TODO    | S-054 Variance          | ❗ TODO |
-| S-034 Reconciliation  | ❗ TODO    | S-055 FVA               | ❗ TODO |
-| S-040 Sheets          | ❗ TODO    | S-056 Alerts            | ❗ TODO |
-| S-060 Statements      | ❗ TODO    | S-070 Audit             | ❗ TODO |
-| S-061 Segment         | ❗ TODO    | S-071 Health            | ❗ TODO |
-| S-062 Report Builder  | ❗ TODO    | S-072 Security          | ❗ TODO |
-| S-063 KPI Builder     | ❗ TODO    | S-073 License           | ❗ TODO |
-| S-064 Dashboard/Board | ❗ TODO    | S-074 Backup            | ❗ TODO |
-| S-075 Settings        | 🚧 PARTIAL | S-076 About/Update      | ❗ TODO |
+| Screen                | Status     | Screen                  | Status     |
+| --------------------- | ---------- | ----------------------- | ---------- |
+| S-001 Unlock          | ✅ DONE    | S-041 Model Grid        | 🚧 PARTIAL |
+| S-002 Wizard          | ✅ DONE    | S-042 Formula Inspector | ✅ DONE    |
+| S-003 Global Search   | 🚧 PARTIAL | S-043 Drivers           | ❗ TODO    |
+| S-004 App Shell       | ✅ DONE    | S-044 Assumptions       | ❗ TODO    |
+| S-010 Dashboard       | 🚧 PARTIAL | S-045 Headcount         | ❗ TODO    |
+| S-020 Companies       | 🚧 PARTIAL | S-046 Capital/Debt/WC   | ❗ TODO    |
+| S-021 COA             | 🚧 PARTIAL | S-047 Production        | ❗ TODO    |
+| S-022 Calendar        | ✅ DONE    | S-048 RevRec            | ❗ TODO    |
+| S-023 Packs           | 🚧 PARTIAL | S-050 Scenarios         | ❗ TODO    |
+| S-030 Import Hub      | 🚧 PARTIAL | S-051 Compare           | ❗ TODO    |
+| S-031 Mapping         | 🚧 PARTIAL | S-052 What-If           | ❗ TODO    |
+| S-032 Commit          | 🚧 PARTIAL | S-053 Cycle/Collection  | ❗ TODO    |
+| S-033 Connectors      | ❗ TODO    | S-054 Variance          | ❗ TODO    |
+| S-034 Reconciliation  | ❗ TODO    | S-055 FVA               | ❗ TODO    |
+| S-040 Sheets          | ❗ TODO    | S-056 Alerts            | ❗ TODO    |
+| S-060 Statements      | ❗ TODO    | S-070 Audit             | ❗ TODO    |
+| S-061 Segment         | ❗ TODO    | S-071 Health            | ❗ TODO    |
+| S-062 Report Builder  | ❗ TODO    | S-072 Security          | ❗ TODO    |
+| S-063 KPI Builder     | ❗ TODO    | S-073 License           | ❗ TODO    |
+| S-064 Dashboard/Board | ❗ TODO    | S-074 Backup            | ❗ TODO    |
+| S-075 Settings        | 🚧 PARTIAL | S-076 About/Update      | ❗ TODO    |
 
 ## 11. API COMMAND TRACKER (96 rows / 97 unique)
 
@@ -224,4 +224,5 @@ human decides.
 ---
 
 _Owned by the build. Move rows only when their gate is actually green. Next logical pick:
-**M3-1 HyperFormula worker + S-041 grid** (the model.cell.set.v1 contract is ready to be wired)._
+**M3-2 Formula inspection + cycle/ref detection** (uses the M3-1 worker; independent of the Rust
+toolchain), or unblock M3-1's `model_values` persistence once a Rust toolchain is available._
