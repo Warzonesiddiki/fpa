@@ -5,7 +5,7 @@
 > Auth column: `session` = requires unlocked (PIN-verified) session; `none` = pre-unlock.
 > Every command: validates with serde + Zod, writes Audit Trail (except read-only), returns typed JSON.
 > Errors: standard shape in ERROR-HANDLING.md. `httpStatus` is the mapped code retained for future API layer (V-012) and for debugging consistency.
-> **Command count: 96 commands (ZC revision — gaps closed: pack, cycle, collection, scenario lifecycle, plan-analysis, board pack, schedule, reconcile-authoritative).**
+> **Command count: 97 commands (ZC revision — gaps closed: pack, cycle, collection, scenario lifecycle, plan-analysis, board pack, schedule, reconcile-authoritative; S-044 persisted read side).**
 
 ---
 
@@ -27,11 +27,11 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 
 | Command | Auth | Input (key fields) | Success data | Error codes (subset; full in §7) |
 |---|---|---|---|---|
-| `session.unlock` | none | `pin` | `{company_id, session_token}` | AUTH_PIN_INVALID, AUTH_LOCKED, STORAGE_DECRYPT_FAILED |
+| `session.unlock` | none | `pin` | `{company_id, model_id?, session_token}` | AUTH_PIN_INVALID, AUTH_LOCKED, STORAGE_DECRYPT_FAILED |
 | `session.lock` | session | — | `{locked: true}` | — |
-| `session.status` | none | — | `{unlocked, company_id?, license}` | — |
-| `company.create` | session | `{name, path, pack_key, calendar, plan_only}` | `{company_id}` | STORAGE_FILE_EXISTS, STORAGE_INSUFFICIENT, PACK_SCHEMA_INVALID |
-| `company.open` | session | `{path}` | `{company_id, summary}` | STORAGE_FILE_CORRUPT, LICENSE_EXPIRED, FILE_IN_USE |
+| `session.status` | none | — | `{unlocked, company_id?, model_id?, license}` | — |
+| `company.create` | session | `{name, path, pack_key, calendar, plan_only}` | `{company_id, model_id}` | STORAGE_FILE_EXISTS, STORAGE_INSUFFICIENT, PACK_SCHEMA_INVALID |
+| `company.open` | session | `{path}` | `{company_id, model_id, summary}` | STORAGE_FILE_CORRUPT, LICENSE_EXPIRED, FILE_IN_USE |
 | `company.list` | session | — | `CompanyMeta[]` | — |
 | `company.clone_sandbox` | session | `{company_id, name}` | `{company_id}` | ARCHIVE_IN_USE_REF |
 | `company.archive_year` | session | `{company_id, fy_label}` | `{affected_periods}` | ARCHIVE_IN_USE |
@@ -57,6 +57,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `driver.set_value` | session | `{driver_id, scenario_id, period_id, value_decimal}` | `{ok, recalc}` | DRIVER_OUT_OF_BOUNDS |
 | `driver.import` | session | `{file_path, mapping_id}` | `{batch_id}` | IMPORT_* |
 | `assumption.upsert` | session | `{model_id, assumption{...}}` | `{assumption_id}` | ASSUMPTION_IN_USE_LOCKED |
+| `assumption.list` | session | `{model_id}` | `AssumptionListRow[]` (`version`, `last_changed_at`) | — |
 | `assumption.find_usages` | session | `{assumption_id}` | `{cells[]}` | — |
 | `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
 | `import.map.save_v1` | session | `{template{...}}` | `{mapping_id, version}` | MAP_TARGET_INVALID |

@@ -3,7 +3,7 @@
 > OneFP&A · Stage 3 audit artifact (doc #38) · **Every `[MVP]` feature must have a checkmark in every column.**
 > Columns: User Story (US-xxx) · Screen(s) (S-xxx) · API Commands (API-SPEC) · DB Tables (DATABASE-SCHEMA) · Test Coverage (TESTING-STRATEGY + QA items).
 > Legend: ✅ complete · ⚠️ partial (flagged in Notes) · ❌ gap (blocking — must fix before Stage 4).
-> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 96 typed commands · 56 DB tables · 97 error codes**.
+> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 97 typed commands · 56 DB tables · 97 error codes**.
 
 ---
 
@@ -24,7 +24,7 @@
 | F-011 Mapping Management | US-012 | S-031 | import.map.save_v1, validate | mapping_templates, mapping_columns | ✅ unit | — |
 | F-012 Formulas & Multi-Sheet | US-013 | S-040–S-042 | model.cell.set.v1, inspect, recalc | model_sheets, model_lines, model_values | ✅ unit+property (cycles) | — |
 | F-013 Driver Modeling | US-014 | S-043 | driver.upsert/set_value/import | drivers, driver_values | ✅ unit+integration | — |
-| F-014 Assumption Register | US-015 | S-044 | assumption.* | assumptions, assumption_values | ✅ unit | — |
+| F-014 Assumption Register | US-015 | S-044 | assumption.* (`list`/`upsert`/`find_usages`) | assumptions, assumption_values, audit_events | ⚠️ unit + Rust integration pending toolchain | hardcode scan/convert/waive remains |
 | F-015 Methods & Spreading | US-016 | S-041 | model.cell.set.v1 (method), spread via engine | model_lines.method | ✅ unit | — |
 | F-016 Headcount Plan | US-017 | S-045 | driver.* + model.cell | drivers(headcount), driver_values | ✅ unit | — |
 | F-017 Capital/Debt/WC/13w | US-018 | S-046 | model.cell + report.get (cash) | model_lines/values, gl_lines | ✅ property (roll-forward) | — |

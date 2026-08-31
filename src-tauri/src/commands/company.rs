@@ -172,6 +172,45 @@ pub(crate) fn write_calendar(
     Ok(())
 }
 
+/// Bootstrap the first planning Model for a new Company. Model ids are generated per Company
+/// (the frontend must never reuse the documented example UUID across files); the default Scenario
+/// gives locked-baseline reference checks a real ownership anchor from the first persisted write.
+fn create_default_model(
+    tx: &rusqlite::Transaction<'_>,
+    company_id: &str,
+    company_name: &str,
+    horizon: &str,
+    pack_id: &str,
+) -> AppResult<String> {
+    let model_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO models (id, company_id, name, horizon, status, current_scenario_id, pack_id)
+         VALUES (?1, ?2, ?3, ?4, 'active', NULL, ?5)",
+        rusqlite::params![
+            model_id,
+            company_id,
+            format!("{} Model", company_name.trim()),
+            horizon,
+            pack_id
+        ],
+    )
+    .map_err(AppError::from)?;
+
+    let scenario_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO scenarios (id, model_id, name, kind, state, parent_scenario_id, baseline)
+         VALUES (?1, ?2, 'Base', 'budget', 'draft', NULL, 1)",
+        rusqlite::params![scenario_id, model_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "UPDATE models SET current_scenario_id = ?1 WHERE id = ?2",
+        rusqlite::params![scenario_id, model_id],
+    )
+    .map_err(AppError::from)?;
+    Ok(model_id)
+}
+
 /// `company.create` — {name, path, pack_key, calendar{...}, plan_only?, horizon?}
 /// Seals a fresh `.fpa` container at `path`: random 256-bit Company key, wrapped by the
 /// PIN-derived vault key (AUTH-SPEC §2.1). Requires an unlocked vault (API-SPEC: session).
@@ -204,12 +243,13 @@ pub fn company_create(
     // Pack must be registered first (bundled seed on first run).
     crate::commands::pack::seed_bundled_packs(&app, &conn)?;
     let pack_key_clean = pack_key.trim().to_lowercase();
-    let pack_exists: bool = conn
-        .query_row("SELECT EXISTS(SELECT 1 FROM packs WHERE key = ?1)", [&pack_key_clean], |r| r.get(0))
+    let pack_id: Option<String> = conn
+        .query_row("SELECT id FROM packs WHERE key = ?1", [&pack_key_clean], |r| r.get(0))
+        .optional()
         .map_err(AppError::from)?;
-    if !pack_exists {
+    let Some(pack_id) = pack_id else {
         return Err(AppError::invalid(format!("PACK_SCHEMA_INVALID: unknown pack_key '{pack_key_clean}'")));
-    }
+    };
 
     let now = Utc::now().to_rfc3339();
     let company_id = Uuid::new_v4().to_string();
@@ -234,12 +274,19 @@ pub fn company_create(
     )
     .map_err(AppError::from)?;
 
+    let horizon = horizon.as_deref().unwrap_or("1y");
     let cal_id = Uuid::new_v4().to_string();
-    write_calendar(&tx, &company_id, &cal_id, &calendar, horizon.as_deref().unwrap_or("1y"))?;
+    write_calendar(&tx, &company_id, &cal_id, &calendar, horizon)?;
+    let model_id = create_default_model(&tx, &company_id, &name, horizon, &pack_id)?;
 
     // Audit event (HMAC chain; key from keychain — never the DB).
     // Chain payload = the stored `after_json` bytes → tamper detection is exact (audit.rs).
-    let after_json = serde_json::json!({ "name": name, "pack": pack_key_clean }).to_string();
+    let after_json = serde_json::json!({
+        "name": name,
+        "pack": pack_key_clean,
+        "model_id": model_id.clone()
+    })
+    .to_string();
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
     let prev = audited_hash(&tx, &company_id)?;
     let hash = next_hash(&key, &prev, after_json.as_bytes());
@@ -262,7 +309,7 @@ pub fn company_create(
     tx.commit().map_err(AppError::from)?;
     keys::zeroize(&mut vault_key);
 
-    Ok(serde_json::json!({ "data": { "company_id": company_id } }))
+    Ok(serde_json::json!({ "data": { "company_id": company_id, "model_id": model_id } }))
 }
 
 /// `company.open` — {path}. Switches the active session Company (S-020 Open) and records the
@@ -276,10 +323,12 @@ pub fn company_open(
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
-    let row: Option<(String, String, String, String, String, String, String)> = conn
+    let row: Option<(String, String, String, String, String, String, String, Option<String>)> = conn
         .query_row(
-            "SELECT id, name, type, default_currency_code, base_locale, pack_schema_version, company_file_path
-             FROM companies WHERE company_file_path = ?1",
+            "SELECT c.id, c.name, c.type, c.default_currency_code, c.base_locale, c.pack_schema_version,
+                    c.company_file_path,
+                    (SELECT m.id FROM models m WHERE m.company_id = c.id ORDER BY m.id LIMIT 1)
+             FROM companies c WHERE c.company_file_path = ?1",
             [&path],
             |r| {
                 Ok((
@@ -290,12 +339,13 @@ pub fn company_open(
                     r.get(4)?,
                     r.get(5)?,
                     r.get(6)?,
+                    r.get(7)?,
                 ))
             },
         )
         .optional()
         .map_err(AppError::from)?;
-    let (company_id, name, ctype, currency, locale, pack_schema_version, stored_path) =
+    let (company_id, name, ctype, currency, locale, pack_schema_version, stored_path, model_id) =
         row.ok_or_else(AppError::file_corrupt)?;
 
     // Authenticate the sealed container with the vault key held since unlock (A02). A Company
@@ -323,6 +373,7 @@ pub fn company_open(
     Ok(serde_json::json!({
         "data": {
             "company_id": company_id,
+            "model_id": model_id,
             "read_only": chain_broken_at.is_some(),
             "integrity": {
                 "audit_chain_ok": chain_broken_at.is_none(),

@@ -24,6 +24,11 @@ import {
   DriverImportArgs,
   DriverSetValueData,
   DriverImportData,
+  AssumptionUpsertArgs,
+  AssumptionListArgs,
+  AssumptionListData,
+  AssumptionFindUsagesArgs,
+  AssumptionFindUsagesData,
   CORE_DRIVER_ADVISORY_MAX,
   MoneyMinor,
   RowIssue,
@@ -171,6 +176,7 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     expect(parsed.success).toBe(true);
     const data = CompanyCreateData.safeParse({
       company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000001",
     });
     expect(data.success).toBe(true);
   });
@@ -769,6 +775,53 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
     expect(
       DriverImportData.safeParse({ batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001" }).success,
     ).toBe(true);
+  });
+
+  it("assumption register commands preserve exact decimal strings and strict model scope", () => {
+    const valid = {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      assumption: {
+        name: "wage_inflation",
+        unit: "%",
+        owner: "HR",
+        source: "HR plan",
+        bounds_low: "0",
+        bounds_high: "10.00",
+        effective_from: "fp-2026-p01",
+        effective_to: null,
+        values: { "fp-2026-p01": "4.0" },
+      },
+    };
+    expect(AssumptionUpsertArgs.safeParse(valid).success).toBe(true);
+    expect(
+      AssumptionUpsertArgs.safeParse({
+        ...valid,
+        assumption: { ...valid.assumption, values: { "fp-2026-p01": 4 } },
+      }).success,
+    ).toBe(false);
+    expect(
+      AssumptionUpsertArgs.safeParse({
+        ...valid,
+        assumption: { ...valid.assumption, name: "Wage Inflation" },
+      }).success,
+    ).toBe(false);
+    expect(AssumptionListArgs.safeParse({ model_id: valid.model_id }).success).toBe(true);
+    expect(
+      AssumptionListData.safeParse([
+        { ...valid.assumption, id: "as-wage_inflation", version: 1, last_changed_at: null },
+      ]).success,
+    ).toBe(true);
+    expect(AssumptionFindUsagesArgs.safeParse({ assumption_id: "as-wage_inflation" }).success).toBe(
+      true,
+    );
+    expect(
+      AssumptionFindUsagesData.safeParse({
+        cells: [{ line_id: "line-1", period_id: "fp-2026-p01", formula: "=@wage_inflation" }],
+      }).success,
+    ).toBe(true);
+    expect(CommandArgs["assumption.list"]).toBeDefined();
+    expect(CommandArgs["assumption.upsert"]).toBeDefined();
+    expect(CommandArgs["assumption.find_usages"]).toBeDefined();
   });
 
   it("exposes the core-driver advisory constant (≤7)", () => {

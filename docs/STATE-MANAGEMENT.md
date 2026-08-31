@@ -22,6 +22,7 @@
 | Import Batch list + statuses | global | persistent (DB, read cache) | On `import.commit`/`rollback`, connector `sync` completion |
 | Connector health | global | persistent (DB `connectors`) + ephemeral last-pull | On sync run end, auth expiry |
 | Mapping templates (list) | global | persistent (DB, cache) | On template save/version bump |
+| Active Company/Model + assumption register | session + global | active model id from Company lifecycle; persistent (DB `assumptions`, `assumption_values`) + read cache | Company open/unlock selects the model; on `assumption.list`/`upsert`; usage cache invalidates after a name change |
 | Scenario list + states | global | persistent (DB, cache) | On create/duplicate/approve/lock; state changes pushed by Rust event |
 | Scenario Version list | global | persistent (DB) | On lock/export/import |
 | Audit Trail feed (recent) | global | persistent (DB, cache, virtualized) | On any event (server push via Tauri event `audit:event`); pagination for old |
@@ -49,6 +50,7 @@ src/stores/
 ├── modelStore.ts          # model/sheets/lines/current scenario+period (cache of DB)
 ├── gridStore.ts           # visible cell cache + dirty queue + undo stack (virtualized)
 ├── importStore.ts         # pipeline progress + batches + mapping list
+├── assumptionsStore.ts    # versioned register + exact period values + usage cache
 ├── connectorStore.ts      # health, runs, auth status
 ├── scenarioStore.ts       # scenarios, versions, states
 ├── analysisStore.ts       # variance/attribution/FVA/alerts view

@@ -88,6 +88,8 @@ pub enum AppError {
     ReferenceBroken { cell: String },
     #[error("driver value {value} is outside bounds [{low}, {high}]")]
     DriverOutOfBounds { value: String, low: String, high: String },
+    #[error("assumption is used by a locked baseline")]
+    AssumptionInUseLocked { assumption_id: String },
     #[error("hardcoded assumption at {cell}")]
     HardcodedAssumption { cell: String },
 }
@@ -129,6 +131,7 @@ impl AppError {
             AppError::FormulaCycle { .. } => ("FORMULA_CYCLE", 422, false, None),
             AppError::ReferenceBroken { .. } => ("REFERENCE_BROKEN", 422, false, None),
             AppError::DriverOutOfBounds { .. } => ("DRIVER_OUT_OF_BOUNDS", 422, false, None),
+            AppError::AssumptionInUseLocked { .. } => ("ASSUMPTION_IN_USE_LOCKED", 422, false, None),
             AppError::HardcodedAssumption { .. } => ("HARDCODED_ASSUMPTION", 422, false, None),
         };
         let user_message = match self {
@@ -316,6 +319,19 @@ impl AppError {
                     details: serde_json::json!({ "value": value, "low": low, "high": high }),
                 };
             }
+            AppError::AssumptionInUseLocked { assumption_id } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "Assumption is used by a Locked Baseline. Create a new Version to change."
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "assumptionId": assumption_id }),
+                };
+            }
             AppError::HardcodedAssumption { cell } => {
                 return ErrorBody {
                     code: code.to_string(),
@@ -455,6 +471,10 @@ impl AppError {
             low: low.to_string(),
             high: high.to_string(),
         }
+    }
+
+    pub fn assumption_in_use_locked(assumption_id: &str) -> Self {
+        AppError::AssumptionInUseLocked { assumption_id: assumption_id.to_string() }
     }
 
     pub fn hardcoded_assumption(cell: &str) -> Self {
