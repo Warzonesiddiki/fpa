@@ -12,6 +12,7 @@ use commands::company::{company_create, company_delete, company_list, company_op
 use commands::import::{
     import_commit, import_parse, import_rollback, import_tieout, import_validate, ParseRegistry,
 };
+use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
@@ -33,6 +34,9 @@ pub fn run() {
         // In-memory parse store (B19): parsed rows live only between import.parse and
         // import.commit and are never written to disk.
         .manage(ParseRegistry::default())
+        // In-memory Model working set (F-012/M3-1): cell edits are echo/validated here until the
+        // HyperFormula worker owns the cell graph and `model_values` is the persisted source.
+        .manage(ModelRegistry::default())
         .invoke_handler(tauri::generate_handler![
             session_status,
             session_unlock,
@@ -52,6 +56,8 @@ pub fn run() {
             import_tieout,
             import_commit,
             import_rollback,
+            model_cell_set_v1,
+            model_recalc,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

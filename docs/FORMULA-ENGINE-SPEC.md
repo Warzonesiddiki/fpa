@@ -16,6 +16,12 @@
 
 ## 2. SUPPORTED FUNCTION SET (v1.0.0 — whitelist)
 
+> **Count:** **103 supported functions** (30 math/aggregation + 24 logical/lookup + 32 text & date
+> incl. 5 fiscal-aware + 15 financial + 8 Analysis Functions). This is the single whitelist gate;
+> the UI mirror lives in `src/api/schema.ts` (`SUPPORTED_FUNCTIONS`) and the authoritative Rust
+> gate in `src-tauri/src/core/model.rs` — the two must stay identical (B14). Anything else →
+> `FORMULA_UNSUPPORTED_FUNCTION` (never silent).
+
 ### Math & aggregation
 `SUM` `SUMIF` `SUMIFS` `SUMPRODUCT` `AVERAGE` `AVERAGEIF` `AVERAGEIFS` `COUNT` `COUNTA` `COUNTIF` `COUNTIFS` `MIN` `MAX` `MEDIAN` `ROUND` `ROUNDUP` `ROUNDDOWN` `MROUND` `ABS` `SQRT` `POWER` `MOD` `INT` `TRUNC` `CEILING` `FLOOR` `SIGN` `PRODUCT` `RAND` (seeded: `RAND()` with `seed` param — deterministic in v1.0.0) `RANDBETWEEN`
 

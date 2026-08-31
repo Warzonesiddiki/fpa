@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 1 | `GLOSSARY.md` | Locked terminology (12 sections, ~150 terms, 10 invariants, BANNED synonyms) | — |
 | 2 | `PROJECT-BRIEF.md` | Problem/solution/pitch/why-now + success metrics + non-goals | 1 |
-| 3 | `PRD.md` | 38 MVP + 20 V2 + 8 FUT features, tags, NOT BUILDING, dependency map | 1, 2 |
+| 3 | `PRD.md` | 38 MVP + 29 V2 + 6 FUT features, tags, NOT BUILDING, dependency map | 1, 2 |
 | 4 | `USER-PERSONAS.md` | Ravi (manufacturer), Priya (group CFO), Alex (SaaS founder) — goals/device/skill | 3 |
 | 5 | `USER-STORIES.md` | US-001…US-039 Given/When/Then + 78 edge cases, P0–P3 | 3, 4 |
 | 6 | `DESIGN-SYSTEM.md` | Exact hex/fonts/spacing/radii/motion + component styles (light+dark) | 1 |

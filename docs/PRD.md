@@ -1,8 +1,15 @@
 # PRD.md
 
-> Product: OneFP&A · Version 1.0.0 · Terms per GLOSSARY.md · Stage 0 v8 scope.
+> Product: OneFP&A · Version 1.0.0 · Terms per GLOSSARY.md · Stage 0 **v9** scope.
 > **Tag legend:** `[MVP]` = ships complete in v1.0.0 · `[V2]` = v1.1.0, fully specified but deferred by design · `[FUTURE]` = considered, not committed.
 > Every `[MVP]` feature: all 5 Screen States, all error paths, tests, and docs must exist (DEFINITION-OF-DONE.md).
+>
+> **Stage-0 v9 revision (2026-08-31):** the v1.0.0 MVP set is **unchanged** (still opens at
+> F-001…F-038, B20). This revision absorbs the previously scrapped "FinPlan Pro" domain
+> backlog **as documented V2/FUTURE entries** so the roadmap reflects the full all-in-one
+> ambition without breaking the locked build scope. Those items were formerly scattered in
+> FUTURE/"not building"; the ones that belong to FP&A are now V2, the ones that are accounting
+> / system-of-record / execution remain FUTURE.
 
 ---
 
@@ -113,6 +120,15 @@
 | V-018 | Scenario probability weighting + weighted expected value | [V2] (with V-002) |
 | V-019 | Currency hedging / FX exposure views | [V2] |
 | V-020 | Payroll-ready mapping presets | [V2] |
+| V-021 | Lease accounting engine (ASC 842 / IFRS 16) | [V2] — promoted from old FUTURE; planning coverage already in F-017; contract-level lease math + roll-forward is v1.1 |
+| V-022 | Tax provision engine (ASC 740 / deferred tax) | [V2] — promoted from old FUTURE; cash-tax planning only (F-017) stays MVP |
+| V-023 | ESG / sustainability reporting & disclosures | [V2] — promoted from old FUTURE; compliance domain but FP&A-adjacent (non-financial drivers + reporting) |
+| V-024 | Treasury & banking module: cash positioning, short-term investments, yield curve, credit risk / bonds | [V2] — promoted from old FUTURE; 13-week cash (F-017) stays MVP, market/credit analytics are v1.1 |
+| V-025 | Insurance & financial-instruments reporting (fair value, impairment) | [V2] — legacy FinPlan Pro domain; scenarios/reporting reuse the v1.0 engine, valuations are v1.1 |
+| V-026 | Advanced period-close management (close state machine, adjusting entries, close checklist automation) | [V2] — legacy domain; variance-driven close tracking is partial in F-021, full state machine is v1.1 |
+| V-027 | Data governance suite: data catalog, quality rules, lineage, master data management | [V2] — legacy domain; source/vault + audit (F-010/F-033) stay MVP, governance analytics are v1.1 |
+| V-028 | Report scheduling & distribution (scheduled export / digest / CSV-email) | [V2] — legacy domain; in-app Board Pack export (F-031) stays MVP, automation is v1.1 |
+| V-029 | Plugin / extension marketplace (schema-validated, no code — B15) | [V2] — legacy domain; Pack Builder (F-005) is the v1.0 extension mechanism |
 
 ---
 
@@ -124,10 +140,8 @@
 | FUT-002 | Hosted cloud sync / SaaS multi-tenant | [FUTURE] | Contradicts local-first; only if strategy changes (DECISIONS.md) |
 | FUT-003 | Accounting system of record (journals, AR/AP, payroll, reconciliation) | [FUTURE] | Separate product domain; not FP&A |
 | FUT-004 | Bank feeds / cash reconciliation | [FUTURE] | Accounting domain |
-| FUT-005 | Lease accounting engine (ASC 842/IFRS 16) | [FUTURE] | Accounting domain; capex/opex planning is covered by F-017 |
-| FUT-006 | Tax provision engine (ASC 740) | [FUTURE] | Accounting domain; cash-tax planning only in F-017 |
-| FUT-007 | ESG / sustainability reporting | [FUTURE] | Separate compliance domain |
-| FUT-008 | Treasury trading / hedging execution | [FUTURE] | Treasury domain; FX exposure views V-019 only |
+| FUT-005 | Treasury trading / hedging execution (broker integration) | [FUTURE] | Execution domain; planning/analytics is V-024 |
+| FUT-006 | Multi-user collaboration server (non-local-first) | [FUTURE] | Contradicts single-user local-first (B2); V2 has single-user input collection (F-023/V-015) |
 
 ---
 

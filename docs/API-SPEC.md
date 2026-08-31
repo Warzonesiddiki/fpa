@@ -44,7 +44,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `model.create` | session | `{company_id, name, horizon, pack_id}` | `{model_id}` | MODEL_SIZE_LIMIT, PACK_UPDATE_AVAILABLE |
 | `model.list` | session | `{company_id}` | `Model[]` | — |
 | `model.sheet.add` | session | `{model_id, name, type}` | `{sheet_id}` | SHEET_NAME_DUP |
-| `model.cell.set.v1` | session | `{line_id, scenario_id, period_id, value?, formula?, manual_override?}` | `{recalc: {dirty, cycles, changed_cells[]}}` | MODEL_CELL_LOCKED, FORMULA_CYCLE, REFERENCE_BROKEN, DRIVER_OUT_OF_BOUNDS, HARDCODED_ASSUMPTION |
+| `model.cell.set.v1` | session | `{line_id, scenario_id, period_id, value?, formula?, manual_override?}` | `{recalc: {dirty_cells, cycles, changed_cells[], duration_ms}}` | MODEL_CELL_LOCKED, FORMULA_CYCLE, REFERENCE_BROKEN, DRIVER_OUT_OF_BOUNDS, HARDCODED_ASSUMPTION |
 | `model.recalc` | session | `{model_id, scenario_id}` | `{duration_ms, changed_cells, issues[]}` | — |
 | `model.inspect` | session | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
 | `model.diff` | session | `{scenario_a, version_a?, scenario_b, version_b?}` | `{diff_rows[]}` | COMPARE_INCOMPATIBLE |

@@ -2,8 +2,8 @@
 
 > Read this file first, then continue the next M1 task. It is written to be self-contained:
 > state, design decisions, gates, and pitfalls. Last updated by the session that shipped
-> **B19 import foundation — import.parse/validate/tieout/commit/rollback** on branch
-> `arena/01a054e4-fpa`.
+> **F-012 Model-grid engine contract — `model.cell.set.v1` + `model.recalc`** on branch
+> `arena/01a0552b-fpa`.
 
 ---
 
@@ -17,7 +17,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **26 files / 162 tests**.
+   Expect **26 files / 171 tests**.
 
 ---
 
@@ -73,6 +73,41 @@ restore offer`, ADR-011): unlock still succeeds (data may be intact and must sta
   (`db::init`) + container header authentication via `container::read_key` (A02) already cover
   DATABASE-SCHEMA §11.1 / SECURITY-CHECKLIST §3.
 
+### Model grid contract (F-012 · `arena/01a0552b-fpa`) — DONE this session
+
+M1 task #2 is green on the contract/Gates side (Rust echo + TS schema/mock + tests). The
+HyperFormula worker + S-041 grid UI are explicitly follow-ups (M3-1). What shipped:
+
+- **`model.cell.set.v1`** — args `{line_id, scenario_id, period_id, value?, formula?,
+manual_override?}` (API-SPEC §2/§3; **no `model_id`** — the cell is addressed by
+  line+scenario+period). Returns `{recalc, cell, audit_id}`. Rust gate = `require_session_write`
+  (AUTH-SPEC §3 rule 2) → `SESSION_LOCKED` on a locked session / `AUDIT_CHAIN_BREAK` on a broken
+  chain, before any validation. Value-or-formula required (`VALUE_INVALID`, never an empty edit);
+  formula `=`-prefixed, ≤2048 chars, whitelist-checked (`FORMULA_UNSUPPORTED_FUNCTION` with
+  `details.function`). Money = `MoneyValue::from_decimal` → exact `i64` minor units (B3/B18-2);
+  optional Rust-only `currency` defaults `USD` (mirror-only, not in the API args). Cell write is
+  HMAC-audited with `model.cell.set.v1` per-Company (before/after `ModelCellPayload`, reuse
+  `audited_hash`/`next_hash`/`audit_hmac_key`).
+- **`model.recalc`** — args `{model_id, scenario_id}`; **flat** response `{duration_ms,
+changed_cells, issues[]}` (API-SPEC §2 list row), not the §3 `recalc` wrapper. Read-only gate
+  (`require_unlocked`); no audit. Additive `dirty_cells`/`cycles` are included for the grid.
+- **Formula whitelist = 85 functions** mirrored in `src/api/schema.ts` (`SUPPORTED_FUNCTIONS`) +
+  `src-tauri/src/core/model.rs`. `findUnsupportedFunction` regex + Rust `function_calls` scan
+  (case-insensitive, whitespace-tolerant). Tests guard `FPERIOD`/`CAGR` accepted,
+  `LAMBDA`/`sql()` rejected.
+- **`core/model.rs`** `recalc_report(dirty, cycles, changed, duration_ms)` sorts/dedups
+  `changed_cells`, wraps cycles as `[{path:[…]}]`, emits `issues: []`. `ModelCellStore` is
+  `Mutex<HashMap<"scenario:line:period", StoredCell>>` with `get/put/changed_lines/count_for_scenario`.
+- **New `AppError` variants** all 422/non-retryable with exact ERROR-HANDLING §E user text:
+  `FORMULA_UNSUPPORTED_FUNCTION`, `MODEL_CELL_LOCKED`, `FORMULA_CYCLE`, `REFERENCE_BROKEN`,
+  `DRIVER_OUT_OF_BOUNDS`, `HARDCODED_ASSUMPTION`.
+- **Mock:** in-memory `modelCells` Map keyed `scenario:line:period`, `modelAuditSeq` from 100
+  (assert ≥101), locked check `scenario_id.includes("locked")`, `mockToMinorUnits` pads fraction
+  two digits via `parseInt(x,10)` (money-ast clean — no `Number(`).
+- **Contract-read discipline:** the first pass had `model_id` in `cell.set` and nested
+  `{recalc}` on `model.recalc`; both were removed to match the locked API-SPEC rows and are now
+  covered by schema tests (don't re-add them without opening API-SPEC).
+
 ### Known gaps (pre-existing; unchanged by §2.5)
 
 - **Restart before first Company:** lands on S-001 with no companies → `/welcome` →
@@ -91,9 +126,8 @@ restore offer`, ADR-011): unlock still succeeds (data may be intact and must sta
 
 1. ~~**Import foundation (B19)** — `import.parse / validate / tieout / commit / rollback`~~
    **DONE this session** (see §1). Follow-ups are M2 screens (S-030–S-034) + the vault.
-2. **Model grid** — `model.cell.set.v1`, `model.recalc`; `FORMULA_CYCLE` + `REFERENCE_BROKEN`
-   already in ERROR-HANDLING. HyperFormula is pinned; define the contract in `schema.ts`, then a
-   thin Rust echo/validate, then the grid UI (S-041).
+2. ~~**Model grid** — `model.cell.set.v1`, `model.recalc`~~ **DONE this session** (see §1).
+   Follow-up is the grid UI (S-041) + HyperFormula worker (M3-1).
 3. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
@@ -103,9 +137,9 @@ restore offer`, ADR-011): unlock still succeeds (data may be intact and must sta
 ## 3. GATES (all must pass; run in `/home/user/fpa`)
 
 ```bash
-npx vitest run                                     # 26 files / 162 tests
-npx vitest run --coverage                          # ≥85/80/80/85  (now 92.51/85.81/87.61/94.56)
-npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.84/97.29/100/99.36)
+npx vitest run                                     # 26 files / 171 tests
+npx vitest run --coverage                          # ≥85/80/80/85  (now 92.87/85.48/87.87/94.83)
+npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.95/97.52/100/99.42)
 npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
