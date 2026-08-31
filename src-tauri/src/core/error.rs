@@ -76,6 +76,20 @@ pub enum AppError {
     BatchAlreadyRolledBack,
     #[error("period not found: {0}")]
     PeriodNotFound(String),
+    // ── Model grid (FORMULA-ENGINE-SPEC §4 / ERROR-HANDLING §E) ──────────────────────────
+    // Codes are the locked ERROR-HANDLING taxonomy; never invent a new code (B20).
+    #[error("formula uses unsupported function {function}")]
+    FormulaUnsupported { function: String },
+    #[error("scenario is locked")]
+    ModelCellLocked,
+    #[error("formula cycle detected: {path:?}")]
+    FormulaCycle { path: Vec<String> },
+    #[error("reference to {cell} is broken")]
+    ReferenceBroken { cell: String },
+    #[error("driver value {value} is outside bounds [{low}, {high}]")]
+    DriverOutOfBounds { value: String, low: String, high: String },
+    #[error("hardcoded assumption at {cell}")]
+    HardcodedAssumption { cell: String },
 }
 
 impl AppError {
@@ -110,6 +124,12 @@ impl AppError {
             AppError::OpeningAlreadySet(_) => ("OPENING_ALREADY_SET", 409, false, None),
             AppError::BatchAlreadyRolledBack => ("BATCH_ALREADY_ROLLED_BACK", 409, false, None),
             AppError::PeriodNotFound(_) => ("PERIOD_NOT_FOUND", 404, false, None),
+            AppError::FormulaUnsupported { .. } => ("FORMULA_UNSUPPORTED_FUNCTION", 422, false, None),
+            AppError::ModelCellLocked => ("MODEL_CELL_LOCKED", 422, false, None),
+            AppError::FormulaCycle { .. } => ("FORMULA_CYCLE", 422, false, None),
+            AppError::ReferenceBroken { .. } => ("REFERENCE_BROKEN", 422, false, None),
+            AppError::DriverOutOfBounds { .. } => ("DRIVER_OUT_OF_BOUNDS", 422, false, None),
+            AppError::HardcodedAssumption { .. } => ("HARDCODED_ASSUMPTION", 422, false, None),
         };
         let user_message = match self {
             AppError::PinInvalid => "Incorrect PIN. Please try again.",
@@ -229,6 +249,84 @@ impl AppError {
             AppError::BatchAlreadyRolledBack => "This batch was already rolled back.",
             // Exact documented text (ERROR-HANDLING §2, 404 — never an invented message (B12)).
             AppError::PeriodNotFound(_) => "Period not found in this calendar.",
+            AppError::FormulaUnsupported { function } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Function {function} is not in the supported set (see FORMULA-ENGINE-SPEC.md). Replace it or file a V2 request."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "function": function }),
+                };
+            }
+            AppError::ModelCellLocked => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "This scenario is locked. Create a Version to edit it.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({}),
+                };
+            }
+            AppError::FormulaCycle { path } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    // A full cycle path is never rendered as a raw number (FORMULA-ENGINE-SPEC §4) —
+                    // the UI renders `#CYCLE!` and "Fix the reference".
+                    user_message: format!(
+                        "Formula cycle detected: path {} — shown as #CYCLE!. Fix the reference.",
+                        path.join(" → ")
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "path": path }),
+                };
+            }
+            AppError::ReferenceBroken { cell } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Reference to {cell} is broken (sheet renamed/deleted). Repair or remove."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "cell": cell }),
+                };
+            }
+            AppError::DriverOutOfBounds { value, low, high } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Driver value {value} is outside its bounds [{low}, {high}]. Update bounds (audited) or fix the value."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "value": value, "low": low, "high": high }),
+                };
+            }
+            AppError::HardcodedAssumption { cell } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "This cell uses a hardcoded value instead of an Assumption Register reference. Convert (recommended) or waive with a reason.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "cell": cell }),
+                };
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -333,6 +431,34 @@ impl AppError {
 
     pub fn period_not_found(msg: impl Into<String>) -> Self {
         AppError::PeriodNotFound(msg.into())
+    }
+
+    pub fn formula_unsupported(function: &str) -> Self {
+        AppError::FormulaUnsupported { function: function.to_string() }
+    }
+
+    pub fn model_cell_locked() -> Self {
+        AppError::ModelCellLocked
+    }
+
+    pub fn formula_cycle(path: Vec<String>) -> Self {
+        AppError::FormulaCycle { path }
+    }
+
+    pub fn reference_broken(cell: &str) -> Self {
+        AppError::ReferenceBroken { cell: cell.to_string() }
+    }
+
+    pub fn driver_out_of_bounds(value: &str, low: &str, high: &str) -> Self {
+        AppError::DriverOutOfBounds {
+            value: value.to_string(),
+            low: low.to_string(),
+            high: high.to_string(),
+        }
+    }
+
+    pub fn hardcoded_assumption(cell: &str) -> Self {
+        AppError::HardcodedAssumption { cell: cell.to_string() }
     }
 }
 
