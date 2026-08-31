@@ -161,13 +161,30 @@ pub fn require_session_write(state: &SessionState) -> AppResult<String> {
 
 /// `session.status` — pre-unlock safe (no secrets).
 #[tauri::command(name = "session.status")]
-pub fn session_status(state: State<'_, SessionState>) -> AppResult<serde_json::Value> {
+pub fn session_status(app: AppHandle, state: State<'_, SessionState>) -> AppResult<serde_json::Value> {
     let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
     let unlocked = guard.is_some();
+    let company_id = guard.as_ref().map(|s| s.company_id.clone());
+    // Keep the active model discoverable after a frontend reload while preserving the
+    // pre-unlock-safe status contract (no model lookup is attempted without a Company).
+    let model_id = if let Some(company_id) = company_id.as_deref() {
+        let dir = app_data_dir(&app)?;
+        let conn = db::open_at(&dir).map_err(AppError::from)?;
+        conn.query_row(
+            "SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1",
+            [company_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+    } else {
+        None
+    };
     Ok(serde_json::json!({
         "data": {
             "unlocked": unlocked,
-            "company_id": guard.as_ref().map(|s| s.company_id.clone()),
+            "company_id": company_id,
+            "model_id": model_id,
             // AUTH-SPEC §2.5 degraded session: derived at unlock from the chain verdict, never
             // from a UI flag (§3 rule 4 — no capability is granted on UI flags alone).
             "read_only": guard.as_ref().map(|s| s.read_only()).unwrap_or(false),
@@ -234,6 +251,14 @@ pub fn session_unlock(
         .optional()
         .map_err(AppError::from)?
         .ok_or(AppError::DecryptFailed)?;
+    let model_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1",
+            [&company_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
 
     let row = match load_pin_row(&conn)? {
         Some(r) => r,
@@ -280,6 +305,7 @@ pub fn session_unlock(
         return Ok(serde_json::json!({
             "data": {
                 "company_id": company_id,
+                "model_id": model_id,
                 "session_token": token,
                 "read_only": chain_broken_at.is_some(),
                 "integrity": {

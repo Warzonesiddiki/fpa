@@ -53,8 +53,9 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
   it("company.open returns a summary and company.delete honours the retention window", async () => {
     const open = (await mockInvoke("company.open", {
       path: "/Users/demo/Meridian Holdings.fpa",
-    })) as { data: { company_id: string; summary: { name: string } } };
+    })) as { data: { company_id: string; model_id: string; summary: { name: string } } };
     expect(open.data.summary.name).toContain("Meridian");
+    expect(open.data.model_id).toBe("3f9f2c9e-9f8b-4e2d-9a1c-100000000001");
 
     // The demo company was used recently → deletion blocked by retention (COMPANY_IN_USE_RECENT)
     const blocked = (await mockInvoke("company.delete", {
@@ -516,6 +517,73 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       value_decimal: "1",
     })) as { error: { code: string } };
     expect(unknown.error.code).toBe("REFERENCE_BROKEN");
+  });
+
+  it("assumption.upsert/list preserve exact values and scope list results by model", async () => {
+    const model = "3f9f2c9e-9f8b-4e2d-400000000001";
+    const otherModel = "3f9f2c9e-9f8b-4e2d-400000000002";
+    const first = (await mockInvoke("assumption.upsert", {
+      model_id: model,
+      assumption: {
+        name: "wage_inflation",
+        unit: "%",
+        owner: "HR",
+        source: "HR plan",
+        bounds_low: "0",
+        bounds_high: "10",
+        effective_from: "fp-2026-p01",
+        effective_to: null,
+        values: { "fp-2026-p01": "4.0" },
+      },
+    })) as { data: { assumption_id: string; created: boolean } };
+    expect(first.data.created).toBe(true);
+    const list = (await mockInvoke("assumption.list", { model_id: model })) as {
+      data: { name: string; values: Record<string, string> }[];
+    };
+    expect(list.data).toEqual([
+      expect.objectContaining({ name: "wage_inflation", values: { "fp-2026-p01": "4.0" } }),
+    ]);
+    const other = (await mockInvoke("assumption.upsert", {
+      model_id: otherModel,
+      assumption: {
+        name: "wage_inflation",
+        unit: "%",
+        owner: "HR",
+        source: null,
+        bounds_low: null,
+        bounds_high: null,
+        effective_from: null,
+        effective_to: null,
+        values: {},
+      },
+    })) as { data: { assumption_id: string } };
+    const scoped = (await mockInvoke("assumption.list", { model_id: otherModel })) as {
+      data: { id?: string }[];
+    };
+    expect(scoped.data.map((assumption) => assumption.id)).toEqual([other.data.assumption_id]);
+  });
+
+  it("assumption.upsert exposes the locked-baseline error contract", async () => {
+    const out = (await mockInvoke("assumption.upsert", {
+      model_id: "3f9f2c9e-9f8b-4e2d-400000000001",
+      assumption: {
+        id: "as-locked-baseline",
+        name: "locked_rate",
+        unit: "%",
+        owner: "Finance",
+        source: "Board plan",
+        bounds_low: null,
+        bounds_high: null,
+        effective_from: null,
+        effective_to: null,
+        values: {},
+      },
+    })) as { error: { code: string; userMessage: string; httpStatus: number } };
+    expect(out.error.code).toBe("ASSUMPTION_IN_USE_LOCKED");
+    expect(out.error.httpStatus).toBe(422);
+    expect(out.error.userMessage).toBe(
+      "Assumption is used by a Locked Baseline. Create a new Version to change.",
+    );
   });
 
   it("driver.import passes the IMPORT_* errors through and returns a batch id", async () => {

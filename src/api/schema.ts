@@ -127,6 +127,7 @@ export const SessionStatusArgs = z.object({}).strict();
 export const SessionStatusData = z.object({
   unlocked: z.boolean(),
   company_id: Uuid.nullable(),
+  model_id: Uuid.nullable().optional(),
   read_only: z.boolean(),
   license: z
     .object({
@@ -144,6 +145,8 @@ export const SessionUnlockArgs = z
   .strict();
 export const SessionUnlockData = z.object({
   company_id: Uuid,
+  /** Active Model selected by the native Company lifecycle; older files may not have one yet. */
+  model_id: Uuid.nullable().optional(),
   session_token: z.string().min(16),
   read_only: z.boolean(),
   integrity: IntegrityReport,
@@ -194,6 +197,8 @@ export const CompanyDeleteData = z.object({ deleted: z.literal(true) });
 export const CompanyOpenArgs = z.object({ path: z.string().min(1) }).strict();
 export const CompanyOpenData = z.object({
   company_id: Uuid,
+  /** Active Model selected by the native Company lifecycle; older files may not have one yet. */
+  model_id: Uuid.nullable().optional(),
   // Switching the active Company re-runs the §2.5 chain check for it (same payload as unlock).
   read_only: z.boolean(),
   integrity: IntegrityReport,
@@ -223,7 +228,7 @@ export const CompanyCreateArgs = z
     horizon: z.enum(["13w", "1y", "3y", "5y"]).default("1y"),
   })
   .strict();
-export const CompanyCreateData = z.object({ company_id: Uuid });
+export const CompanyCreateData = z.object({ company_id: Uuid, model_id: Uuid.optional() });
 
 /* ── calendar.preview ───────────────────────────────────────────── */
 
@@ -856,6 +861,14 @@ export const AssumptionUpsertData = z.object({
   assumption_id: z.string().regex(/^as-/),
   created: z.boolean(),
 });
+/** `assumption.list` — persisted register rows for the active Model (S-044 read side). */
+export const AssumptionListArgs = z.object({ model_id: Uuid }).strict();
+export const AssumptionListRow = AssumptionDef.extend({
+  version: z.number().int().nonnegative(),
+  last_changed_at: z.string().nullable(),
+});
+export type AssumptionListRow = z.infer<typeof AssumptionListRow>;
+export const AssumptionListData = z.array(AssumptionListRow);
 export const AssumptionFindUsagesArgs = z
   .object({ assumption_id: z.string().regex(/^as-/) })
   .strict();
@@ -890,6 +903,7 @@ export const CommandArgs = {
   "driver.set_value": DriverSetValueArgs,
   "driver.import": DriverImportArgs,
   "assumption.upsert": AssumptionUpsertArgs,
+  "assumption.list": AssumptionListArgs,
   "assumption.find_usages": AssumptionFindUsagesArgs,
 } as const;
 

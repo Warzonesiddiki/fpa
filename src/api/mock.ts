@@ -14,6 +14,8 @@ import {
   type CommandInput,
   type CommandName,
   type DriverDef,
+  type AssumptionDef,
+  type AssumptionListRow,
 } from "./schema";
 
 export function isTauriRuntime(): boolean {
@@ -23,11 +25,17 @@ export function isTauriRuntime(): boolean {
 interface MockSession {
   unlocked: boolean;
   company_id: string | null;
+  model_id: string | null;
   /** AUTH-SPEC §2.5 degraded session flag (mirror of the Rust core's chain verdict). */
   read_only: boolean;
 }
 
-const session: MockSession = { unlocked: false, company_id: null, read_only: false };
+const session: MockSession = {
+  unlocked: false,
+  company_id: null,
+  model_id: null,
+  read_only: false,
+};
 
 /**
  * Dev trigger (mock-only, mirrors `WrongPin9!`): unlocking with the PIN "AuditBrk9!" answers
@@ -73,6 +81,20 @@ const companies: MockCompany[] = [
     license_status: "active",
   },
 ];
+
+/** Browser-preview model registry mirror; native Company creation persists the same relationship. */
+const mockCompanyModels = new Map<string, string>([
+  [DEMO_ID, "3f9f2c9e-9f8b-4e2d-9a1c-100000000001"],
+  [SANDBOX_ID, "3f9f2c9e-9f8b-4e2d-9a1c-100000000002"],
+]);
+
+function modelIdForCompany(companyId: string): string {
+  const existing = mockCompanyModels.get(companyId);
+  if (existing) return existing;
+  // Mock ids only need to be stable and shape-valid; native ids are random UUIDv4 values.
+  mockCompanyModels.set(companyId, companyId);
+  return companyId;
+}
 
 const PACKS = [
   ["saas", "SaaS / Tech"],
@@ -247,7 +269,8 @@ let modelAuditSeq = 100;
 
 /** In-memory `drivers` rows keyed by driver_id. */
 const mockDrivers = new Map<string, DriverDef>();
-const mockAssumptions = new Map<string, import("./schema").AssumptionDef>();
+const mockAssumptions = new Map<string, AssumptionListRow>();
+const mockAssumptionModels = new Map<string, string>();
 /** `driver_values` rows keyed `${driver_id}:${scenario_id}:${period_id}` → exact decimal string. */
 const mockDriverValues = new Map<string, string>();
 
@@ -258,6 +281,12 @@ function decimalCmp(a: string, b: string): number {
   if (x.lessThan(y)) return -1;
   if (x.greaterThan(y)) return 1;
   return 0;
+}
+
+/** Formula reference match for a named assumption (identifier boundaries, with optional @ preview syntax). */
+function formulaReferencesName(formula: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9_])@?${escaped}(?![A-Za-z0-9_])`, "i").test(formula);
 }
 
 /** Deterministic dev uuid (the Rust core mints real v4 ids). */
@@ -337,6 +366,7 @@ export async function mockInvoke<C extends CommandName>(
         data: {
           unlocked: session.unlocked,
           company_id: session.company_id,
+          model_id: session.model_id,
           read_only: session.read_only,
           license: null,
         },
@@ -375,10 +405,12 @@ export async function mockInvoke<C extends CommandName>(
       }
       session.unlocked = true;
       session.company_id = company_id;
+      session.model_id = modelIdForCompany(company_id);
       session.read_only = pin === MOCK_CHAIN_BREAK_PIN;
       return {
         data: {
           company_id,
+          model_id: session.model_id,
           session_token: "dev-mock-session-token-0000000000000",
           read_only: session.read_only,
           integrity: {
@@ -390,6 +422,8 @@ export async function mockInvoke<C extends CommandName>(
     }
     case "session.lock":
       session.unlocked = false;
+      session.company_id = null;
+      session.model_id = null;
       session.read_only = false;
       return { data: { locked: true } };
     case "company.list":
@@ -413,11 +447,13 @@ export async function mockInvoke<C extends CommandName>(
       }
       session.unlocked = true;
       session.company_id = company.id;
+      session.model_id = modelIdForCompany(company.id);
       session.read_only = false;
       company.last_opened_at = new Date().toISOString();
       return {
         data: {
           company_id: company.id,
+          model_id: session.model_id,
           read_only: false,
           integrity: { audit_chain_ok: true, broken_at_seq: null },
           summary: {
@@ -483,6 +519,7 @@ export async function mockInvoke<C extends CommandName>(
     case "company.create": {
       const { name } = args as { name: string };
       const id = `3f9f2c9e-9f8b-4e2d-9a1c-${String(companies.length + 3).padStart(12, "0")}`;
+      const model_id = modelIdForCompany(id);
       companies.unshift({
         id,
         name: name.trim(),
@@ -495,8 +532,9 @@ export async function mockInvoke<C extends CommandName>(
       });
       session.unlocked = true;
       session.company_id = id;
+      session.model_id = model_id;
       session.read_only = false;
-      return { data: { company_id: id } };
+      return { data: { company_id: id, model_id } };
     }
     case "calendar.preview": {
       const { preset, fy_start_month, from, year_count } = args as {
@@ -874,20 +912,124 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
-    case "assumption.upsert": {
-      const { assumption } = args as {
-        model_id: string;
-        assumption: import("./schema").AssumptionDef;
+    case "assumption.list": {
+      const { model_id } = args as { model_id: string };
+      return {
+        data: [...mockAssumptions.entries()]
+          .filter(([id]) => mockAssumptionModels.get(id) === model_id)
+          .map(([, assumption]) => assumption)
+          .sort((a, b) => a.name.localeCompare(b.name)),
       };
-      const id = assumption.id ?? `as-${assumption.name}`;
+    }
+    case "assumption.upsert": {
+      const { model_id, assumption } = args as {
+        model_id: string;
+        assumption: AssumptionDef;
+      };
+      // Dev-only trigger for the locked-baseline branch. The real Rust command determines this
+      // from scenario/version references; the preview has no scenario registry.
+      if (assumption.id?.includes("locked")) {
+        return mockError(
+          "ASSUMPTION_IN_USE_LOCKED",
+          "assumption is used by a locked baseline",
+          "Assumption is used by a Locked Baseline. Create a new Version to change.",
+          422,
+          false,
+          { assumption_id: assumption.id },
+        );
+      }
+      const existingByName = [...mockAssumptions.entries()].find(
+        ([existingId, existing]) =>
+          !assumption.id &&
+          mockAssumptionModels.get(existingId) === model_id &&
+          existing.name === assumption.name,
+      );
+      const id = assumption.id ?? existingByName?.[0] ?? `as-${model_id}-${assumption.name}`;
+      if (assumption.id && !mockAssumptions.has(id)) {
+        return mockError(
+          "VALUE_INVALID",
+          "assumption id does not exist",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      if (assumption.id && mockAssumptionModels.get(id) !== model_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "assumption belongs to another model",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const duplicate = [...mockAssumptions.entries()].some(
+        ([existingId, existing]) =>
+          existingId !== id &&
+          mockAssumptionModels.get(existingId) === model_id &&
+          existing.name === assumption.name,
+      );
+      if (duplicate) {
+        return mockError(
+          "VALUE_INVALID",
+          "assumption name already exists in this model",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      if (
+        assumption.bounds_low != null &&
+        assumption.bounds_high != null &&
+        decimalCmp(assumption.bounds_low, assumption.bounds_high) > 0
+      ) {
+        return mockError(
+          "VALUE_INVALID",
+          "bounds_low exceeds bounds_high",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      for (const value of Object.values(assumption.values)) {
+        if (
+          (assumption.bounds_low != null && decimalCmp(value, assumption.bounds_low) < 0) ||
+          (assumption.bounds_high != null && decimalCmp(value, assumption.bounds_high) > 0)
+        ) {
+          return mockError(
+            "VALUE_INVALID",
+            "assumption value is outside bounds",
+            "Invalid arguments.",
+            422,
+          );
+        }
+      }
       const created = !mockAssumptions.has(id);
-      mockAssumptions.set(id, { ...assumption, id });
+      const version = (mockAssumptions.get(id)?.version ?? 0) + 1;
+      mockAssumptions.set(id, {
+        ...assumption,
+        id,
+        values: { ...assumption.values },
+        version,
+        last_changed_at: new Date().toISOString(),
+      });
+      mockAssumptionModels.set(id, model_id);
       return { data: { assumption_id: id, created } };
     }
     case "assumption.find_usages": {
       const { assumption_id } = args as { assumption_id: string };
       const name = mockAssumptions.get(assumption_id)?.name;
-      return { data: { cells: name ? [] : [] } };
+      if (!name) return { data: { cells: [] } };
+      const cells = [...modelCells.entries()]
+        .map(([key, cell]) => {
+          if (cell.formula == null || !formulaReferencesName(cell.formula, name)) return null;
+          const parts = key.split(":");
+          const line_id = parts[1];
+          const period_id = parts[2];
+          if (!line_id || !period_id) return null;
+          return { line_id, period_id, formula: cell.formula };
+        })
+        .filter(
+          (cell): cell is { line_id: string; period_id: string; formula: string } => cell !== null,
+        )
+        .sort((a, b) => `${a.line_id}:${a.period_id}`.localeCompare(`${b.line_id}:${b.period_id}`));
+      return { data: { cells } };
     }
     case "driver.import": {
       const { file_path } = args as { file_path: string; mapping_id: string };

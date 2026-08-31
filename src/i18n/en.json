@@ -271,7 +271,8 @@
     "coa": "Chart of Accounts",
     "calendar": "Fiscal Calendar",
     "packs": "Pack Studio",
-    "drivers": "Drivers"
+    "drivers": "Drivers",
+    "assumptions": "Assumptions"
   },
   "gridPage": {
     "title": "Model Grid",
@@ -385,5 +386,57 @@
     "form.cancel": "Cancel",
     "form.nameRequired": "Enter a driver name.",
     "form.saveFailed": "Could not save the driver. Review the errors and retry."
+  },
+  "assumptionsPage": {
+    "title": "Assumption Register",
+    "empty": "Add assumptions (e.g., wage_inflation 4%).",
+    "add": "Add assumption",
+    "count": "{{count}} assumptions",
+    "tableCaption": "Versioned Assumption Register",
+    "notSet": "—",
+    "version": "v{{count}}",
+    "edit": "Edit",
+    "editAria": "Edit {{name}}",
+    "findUsages": "Find usages",
+    "usageTitle": "Cells referencing this assumption",
+    "usageLoading": "Finding usages…",
+    "noUsages": "No cells reference this assumption yet.",
+    "error.load": "The Assumption Register could not be loaded.",
+    "columns": {
+      "name": "Name",
+      "unit": "Unit",
+      "value": "Value by period",
+      "source": "Source",
+      "owner": "Owner",
+      "usages": "Usages",
+      "effective": "Effective periods",
+      "bounds": "Bounds",
+      "lastChange": "Last change",
+      "actions": "Actions"
+    },
+    "form": {
+      "title": "Assumption form",
+      "addTitle": "New assumption",
+      "editTitle": "Edit assumption",
+      "name": "Name",
+      "nameHint": "lowercase snake_case (e.g. wage_inflation)",
+      "owner": "Owner",
+      "ownerRequired": "Enter an assumption owner.",
+      "unit": "Unit",
+      "unitHint": "e.g. %, USD, units (optional)",
+      "source": "Source",
+      "boundsLow": "Lower bound",
+      "boundsHigh": "Upper bound",
+      "effectiveFrom": "Effective from",
+      "effectiveTo": "Effective to",
+      "periodHint": "Fiscal period id, e.g. fp-2026-p01",
+      "values": "Period values",
+      "valuesHint": "One exact decimal per line: fp-2026-p01=4.0",
+      "valuesInvalid": "Use one fiscal period and exact decimal per line (period=value).",
+      "nameRequired": "Enter a lowercase snake_case assumption name.",
+      "save": "Save assumption",
+      "saving": "Saving assumption…",
+      "saveFailed": "Could not save the assumption. Review the error and retry."
+    }
   }
 }

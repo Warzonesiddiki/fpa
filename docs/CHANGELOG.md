@@ -5,6 +5,7 @@
 ## [Unreleased]
 ### Added
 - Specification suite (54 docs/ specs) — see `docs/DOCS-INDEX.md` for the complete map.
+- S-044 Assumption Register vertical slice: typed persisted list/upsert/usage IPC, exact decimal-string form and validation, Company-scoped Rust/SQLite writes, HMAC audit events, usage lookup, and accessible five-state UI coverage. New Companies now bootstrap a real Model/Scenario and return the active `model_id`, so native S-044 persistence has an owned model rather than relying on the preview UUID.
 - **Docs revision Stage-0 v9 (2026-08-31):** absorbed the scrapped **FinPlan Pro** backlog as
   documented **V2/FUTURE** entries — V-021 lease accounting, V-022 tax provision, V-023 ESG
   reporting, V-024 treasury/banking, V-025 insurance/financial-instruments, V-026 advanced

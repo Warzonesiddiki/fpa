@@ -8,9 +8,10 @@ const TABS = [
   { to: "/app/model/coa", key: "coa" },
   { to: "/app/model/calendar", key: "calendar" },
   { to: "/app/model/packs", key: "packs" },
+  { to: "/app/model/assumptions", key: "assumptions" },
 ] as const;
 
-/** Model-section sub-navigation shared by S-021/S-022/S-023 (SCREENS-SPEC §2). */
+/** Model-section sub-navigation shared by the model setup and register screens (SCREENS-SPEC §2). */
 export function ModelSectionNav() {
   const { t } = useTranslation();
   return (

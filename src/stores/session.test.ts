@@ -5,6 +5,7 @@ const callMock = vi.fn();
 vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
 
 const COMPANY_ID = "3f9f2c9e-9f8b-4e2d-9a1c-000000000001";
+const MODEL_ID = "3f9f2c9e-9f8b-4e2d-9a1c-100000000001";
 
 const COMPANIES = [
   { id: COMPANY_ID, name: "Meridian Holdings", company_file_path: "/tmp/Meridian.fpa" },
@@ -16,9 +17,11 @@ function installLiveMocks() {
     if (cmd === "company.open")
       return Promise.resolve({
         company_id: COMPANY_ID,
+        model_id: MODEL_ID,
         summary: { name: "Meridian Holdings", type: "group", default_currency_code: "USD" },
       });
-    if (cmd === "session.unlock") return Promise.resolve({ company_id: COMPANY_ID });
+    if (cmd === "session.unlock")
+      return Promise.resolve({ company_id: COMPANY_ID, model_id: MODEL_ID });
     if (cmd === "session.status")
       return Promise.resolve({ unlocked: false, company_id: null, license: null });
     if (cmd === "session.lock") return Promise.resolve({ locked: true });
@@ -32,6 +35,7 @@ describe("session store — IPC state machine (B12)", () => {
     useSessionStore.setState({
       unlocked: false,
       companyId: null,
+      modelId: null,
       companyName: null,
       readOnly: false,
       status: "loading",
@@ -77,6 +81,7 @@ describe("session store — IPC state machine (B12)", () => {
     expect(ok).toBe(true);
     expect(s.unlocked).toBe(true);
     expect(s.companyId).toBe(COMPANY_ID);
+    expect(s.modelId).toBe(MODEL_ID);
     expect(s.companyName).toBe("Meridian Holdings");
     expect(s.status).toBe("populated");
     expect(callMock).toHaveBeenCalledWith("session.unlock", {
@@ -99,6 +104,7 @@ describe("session store — IPC state machine (B12)", () => {
     const s = useSessionStore.getState();
     expect(ok).toBe(true);
     expect(s.companyId).toBe(COMPANY_ID);
+    expect(s.modelId).toBe(MODEL_ID);
     expect(s.companyName).toBe("Meridian Holdings");
     expect(s.status).toBe("populated");
     expect(callMock).toHaveBeenCalledWith("company.open", { path: "/tmp/Meridian.fpa" });

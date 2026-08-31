@@ -6,6 +6,7 @@ pub mod commands;
 pub mod core;
 pub mod storage;
 
+use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::coa_list;
 use commands::company::{company_create, company_delete, company_list, company_open};
@@ -58,6 +59,9 @@ pub fn run() {
             import_rollback,
             model_cell_set_v1,
             model_recalc,
+            assumption_upsert,
+            assumption_list,
+            assumption_find_usages,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

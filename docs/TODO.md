@@ -43,7 +43,7 @@
 - [ ] **M3-1** Multi-sheet model + HyperFormula worker integration + `model.cell.set.v1` (S-040/041; FORMULA-ENGINE-SPEC whitelist + MONEY-ROUNDING-SPEC commit rule)
 - [ ] **M3-2** Formula inspection + cycle detection + refs (S-042)
 - [ ] **M3-3** Driver tables + federation precedence + bounds (S-043)
-- [ ] **M3-4** Assumption Register + hardcode detection (S-044)
+- [ ] **M3-4** Assumption Register + hardcode detection (S-044) — in progress: persisted `assumption.list/upsert/find_usages`, exact decimal values, audited writes, Company/Model lifecycle scoping, five UI states, and usage lookup are implemented; hardcode scan/convert/waive remains.
 - [ ] **M3-5** Planning methods + period spreading + bootstrap/copy (S-041 part; MODELING-METHODS-SPEC)
 - [ ] **M3-6** Headcount plan (S-045)
 - [ ] **M3-7** Capital/debt/WC/13-week cash + covenant gauges (S-046)

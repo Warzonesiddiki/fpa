@@ -1,3 +1,4 @@
+pub mod assumption;
 pub mod calendar;
 pub mod coa;
 pub mod company;
