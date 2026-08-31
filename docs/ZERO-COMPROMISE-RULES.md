@@ -36,7 +36,7 @@
 | **B18-8** | Platform parity is hard: identical features + results on Windows/macOS/Linux; CI runs all three with identical reports. | A11 |
 | **B18-9** | Zero telemetry/analytics/phone-home (except user-initiated connector sync + update check). Local Diagnostics is user-triggered, sanitized, no financial values. | ADR-008 (A7) |
 | **B19** | GL Dump is the guarantee: any ERP's GL export imports via Manual Import (mapping wizard). Connectors are convenience, never a prerequisite; Manual Import works with zero connectors. | ADR-007 (A3, A20) |
-| **B20** | Scope discipline: 38 MVP features locked; V2 (20) + FUT (8) deferred by design, never half-shipped; new ideas go to the backlog, not into v1.0.0 (sweep closed 2026-08-30). | ADR-013 (A22) |
+| **B20** | Scope discipline: 38 MVP features locked; V2 (29) + FUT (6) deferred by design, never half-shipped; new ideas go to the backlog, not into v1.0.0 (sweep closed 2026-08-30; **v9 revision 2026-08-31** absorbed the scrapped FinPlan Pro domain backlog into V2/FUT — MVP set F-001…F-038 unchanged). | ADR-013 (A22) |
 
 ---
 
@@ -56,7 +56,7 @@
 | B18-8 | triple-OS CI matrix |
 | B18-9 | `scripts/telemetry-scan.mjs` |
 | B15 | `scripts/pack-data-only.mjs` (no executable code in packs) |
-| B20 | feature-count scan (38/20/8) |
+| B20 | feature-count scan (38/29/6) |
 
 ## NAMESPACE NOTE (renamed 2026-08-30)
 

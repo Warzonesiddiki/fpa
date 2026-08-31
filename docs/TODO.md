@@ -95,5 +95,7 @@
 ## V2 BACKLOG (v1.1.0, referenced from PRD §3 / not started)
 
 - [ ] V-001 AI Copilot (on-device, explainable) · V-002 Monte Carlo · V-003 contract-level revrec · V-004 valuation · V-005 HRIS/CRM connectors · V-006 watch-folder · V-007 direct CF · V-008 live FX · V-009 benchmarks · V-010 PPTX · V-011 i18n · V-012 API · V-013 allocations · V-014 merge files · V-015 team collaboration · V-016 tax calendar · V-017 legal hold · V-018 probability weighting · V-019 hedging views · V-020 payroll presets
+- [ ] V-021 lease accounting · V-022 tax provision · V-023 ESG reporting · V-024 treasury/banking · V-025 insurance/financial-instruments · V-026 advanced period-close · V-027 data governance suite · V-028 report scheduling/distribution · V-029 plugin marketplace
+- (v9 revision 2026-08-31: V-021…V-029 promoted from the scrapped FinPlan Pro backlog; MVP set F-001…F-038 unchanged.)
 
 *Referenced by: ROADMAP.md, DEFINITION-OF-DONE.md, DOCS-INDEX.md.*

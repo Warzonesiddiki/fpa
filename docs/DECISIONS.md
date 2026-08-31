@@ -83,9 +83,9 @@
 **Why:** self-host/enterprise chosen; no cloud dependency; reference had none (W7).
 **Consequences:** machine-bound optional; grace 60d; activation file exchange.
 
-### ADR-013 · Scope discipline: 38 MVP features, V2=20, FUT=8 (B6/B20)
+### ADR-013 · Scope discipline: 38 MVP features, V2=29, FUT=6 (B6/B20)
 **Why:** reference's 202 engines + no cut list produced UNACCEPTABLE audits; we enumerate + decide at the boundary and stop.
-**Consequences:** NOT BUILDING section is binding; new ideas → V2 backlog; sweep closed (2026-08-30).
+**Consequences:** NOT BUILDING section is binding; new ideas → V2 backlog; sweep closed (2026-08-30). **v9 revision (2026-08-31):** V2 grew 20→29 and FUT shrank 8→6 as the scrapped FinPlan Pro FP&A-adjacent domains were promoted to the documented backlog (lease, tax provision, ESG, treasury/banking, insurance/financial-instruments, advanced close, data governance, report scheduling, plugin marketplace); the 38-MVP set is unchanged.
 
 ### ADR-014 · Exports: rust_xlsxwriter + typst (not exceljs/jsPDF)
 **Why:** deterministic, injection-safe, identical on 3 OS; reference used jsPDF (browser-dependent).
