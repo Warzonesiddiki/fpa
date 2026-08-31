@@ -12,11 +12,18 @@ import {
   ImportRollbackData,
   ImportTieoutData,
   ImportValidateData,
+  FormulaText,
+  ModelCellSetArgs,
+  ModelCellSetData,
+  ModelRecalcArgs,
+  ModelRecalcData,
   MoneyMinor,
   RowIssue,
   SecurityPinSetupData,
   SessionStatusData,
   SessionUnlockData,
+  SUPPORTED_FUNCTIONS,
+  findUnsupportedFunction,
   pinPolicyChecks,
   validatePinPolicy,
 } from "./schema";
@@ -544,5 +551,84 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       // No ingestion command accepts an empty payload.
       expect(CommandArgs[command].safeParse({}).success).toBe(false);
     }
+  });
+});
+
+describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
+  const base = {
+    // API-SPEC §2/§3: `model.cell.set.v1` args are {line_id, scenario_id, period_id, value?,
+    // formula?, manual_override?} — no model_id (the cell is addressed by line+scenario+period).
+    line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+    scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+    period_id: "fp-2027-p08",
+  };
+
+  it("accepts an exact money value and rejects scientific notation / float money", () => {
+    expect(ModelCellSetArgs.safeParse({ ...base, value: "182500.00" }).success).toBe(true);
+    expect(ModelCellSetArgs.safeParse({ ...base, value: "0.1" }).success).toBe(true);
+    expect(ModelCellSetArgs.safeParse({ ...base, value: "1e3" }).success).toBe(false);
+    expect(ModelCellSetArgs.safeParse({ ...base, value: "1.2.3" }).success).toBe(false);
+    // A formula alone is also a valid cell write (M3-1 worker computes the value).
+    expect(ModelCellSetArgs.safeParse({ ...base, formula: "=SUM(A1:A3)" }).success).toBe(true);
+  });
+
+  it("rejects an empty edit (either value or formula is required)", () => {
+    expect(ModelCellSetArgs.safeParse(base).success).toBe(false);
+    // `value: null` alone is not a cell write: a value OR a formula must be supplied
+    // (MODEL_CELL_VALUE_REQUIRED, API-SPEC §3). A formula alone is a valid edit.
+    expect(ModelCellSetArgs.safeParse({ ...base, value: null }).success).toBe(false);
+    expect(ModelCellSetArgs.safeParse({ ...base, value: null, formula: "=0" }).success).toBe(true);
+  });
+
+  it("rejects formulas that do not start with '=' or exceed the whitelist", () => {
+    expect(ModelCellSetArgs.safeParse({ ...base, formula: "SUM(A1:A3)" }).success).toBe(false);
+    expect(ModelCellSetArgs.safeParse({ ...base, formula: "=LAMBDA(x, x)" }).success).toBe(false);
+    expect(ModelCellSetArgs.safeParse({ ...base, formula: "=SUM(A1:A3) + RATE(A1)" }).success).toBe(
+      true,
+    );
+  });
+
+  it("formula text enforces the '=' prefix and the supported set", () => {
+    expect(FormulaText.safeParse("=SUM(A1:A3)").success).toBe(true);
+    expect(FormulaText.safeParse("SUM(A1:A3)").success).toBe(false);
+    expect(findUnsupportedFunction("=SUM(A1:A3)")).toBeNull();
+    expect(findUnsupportedFunction("=UNSUPPORTEDX(A1)")).toBe("UNSUPPORTEDX");
+    expect(SUPPORTED_FUNCTIONS).toContain("CAGR");
+    expect(SUPPORTED_FUNCTIONS).toContain("FPERIOD");
+  });
+
+  it("model.cell.set.v1 and model.recalc are registered and reject empty payloads", () => {
+    expect(CommandArgs["model.cell.set.v1"]).toBeDefined();
+    expect(CommandArgs["model.recalc"]).toBeDefined();
+    expect(CommandArgs["model.cell.set.v1"].safeParse({}).success).toBe(false);
+    expect(CommandArgs["model.recalc"].safeParse({}).success).toBe(false);
+  });
+
+  it("parses the documented recalc success shapes", () => {
+    const recalc = {
+      dirty_cells: 1,
+      cycles: [{ path: ["Revenue!C10", "Revenue!C12"] }],
+      changed_cells: ["ln-rev"],
+      issues: [],
+      duration_ms: 0,
+    };
+    expect(
+      ModelRecalcArgs.safeParse({
+        model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+        scenario_id: base.scenario_id,
+      }).success,
+    ).toBe(true);
+    // `model.recalc` returns the flat envelope {duration_ms, changed_cells, issues[]} (API-SPEC §2);
+    // `model.cell.set.v1` returns the same facts wrapped in `recalc` (API-SPEC §3).
+    expect(ModelRecalcData.safeParse({ ...recalc }).success).toBe(true);
+    expect(
+      ModelCellSetData.safeParse({
+        recalc,
+        cell: { value_minor: 1, amount_text: null, formula: null, manual_override: false },
+        audit_id: 1,
+      }).success,
+    ).toBe(true);
+    // duration_ms and dirty_cells are non-negative — never a negative recalc.
+    expect(ModelRecalcData.safeParse({ ...recalc, duration_ms: -1 }).success).toBe(false);
   });
 });

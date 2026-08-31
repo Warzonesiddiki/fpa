@@ -495,6 +495,220 @@ export const ImportRollbackData = z.object({
   rolled_back_to: Uuid.nullable(),
 });
 
+/* ── model.* (F-012 — flat grid engine contract; FORMULA-ENGINE-SPEC §2) ──
+ * `model.cell.set.v1` + `model.recalc` are the M1 Model-grid commands. The Zod layer is the
+ * UI-side gate (CODING-STANDARDS §5); the Rust core is the authoritative owner of formula
+ * whitelist + money semantics (B14). HyperFormula (M3-1) owns the real cell graph; this
+ * contract is what the grid and its worker exchange. */
+
+/** Supported-function whitelist (FORMULA-ENGINE-SPEC §2) — UI-side mirror of `core::model`.
+ *  Keeping it here lets the formula bar reject an unsupported function before IPC and keeps the
+ *  documented set greppable in one place; the Rust gate is the one that cannot be bypassed. */
+export const SUPPORTED_FUNCTIONS = [
+  // Math & aggregation
+  "SUM",
+  "SUMIF",
+  "SUMIFS",
+  "SUMPRODUCT",
+  "AVERAGE",
+  "AVERAGEIF",
+  "AVERAGEIFS",
+  "COUNT",
+  "COUNTA",
+  "COUNTIF",
+  "COUNTIFS",
+  "MIN",
+  "MAX",
+  "MEDIAN",
+  "ROUND",
+  "ROUNDUP",
+  "ROUNDDOWN",
+  "MROUND",
+  "ABS",
+  "SQRT",
+  "POWER",
+  "MOD",
+  "INT",
+  "TRUNC",
+  "CEILING",
+  "FLOOR",
+  "SIGN",
+  "PRODUCT",
+  "RAND",
+  "RANDBETWEEN",
+  // Logical & lookup
+  "IF",
+  "IFS",
+  "IFERROR",
+  "IFNA",
+  "AND",
+  "OR",
+  "NOT",
+  "XOR",
+  "SWITCH",
+  "TRUE",
+  "FALSE",
+  "ISNUMBER",
+  "ISTEXT",
+  "ISBLANK",
+  "ISERROR",
+  "ISNA",
+  "VLOOKUP",
+  "HLOOKUP",
+  "XLOOKUP",
+  "INDEX",
+  "MATCH",
+  "CHOOSE",
+  "OFFSET",
+  "INDIRECT",
+  // Text & date (incl. the Rust-owned fiscal-aware set)
+  "CONCAT",
+  "CONCATENATE",
+  "TEXT",
+  "LEFT",
+  "RIGHT",
+  "MID",
+  "LEN",
+  "UPPER",
+  "LOWER",
+  "TRIM",
+  "SUBSTITUTE",
+  "VALUE",
+  "DATE",
+  "YEAR",
+  "MONTH",
+  "DAY",
+  "EOMONTH",
+  "EDATE",
+  "DATEDIF",
+  "WEEKDAY",
+  "NETWORKDAYS",
+  "FPERIOD",
+  "FQTR",
+  "FYEAR",
+  "FPERIODSTART",
+  "PERIODLEN",
+  // Financial
+  "NPV",
+  "IRR",
+  "XNPV",
+  "XIRR",
+  "PMT",
+  "IPMT",
+  "PPMT",
+  "FV",
+  "PV",
+  "RATE",
+  "NPER",
+  "SLN",
+  "DDB",
+  "SYD",
+  "DB",
+  // Analysis Functions (FORMULA-ENGINE-SPEC §3)
+  "CAGR",
+  "MOVINGAVG",
+  "TREND",
+  "SEASONALITY",
+  "YOY",
+  "PRIORPERIOD",
+  "PRIORYEAR",
+  "RATIO",
+] as const;
+
+const SUPPORTED_FUNCTION_SET = new Set<string>(SUPPORTED_FUNCTIONS);
+
+/** First identifier immediately followed by `(` in a formula that is outside the whitelist, or
+ *  `null` when every function call is supported. Complements the Rust gate (never a float, never
+ *  a silent substitution — FORMULA-ENGINE-SPEC §4). */
+export function findUnsupportedFunction(formula: string): string | null {
+  const calls = formula.match(/[A-Za-z_][A-Za-z0-9_.]*(?=\s*\()/g);
+  if (!calls) return null;
+  for (const raw of calls) {
+    if (!SUPPORTED_FUNCTION_SET.has(raw.toUpperCase())) return raw;
+  }
+  return null;
+}
+
+export const FormulaText = z
+  .string()
+  .min(1, "VALUE_INVALID: formula must not be empty.")
+  .max(2048, "VALUE_INVALID: formula too long (max 2048 characters).")
+  .refine((f) => f.startsWith("="), {
+    message: "VALUE_INVALID: formulas must start with '='.",
+  });
+
+export const ModelCellSetArgs = z
+  .object({
+    line_id: Uuid,
+    scenario_id: Uuid,
+    period_id: FiscalPeriodId,
+    value: DecimalString.nullable().optional(),
+    formula: FormulaText.nullable().optional(),
+    manual_override: z.boolean().default(false),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      (v.value !== undefined && v.value !== null) ||
+      (v.formula !== undefined && v.formula !== null),
+    {
+      message: "VALUE_INVALID: provide a value or a formula.",
+    },
+  )
+  .refine((v) => v.formula == null || findUnsupportedFunction(v.formula) === null, {
+    message:
+      "FORMULA_UNSUPPORTED_FUNCTION: function is not in the supported set (FORMULA-ENGINE-SPEC §2).",
+  });
+export type ModelCellSetArgs = z.infer<typeof ModelCellSetArgs>;
+
+/** Grid issue for the recalc envelope — codes are the locked ERROR-HANDLING taxonomy (B20). */
+export const RecalcCellIssue = z.object({
+  code: z.enum([
+    "FORMULA_CYCLE",
+    "REFERENCE_BROKEN",
+    "DRIVER_OUT_OF_BOUNDS",
+    "HARDCODED_ASSUMPTION",
+    "VALUE_INVALID",
+  ]),
+  cell: z.string(),
+  details: z.record(z.string(), z.unknown()).default({}),
+});
+export type RecalcCellIssue = z.infer<typeof RecalcCellIssue>;
+
+/** API-SPEC §3 `model.cell.set.v1` success shape (`recalc`) — the `issues` and `changed_cells`
+ *  arrays are additive; `cycles` order is deterministic (cell path lexical order). */
+export const RecalcReport = z.object({
+  dirty_cells: z.number().int().nonnegative(),
+  cycles: z.array(z.object({ path: z.array(z.string()).min(2) })),
+  changed_cells: z.array(z.string()),
+  issues: z.array(RecalcCellIssue).default([]),
+  duration_ms: z.number().int().nonnegative(),
+});
+export type RecalcReport = z.infer<typeof RecalcReport>;
+
+export const ModelCellSetData = z.object({
+  recalc: RecalcReport,
+  cell: z.object({
+    value_minor: MoneyMinor.nullable(),
+    amount_text: z.string().nullable(),
+    formula: z.string().nullable(),
+    manual_override: z.boolean(),
+  }),
+  audit_id: z.number().int().positive(),
+});
+
+export const ModelRecalcArgs = z
+  .object({
+    model_id: Uuid,
+    scenario_id: Uuid,
+  })
+  .strict();
+export const ModelRecalcData = z.object({
+  duration_ms: z.number().int().nonnegative(),
+  changed_cells: z.array(z.string()),
+  issues: z.array(RecalcCellIssue).default([]),
+});
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -515,6 +729,8 @@ export const CommandArgs = {
   "import.tieout": ImportTieoutArgs,
   "import.commit": ImportCommitArgs,
   "import.rollback": ImportRollbackArgs,
+  "model.cell.set.v1": ModelCellSetArgs,
+  "model.recalc": ModelRecalcArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

@@ -333,4 +333,64 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(second.error.httpStatus).toBe(409);
     expect(second.error.userMessage).toBe("This batch was already rolled back.");
   });
+
+  it("model.cell.set.v1 mirrors the documented recalc envelope and exact minor units", async () => {
+    const out = (await mockInvoke("model.cell.set.v1", {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      value: "182500.00",
+      manual_override: false,
+    })) as {
+      data: {
+        recalc: { dirty_cells: number; cycles: unknown[]; changed_cells: string[] };
+        cell: { value_minor: number; amount_text: string | null };
+        audit_id: number;
+      };
+    };
+    expect(out.data.recalc.dirty_cells).toBe(1);
+    expect(out.data.recalc.changed_cells).toContain("3f9f2c9e-9f8b-4e2d-9a1c-400000000002");
+    expect(out.data.cell.value_minor).toBe(18_250_000);
+    expect(out.data.cell.amount_text).toBe("182500.00");
+    expect(out.data.audit_id).toBeGreaterThanOrEqual(101);
+  });
+
+  it("model.cell.set.v1 mirrors MODEL_CELL_LOCKED and FORMULA_UNSUPPORTED_FUNCTION", async () => {
+    const locked = (await mockInvoke("model.cell.set.v1", {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+      scenario_id: "sc-locked-000",
+      period_id: "fp-2027-p08",
+      value: "1.00",
+      manual_override: false,
+    })) as { error: { code: string; userMessage: string } };
+    expect(locked.error.code).toBe("MODEL_CELL_LOCKED");
+    expect(locked.error.userMessage).toBe("This scenario is locked. Create a Version to edit it.");
+
+    const unsupported = (await mockInvoke("model.cell.set.v1", {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000002",
+      scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+      period_id: "fp-2027-p08",
+      formula: "=LAMBDA(x, x)",
+      manual_override: false,
+    })) as { error: { code: string; details: { function: string } } };
+    expect(unsupported.error.code).toBe("FORMULA_UNSUPPORTED_FUNCTION");
+    expect(unsupported.error.details.function).toBe("LAMBDA");
+  });
+
+  it("model.recalc reports the working-set cells for a scenario", async () => {
+    const first = (await mockInvoke("model.cell.set.v1", {
+      line_id: "line-a",
+      scenario_id: "sc-base",
+      period_id: "fp-2027-p08",
+      value: "10.00",
+      manual_override: false,
+    })) as { data: { recalc: { changed_cells: string[] } } };
+    expect(first.data.recalc.changed_cells).toEqual(["line-a"]);
+    const recalc = (await mockInvoke("model.recalc", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      scenario_id: "sc-base",
+    })) as { data: { dirty_cells: number; changed_cells: string[] } };
+    expect(recalc.data.dirty_cells).toBe(1);
+    expect(recalc.data.changed_cells).toEqual(["line-a"]);
+  });
 });

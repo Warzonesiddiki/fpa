@@ -7,7 +7,12 @@
  * The Rust core is the single owner of money/calendar logic (B14) — the mock mirrors
  * shapes, NOT semantics; it is not a spec of behaviour.
  */
-import { CANONICAL_MAPPING_ID, type CommandInput, type CommandName } from "./schema";
+import {
+  CANONICAL_MAPPING_ID,
+  findUnsupportedFunction,
+  type CommandInput,
+  type CommandName,
+} from "./schema";
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -213,6 +218,28 @@ interface MockParse {
 const parses = new Map<string, MockParse>();
 const rolledBackBatches = new Set<string>();
 let importSeq = 0;
+
+/* ── Model grid (B14: shape mirror only; the Rust core owns formula/money semantics) ── */
+
+interface MockModelCell {
+  valueMinor: number | null;
+  value: string | null;
+  formula: string | null;
+  manualOverride: boolean;
+}
+
+/** Exact minor-units conversion for the mock's USD scale (2) — never float (B3). */
+function mockToMinorUnits(value: string): number {
+  const neg = value.startsWith("-");
+  const body = neg ? value.slice(1) : value;
+  const [intPart, fracPart = ""] = body.split(".");
+  const frac = `${fracPart}00`.slice(0, 2);
+  // money-ast: the numeric constructor floats money — parseInt(x, 10) is the permitted exact form (B3).
+  return parseInt(`${neg ? "-" : ""}${intPart}${frac}`, 10);
+}
+
+const modelCells = new Map<string, MockModelCell>();
+let modelAuditSeq = 100;
 
 /** Deterministic dev uuid (the Rust core mints real v4 ids). */
 function nextImportId(group: string): string {
@@ -627,6 +654,89 @@ export async function mockInvoke<C extends CommandName>(
       }
       rolledBackBatches.add(batch_id);
       return { data: { rolled_back_to: null } };
+    }
+    case "model.cell.set.v1": {
+      const { line_id, scenario_id, period_id, value, formula, manual_override } = args as {
+        line_id: string;
+        scenario_id: string;
+        period_id: string;
+        value?: string | null;
+        formula?: string | null;
+        manual_override?: boolean;
+      };
+      // AUTH-SPEC §3 gate (mirror): a Locked Scenario never accepts an edit.
+      if (scenario_id.includes("locked")) {
+        return mockError(
+          "MODEL_CELL_LOCKED",
+          "scenario is locked",
+          "This scenario is locked. Create a Version to edit it.",
+          422,
+        );
+      }
+      if (formula) {
+        const unsupported = findUnsupportedFunction(formula);
+        if (unsupported) {
+          return mockError(
+            "FORMULA_UNSUPPORTED_FUNCTION",
+            `function ${unsupported} not in supported set`,
+            `Function ${unsupported} is not in the supported set (see FORMULA-ENGINE-SPEC.md). Replace it or file a V2 request.`,
+            422,
+            false,
+            { function: unsupported },
+          );
+        }
+      }
+      const valueMinor = value == null ? null : mockToMinorUnits(value);
+      const key = `${scenario_id}:${line_id}:${period_id}`;
+      modelCells.set(key, {
+        valueMinor,
+        value: value ?? null,
+        formula: formula ?? null,
+        manualOverride: manual_override ?? false,
+      });
+      modelAuditSeq += 1;
+      return {
+        data: {
+          recalc: {
+            dirty_cells: 1,
+            cycles: [],
+            changed_cells: [line_id],
+            issues: [],
+            duration_ms: 0,
+          },
+          cell: {
+            value_minor: valueMinor,
+            amount_text: value ?? null,
+            formula: formula ?? null,
+            manual_override: manual_override ?? false,
+          },
+          audit_id: modelAuditSeq,
+        },
+      };
+    }
+    case "model.recalc": {
+      const { scenario_id } = args as { scenario_id: string };
+      let dirty = 0;
+      const lines = new Set<string>();
+      for (const [key] of modelCells) {
+        if (key.startsWith(`${scenario_id}:`)) {
+          dirty += 1;
+          lines.add(key.split(":")[1]);
+        }
+      }
+      const changed_cells = [...lines].sort();
+      // API-SPEC §2: `model.recalc` returns the flat recalc envelope `{duration_ms, changed_cells,
+      // issues[]}` (the `recalc` wrapper belongs to `model.cell.set.v1`, API-SPEC §3).
+      return {
+        data: {
+          duration_ms: 0,
+          changed_cells,
+          issues: [],
+          // Additive diagnostics the grid uses (B20 — new response fields are fine).
+          dirty_cells: dirty,
+          cycles: [],
+        },
+      };
     }
     default:
       return {
