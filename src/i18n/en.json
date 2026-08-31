@@ -127,7 +127,6 @@
     "license": "License",
     "version": "v"
   },
-
   "companies": {
     "title": "Companies",
     "subtitle": "Open, create, or delete Company files.",
@@ -157,7 +156,6 @@
     "delete.cancel": "Cancel",
     "delete.success": "{{name}} deleted"
   },
-
   "calendarPage": {
     "title": "Fiscal Calendar",
     "preset": "Preset",
@@ -195,7 +193,6 @@
     "error.apply": "The calendar could not be applied.",
     "emptyDefault": "Adjust the settings to preview a calendar configuration."
   },
-
   "coa": {
     "title": "Chart of Accounts",
     "code": "Code",
@@ -226,7 +223,6 @@
     "accountType.liability": "Liability",
     "accountType.equity": "Equity"
   },
-
   "packs": {
     "title": "Pack Studio",
     "subtitle": "Schema-validated, data-only Industry Packs (B15).",
@@ -249,7 +245,6 @@
     "error.load": "The Pack library could not be loaded.",
     "noFilterMatches": "No Packs match your filter."
   },
-
   "search": {
     "title": "Global search",
     "inputLabel": "Search",
@@ -269,14 +264,14 @@
     "screens.packs": "Pack Studio",
     "screens.wizard": "First-Run Wizard"
   },
-
   "modelNav": {
     "label": "Model",
     "grid": "Model Grid",
     "inspect": "Formula Inspector",
     "coa": "Chart of Accounts",
     "calendar": "Fiscal Calendar",
-    "packs": "Pack Studio"
+    "packs": "Pack Studio",
+    "drivers": "Drivers"
   },
   "gridPage": {
     "title": "Model Grid",
@@ -350,5 +345,45 @@
   "errors": {
     "code": "{{code}}",
     "unknown": "An unexpected error occurred. Please try again."
+  },
+  "driversPage": {
+    "title": "Driver Tables",
+    "empty": "Create your first Driver — e.g., Units, Price.",
+    "error.load": "Driver tables could not be loaded.",
+    "coreCount": "Core drivers",
+    "coreAdvisory": "advisory max",
+    "coreBadge": "core",
+    "addDriver": "Add Driver",
+    "tableCaption": "Driver table with period values",
+    "colDriver": "Driver",
+    "colType": "Type",
+    "colSource": "Source",
+    "colUnit": "Unit",
+    "noUnit": "—",
+    "impactTitle": "Impacted lines",
+    "impactLabel": "Driver impact",
+    "noImpact": "No lines reference this driver yet.",
+    "importTitle": "Import Driver Data",
+    "importLabel": "Import driver data",
+    "importPath": "File path",
+    "importMapping": "Mapping id",
+    "importButton": "Import",
+    "formLabel": "Driver form",
+    "newDriver": "New Driver",
+    "editDriver": "Edit Driver",
+    "form.name": "Name",
+    "form.nameHint": "lowercase snake_case (e.g. units_sold)",
+    "form.type": "Type",
+    "form.source": "Source",
+    "form.unit": "Unit",
+    "form.unitHint": "e.g. units, headcount (optional)",
+    "form.boundsLow": "Lower bound",
+    "form.boundsHigh": "Upper bound",
+    "form.isCore": "Core driver (top ≤ 7)",
+    "form.create": "Create",
+    "form.save": "Save",
+    "form.cancel": "Cancel",
+    "form.nameRequired": "Enter a driver name.",
+    "form.saveFailed": "Could not save the driver. Review the errors and retry."
   }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { InProcessTransport, createModelEngineClient } from "./modelEngineClient";
 import type { EngineTransport } from "./modelEngineClient";
 import type { EngineRequest, EngineResponse } from "./protocol";
-import type { ModelGridLine, ModelGridPeriod } from "./modelEngine";
+import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
 const LINES: ModelGridLine[] = [
   { id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000010", label: "4000 · Revenue", method: "manual" },
@@ -10,6 +10,19 @@ const LINES: ModelGridLine[] = [
 const PERIODS: ModelGridPeriod[] = [
   { id: "fp-2026-p01", code: "P01" },
   { id: "fp-2026-p02", code: "P02" },
+];
+
+const DRIVERS: DriverDef[] = [
+  {
+    id: "dr-units",
+    name: "units",
+    driver_type: "volume_x_rate",
+    unit: "units",
+    source: "global",
+    is_core: true,
+    bounds_low: "0",
+    bounds_high: "100000",
+  },
 ];
 
 describe("modelEngineClient (single-flight queue)", () => {
@@ -93,5 +106,27 @@ describe("modelEngineClient (single-flight queue)", () => {
     expect(result.precedents.length).toBeGreaterThanOrEqual(1);
     expect(result.is_cycle).toBe(false);
     expect(result.cycle).toBeNull();
+  });
+
+  it("loadDrivers/setDriverValue/getDriverGrid round-trip through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+    await client.loadDrivers(DRIVERS, PERIODS);
+    await client.setDriverValue("dr-units", PERIODS[0].id, "12000");
+    const grid = await client.getDriverGrid();
+    expect(grid[0]?.amount_text).toBe("12000");
+    const drivers = await client.getDrivers();
+    expect(drivers).toHaveLength(1);
+    const impact = await client.getDriverImpact("dr-units");
+    expect(impact).toEqual([]); // no Model formula references the driver yet
+  });
+
+  it("propagates DRIVER_OUT_OF_BOUNDS through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+    await client.loadDrivers(DRIVERS, PERIODS);
+    await expect(client.setDriverValue("dr-units", PERIODS[0].id, "200000")).rejects.toThrow(
+      /DRIVER_OUT_OF_BOUNDS/,
+    );
   });
 });

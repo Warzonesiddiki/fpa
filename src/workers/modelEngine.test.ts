@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ModelEngine, MAX_FORMULA_LEN } from "./modelEngine";
-import type { ModelGridLine, ModelGridPeriod } from "./modelEngine";
+import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
 const LINES: ModelGridLine[] = [
   { id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000010", label: "4000 · Revenue", method: "manual" },
@@ -16,6 +16,29 @@ const PERIODS: ModelGridPeriod[] = [
   { id: "fp-2026-p01", code: "P01" },
   { id: "fp-2026-p02", code: "P02" },
   { id: "fp-2026-p03", code: "P03" },
+];
+
+const DRIVERS: DriverDef[] = [
+  {
+    id: "dr-units",
+    name: "units",
+    driver_type: "volume_x_rate",
+    unit: "units",
+    source: "global",
+    is_core: true,
+    bounds_low: "0",
+    bounds_high: "100000",
+  },
+  {
+    id: "dr-price",
+    name: "price",
+    driver_type: "volume_x_rate",
+    unit: null,
+    source: "global",
+    is_core: true,
+    bounds_low: null,
+    bounds_high: null,
+  },
 ];
 
 function engineWithLayout(ytdThrough?: number): ModelEngine {
@@ -244,5 +267,88 @@ describe("ModelEngine (HyperFormula graph, FORMULA-ENGINE-SPEC §5)", () => {
     expect(r.precedents).toEqual([]);
     expect(r.dependents).toEqual([]);
     expect(r.cycle).toBeNull();
+  });
+
+  // ── Driver Tables (M3-3 · F-013 · MODELING-METHODS-SPEC §2) ──────────────────────────
+
+  it("loadDrivers builds the Drivers sheet and snapshots empty/loaded values", () => {
+    const e = engineWithLayout();
+    expect(e.getDriverGrid()).toEqual([]);
+    e.loadDrivers(DRIVERS, PERIODS);
+    expect(e.getDrivers()).toHaveLength(2);
+    expect(e.getDriverGrid()).toHaveLength(2 * PERIODS.length);
+    for (const v of e.getDriverGrid()) expect(v.amount_text).toBeNull();
+  });
+
+  it("stores a driver value as the exact decimal string and feeds a Model formula", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    e.setDriverValue("dr-units", PERIODS[0].id, "12000");
+    expect(e.getDriverValue("dr-units", PERIODS[0].id)).toBe("12000");
+    // First driver (row 1 in the Drivers sheet) × first period (col 1) = Drivers!B2.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: PERIODS[1].id,
+      formula: "=Drivers!B2*2",
+    });
+    expect(cell.computed_text).toBe("24000");
+  });
+
+  it("recalculates a dependent Model formula when the driver value changes", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    e.setDriverValue("dr-units", PERIODS[0].id, "12000");
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=Drivers!B2*2" });
+    expect(e.getCell(LINES[0].id, PERIODS[1].id).computed_text).toBe("24000");
+    e.setDriverValue("dr-units", PERIODS[0].id, "3000");
+    expect(e.getCell(LINES[0].id, PERIODS[1].id).computed_text).toBe("6000");
+  });
+
+  it("enforces bounds → DRIVER_OUT_OF_BOUNDS (never a silent clamp)", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    expect(() => e.setDriverValue("dr-units", PERIODS[0].id, "200000")).toThrow(
+      /DRIVER_OUT_OF_BOUNDS/,
+    );
+    expect(() => e.setDriverValue("dr-units", PERIODS[0].id, "-1")).toThrow(/DRIVER_OUT_OF_BOUNDS/);
+    // An unbounded driver accepts any value.
+    expect(e.setDriverValue("dr-price", PERIODS[0].id, "999999999").ok).toBe(true);
+  });
+
+  it("setDriverValue on an unknown/unloaded driver → DRIVER_FEED_MISSING", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    expect(() => e.setDriverValue("dr-nope", PERIODS[0].id, "1")).toThrow(/DRIVER_FEED_MISSING/);
+  });
+
+  it("loadDrivers with no drivers yields an empty driver grid", () => {
+    const e = engineWithLayout();
+    e.loadDrivers([], PERIODS);
+    expect(e.getDriverGrid()).toEqual([]);
+    expect(e.getDrivers()).toEqual([]);
+    expect(() => e.setDriverValue("dr-x", PERIODS[0].id, "1")).toThrow(/DRIVER_FEED_MISSING/);
+  });
+
+  it("getDriverImpact reports the Model cells that reference a driver (S-043)", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    e.setDriverValue("dr-units", PERIODS[0].id, "12000");
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=Drivers!B2*2" });
+    const impact = e.getDriverImpact("dr-units");
+    expect(impact.some((r) => r.line_id === LINES[0].id && r.period_id === PERIODS[1].id)).toBe(
+      true,
+    );
+    expect(impact[0]?.formula).toBe("=Drivers!B2*2");
+    expect(e.getDriverImpact("dr-price")).toEqual([]);
+  });
+
+  it("setDriverValue recalc marks the dependent lines as changed", () => {
+    const e = engineWithLayout();
+    e.loadDrivers(DRIVERS, PERIODS);
+    e.setDriverValue("dr-units", PERIODS[0].id, "12000");
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=Drivers!B2*2" });
+    const { recalc } = e.setDriverValue("dr-units", PERIODS[0].id, "5000");
+    expect(recalc.changed_cells).toContain(LINES[0].id);
+    expect(recalc.dirty_cells).toBeGreaterThanOrEqual(0);
   });
 });

@@ -81,6 +81,14 @@ function getClient(): ModelEngineClient {
   return client;
 }
 
+/**
+ * Shared engine client — the Driver store (M3-3) uses the SAME HyperFormula graph so driver values
+ * feed the Model grid's formulas. Creating a second client would give a second, isolated workbook.
+ */
+export function getModelEngineClient(): ModelEngineClient {
+  return getClient();
+}
+
 export const useModelGridStore = create<ModelGridState>((set, get) => ({
   status: "loading",
   error: null,

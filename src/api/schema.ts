@@ -738,6 +738,93 @@ export const ModelInspectData = z.object({
   is_cycle: z.boolean(),
 });
 
+/* ── driver.* (F-013 · M3-3 · MODELING-METHODS-SPEC §2, DATABASE-SCHEMA §6) ──────────────
+ * Driver tables are the semantic inputs to planning lines whose `method` is `driver`. Values are
+ * exact decimal strings (`value_decimal` — never a float, B3); `driver.upsert` defines a driver
+ * (its `driver_type`/`source`/bounds mirror the `drivers` CHECK constraints), `driver.set_value`
+ * writes a period value (bounds enforced → `DRIVER_OUT_OF_BOUNDS`), and `driver.import` loads a
+ * `driver_data` batch (`IMPORT_*` taxonomy). */
+
+/** `drivers.driver_type` CHECK (DATABASE-SCHEMA §6). */
+export const DriverType = z.enum([
+  "volume_x_rate",
+  "headcount",
+  "growth",
+  "seasonal",
+  "spread",
+  "ratio",
+  "manual",
+]);
+export type DriverTypeValue = z.infer<typeof DriverType>;
+
+/** `drivers.source` CHECK (DATABASE-SCHEMA §6). */
+export const DriverSource = z.enum(["global", "bu_override", "collection", "imported"]);
+
+/** Minimum-heuristic prompt for the S-043 "core-driver count" advisory (≤7 core drivers). */
+export const CORE_DRIVER_ADVISORY_MAX = 7;
+
+/** A driver definition body (the `driver{...}` in API-SPEC `driver.upsert`). `id` is optional on
+ *  create and required to update an existing row; the rest mirror `drivers` columns. */
+export const DriverDef = z
+  .object({
+    id: z
+      .string()
+      .regex(/^dr-[a-zA-Z0-9_-]+$/, "VALUE_INVALID: driver id must be a slug.")
+      .optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, "VALUE_INVALID: driver name is required.")
+      .max(120, "VALUE_INVALID: driver name too long.")
+      .regex(/^[a-z_][a-z0-9_]*$/, "VALUE_INVALID: driver name must be lowercase snake_case."),
+    driver_type: DriverType,
+    unit: z.string().trim().max(40).nullable(),
+    source: DriverSource,
+    is_core: z.boolean().default(false),
+    bounds_low: DecimalString.nullable().optional(),
+    bounds_high: DecimalString.nullable().optional(),
+  })
+  .strict();
+export type DriverDef = z.infer<typeof DriverDef>;
+
+/** `driver.upsert` — {model_id, driver{...}} → {driver_id} (API-SPEC §2). */
+export const DriverUpsertArgs = z
+  .object({
+    model_id: Uuid,
+    driver: DriverDef,
+  })
+  .strict();
+export const DriverUpsertData = z.object({
+  driver_id: z.string().regex(/^dr-[a-zA-Z0-9_-]+$/, "VALUE_INVALID: driver id must be a slug."),
+  created: z.boolean(),
+});
+
+/** `driver.set_value` — {driver_id, scenario_id, period_id, value_decimal} → {ok, recalc}. */
+export const DriverSetValueArgs = z
+  .object({
+    driver_id: z.string().regex(/^dr-[a-zA-Z0-9_-]+$/, "VALUE_INVALID: driver id must be a slug."),
+    scenario_id: Uuid,
+    period_id: FiscalPeriodId,
+    value_decimal: DecimalString,
+  })
+  .strict();
+export const DriverSetValueData = z.object({
+  ok: z.literal(true),
+  recalc: RecalcReport,
+  value_decimal: DecimalString,
+});
+
+/** `driver.import` — {file_path, mapping_id} → {batch_id} (API-SPEC §2; `import.parse` pipeline). */
+export const DriverImportArgs = z
+  .object({
+    file_path: z.string().min(1, "FILE_PATH_REQUIRED"),
+    mapping_id: ImportMappingRef,
+  })
+  .strict();
+export const DriverImportData = z.object({
+  batch_id: Uuid,
+});
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -761,6 +848,9 @@ export const CommandArgs = {
   "model.cell.set.v1": ModelCellSetArgs,
   "model.recalc": ModelRecalcArgs,
   "model.inspect": ModelInspectArgs,
+  "driver.upsert": DriverUpsertArgs,
+  "driver.set_value": DriverSetValueArgs,
+  "driver.import": DriverImportArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;
