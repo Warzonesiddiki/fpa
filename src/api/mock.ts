@@ -738,6 +738,28 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
+    case "model.inspect": {
+      const { line_id, period_id } = args as { line_id: string; period_id: string };
+      // Preview-mock mirror: `model.cell.set.v1` stores cells under `${scenario_id}:${line_id}:${period_id}`;
+      // inspection is scenario-agnostic here (read-only preview), so find the cell across scenarios.
+      const match = [...modelCells.entries()].find(([key]) =>
+        key.endsWith(`:${line_id}:${period_id}`),
+      );
+      const cell = match ? modelCells.get(match[0]) : undefined;
+      return {
+        data: {
+          line_id,
+          period_id,
+          formula: cell?.formula ?? null,
+          computed_text: cell?.value ?? null,
+          error_code: null,
+          precedents: [],
+          dependents: [],
+          cycle: null,
+          is_cycle: false,
+        },
+      };
+    }
     default:
       return {
         error: {

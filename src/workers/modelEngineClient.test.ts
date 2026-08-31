@@ -81,4 +81,17 @@ describe("modelEngineClient (single-flight queue)", () => {
     client.destroy();
     expect(destroy).toHaveBeenCalledTimes(1);
   });
+
+  it("inspectCell returns formula and precedence data through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+    await client.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "10.00" });
+    // B2 = row 2, col B (P01) = LINES[0] / PERIODS[0]; =B2+5 is a direct cell reference.
+    await client.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=B2+5" });
+    const result = await client.inspectCell(LINES[0].id, PERIODS[1].id);
+    expect(result.formula).toBe("=B2+5");
+    expect(result.precedents.length).toBeGreaterThanOrEqual(1);
+    expect(result.is_cycle).toBe(false);
+    expect(result.cycle).toBeNull();
+  });
 });

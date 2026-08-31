@@ -709,6 +709,35 @@ export const ModelRecalcData = z.object({
   issues: z.array(RecalcCellIssue).default([]),
 });
 
+/** `model.inspect` — read-only formula inspection (F-012 · M3-2 · FORMULA-ENGINE-SPEC §6). */
+export const ModelInspectArgs = z
+  .object({
+    line_id: Uuid,
+    period_id: FiscalPeriodId,
+  })
+  .strict();
+export type ModelInspectArgs = z.infer<typeof ModelInspectArgs>;
+
+export const CellRef = z.object({
+  line_id: z.string().nullable(),
+  period_id: z.string().nullable(),
+  sheet: z.number().int(),
+  col: z.number().int(),
+  row: z.number().int(),
+});
+
+export const ModelInspectData = z.object({
+  line_id: z.string(),
+  period_id: z.string(),
+  formula: z.string().nullable(),
+  computed_text: z.string().nullable(),
+  error_code: z.string().nullable(),
+  precedents: z.array(CellRef),
+  dependents: z.array(CellRef),
+  cycle: z.array(CellRef).nullable(),
+  is_cycle: z.boolean(),
+});
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -731,6 +760,7 @@ export const CommandArgs = {
   "import.rollback": ImportRollbackArgs,
   "model.cell.set.v1": ModelCellSetArgs,
   "model.recalc": ModelRecalcArgs,
+  "model.inspect": ModelInspectArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

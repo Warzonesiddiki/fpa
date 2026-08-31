@@ -190,4 +190,59 @@ describe("ModelEngine (HyperFormula graph, FORMULA-ENGINE-SPEC §5)", () => {
     e.loadGrid({ lines: LINES, periods: PERIODS });
     expect(e.getCell(LINES[0].id, PERIODS[0].id).amount_text).toBeNull();
   });
+
+  // ── inspectCell (M3-2 · FORMULA-ENGINE-SPEC §6) ────────────────────────────────
+
+  it("inspectCell returns formula, error, and empty deps for a manual cell", () => {
+    const e = engineWithLayout();
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "100.00" });
+    const r = e.inspectCell(LINES[0].id, PERIODS[0].id);
+    expect(r.formula).toBeNull();
+    expect(r.computed_text).toBe("100.00");
+    expect(r.error_code).toBeNull();
+    expect(r.precedents).toEqual([]);
+    expect(r.dependents).toEqual([]);
+    expect(r.cycle).toBeNull();
+    expect(r.is_cycle).toBe(false);
+  });
+
+  it("inspectCell traces precedents and dependents of a formula cell", () => {
+    const e = engineWithLayout();
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "10.00" });
+    e.setCell({ line_id: LINES[1].id, period_id: PERIODS[0].id, formula: "=B2+5" });
+    // B2 = row 2, col 1 (P01) = line 0 / period 0. Setting LINES[1] (row 3, col B)
+    // formula: =B2+5 → precedents of LINES[1] should include line 0 / period 0.
+    const r = e.inspectCell(LINES[1].id, PERIODS[0].id);
+    expect(r.formula).toBe("=B2+5");
+    expect(r.error_code).toBeNull();
+    expect(r.precedents.length).toBeGreaterThanOrEqual(1);
+    // At least one precedent should point back to LINES[0] (the value cell).
+    const hasSource = r.precedents.some(
+      (p) => p.line_id === LINES[0].id && p.period_id === PERIODS[0].id,
+    );
+    expect(hasSource).toBe(true);
+    // The value cell should list this formula cell as a dependent.
+    const dep = e.inspectCell(LINES[0].id, PERIODS[0].id);
+    const hasDep = dep.dependents.some(
+      (d) => d.line_id === LINES[1].id && d.period_id === PERIODS[0].id,
+    );
+    expect(hasDep).toBe(true);
+  });
+
+  it("inspectCell returns REFERENCE_BROKEN for an unknown cell", () => {
+    const e = engineWithLayout();
+    const r = e.inspectCell("bogus-line", PERIODS[0].id);
+    expect(r.error_code).toBe("REFERENCE_BROKEN");
+    expect(r.formula).toBeNull();
+    expect(r.computed_text).toBeNull();
+  });
+
+  it("inspectCell returns empty fields on an unloaded engine", () => {
+    const e = new ModelEngine();
+    const r = e.inspectCell(LINES[0].id, PERIODS[0].id);
+    expect(r.error_code).toBeNull();
+    expect(r.precedents).toEqual([]);
+    expect(r.dependents).toEqual([]);
+    expect(r.cycle).toBeNull();
+  });
 });

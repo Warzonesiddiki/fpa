@@ -273,6 +273,7 @@
   "modelNav": {
     "label": "Model",
     "grid": "Model Grid",
+    "inspect": "Formula Inspector",
     "coa": "Chart of Accounts",
     "calendar": "Fiscal Calendar",
     "packs": "Pack Studio"
@@ -309,6 +310,27 @@
     "gridRegion": "Model grid",
     "recalcStatus": "Recalc: {{dirty}} dirty · {{changed}} changed · {{ms}}ms",
     "audited": " · audit #{{id}}"
+  },
+  "inspectorPage": {
+    "title": "Formula Inspector",
+    "lineLabel": "Line",
+    "periodLabel": "Period",
+    "selectLine": "Select a line…",
+    "selectPeriod": "Select a period…",
+    "inspect": "Inspect cell",
+    "empty": "Select a line and a period, then Inspect cell to trace formulas.",
+    "resultLabel": "Inspection result",
+    "formula": "Formula",
+    "computedText": "Computed",
+    "errorCode": "Error code",
+    "isCycle": "Circular?",
+    "precedents": "Precedents",
+    "dependents": "Dependents",
+    "cyclePath": "Cycle path",
+    "noPrecedents": "No precedents — this cell has no formula inputs.",
+    "noDependents": "No dependents — nothing references this cell.",
+    "error.noGrid": "The model grid could not be loaded.",
+    "error.generic": "Inspection failed. Retry."
   },
   "dashboard": {
     "title": "Dashboard",

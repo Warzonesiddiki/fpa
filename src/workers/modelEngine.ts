@@ -15,7 +15,7 @@
  *  * No invented error codes — only the locked ERROR-HANDLING taxonomy (B20).
  */
 
-import { HyperFormula, type DetailedCellError } from "hyperformula";
+import { HyperFormula, type DetailedCellError, type SimpleCellAddress } from "hyperformula";
 import Decimal from "decimal.js";
 import { findUnsupportedFunction } from "@/api/schema";
 
@@ -66,6 +66,41 @@ export interface GridCellView {
   manual_override: boolean;
 }
 
+/**
+ * Inspection result for a single cell (M3-2 · FORMULA-ENGINE-SPEC §6).
+ * `precedents`/`dependents` are `{line_id, period_id}` references resolved from the HF
+ * address-space; `cycle` is the cycle path when `error_code === "FORMULA_CYCLE"`.
+ */
+export interface CellInspectResult {
+  /** The inspected cell's coordinates. */
+  line_id: string;
+  period_id: string;
+  /** Formula text, if any. */
+  formula: string | null;
+  /** Current computed display value. */
+  computed_text: string | null;
+  /** Error code (`FORMULA_CYCLE`, `REFERENCE_BROKEN`, or null). */
+  error_code: string | null;
+  /** Cells that this cell references (precedents). */
+  precedents: CellRef[];
+  /** Cells that reference this cell (dependents). */
+  dependents: CellRef[];
+  /** Cycle path when the cell is part of a cycle (ordered list of cell refs). */
+  cycle: CellRef[] | null;
+  /** Whether HF considers this cell part of a cycle. */
+  is_cycle: boolean;
+}
+
+/** A resolved reference within the grid: `{line_id, period_id, sheet, col, row}`. */
+export interface CellRef {
+  line_id: string | null;
+  period_id: string | null;
+  /** Raw HF address sheet index (0-based). */
+  sheet: number;
+  col: number;
+  row: number;
+}
+
 /** A recalc envelope in the API-SPEC §3 shape the grid/worker exchange. */
 export interface EngineRecalcReport {
   dirty_cells: number;
@@ -112,6 +147,10 @@ export class ModelEngine {
   private manualAmounts = new Map<string, string>();
   /** Manual-override flag per cell (GLOSSARY: Manual Override — an audited escape hatch). */
   private overrides = new Set<string>();
+  /** Reverse lookup: row index → line_id. */
+  private rowLine = new Map<number, string>();
+  /** Reverse lookup: col index → period_id. */
+  private colPeriod = new Map<number, string>();
 
   constructor(scale = 2) {
     this.hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
@@ -135,6 +174,8 @@ export class ModelEngine {
     this.dirtyLines.clear();
     this.manualAmounts.clear();
     this.overrides.clear();
+    this.rowLine.clear();
+    this.colPeriod.clear();
 
     if (this.sheetId !== null) {
       this.hf.removeSheet(this.sheetId);
@@ -149,8 +190,10 @@ export class ModelEngine {
     // Row 0 = header (line label + period codes) so A1 refs in formulas are 1-based & readable.
     this.hf.setCellContents({ sheet: sheetId, col: 0, row: 0 }, "Line");
     this.periods.forEach((p, ci) => {
-      this.periodCol.set(p.id, ci + 1);
-      this.hf.setCellContents({ sheet: sheetId, col: ci + 1, row: 0 }, p.code);
+      const col = ci + 1;
+      this.periodCol.set(p.id, col);
+      this.colPeriod.set(col, p.id);
+      this.hf.setCellContents({ sheet: sheetId, col, row: 0 }, p.code);
     });
     // Derived columns after the real periods.
     const ytdCol = this.periods.length + 1;
@@ -161,6 +204,7 @@ export class ModelEngine {
     this.lines.forEach((line, ri) => {
       const row = ri + 1;
       this.lineRow.set(line.id, row);
+      this.rowLine.set(row, line.id);
       this.hf.setCellContents({ sheet: sheetId, col: 0, row }, line.label);
       // YTD = SUM(period1..periodYTD); FY = SUM(period1..periodN). Deterministic formulas.
       const first = 1;
@@ -274,6 +318,119 @@ export class ModelEngine {
     const ytd = this.hfValueToText(this.hf.getCellValue({ sheet: sheetId, col: ytdCol, row }));
     const fy = this.hfValueToText(this.hf.getCellValue({ sheet: sheetId, col: fyCol, row }));
     return { ytd, fy };
+  }
+
+  /**
+   * Inspect a single cell (M3-2 · FORMULA-ENGINE-SPEC §6): return its formula, computed text,
+   * error code, and the set of precedent/dependent cells in the grid. Read-only, never mutates.
+   */
+  inspectCell(line_id: string, period_id: string): CellInspectResult {
+    if (this.sheetId === null) {
+      return {
+        line_id,
+        period_id,
+        formula: null,
+        computed_text: null,
+        error_code: null,
+        precedents: [],
+        dependents: [],
+        cycle: null,
+        is_cycle: false,
+      };
+    }
+    const row = this.lineRow.get(line_id);
+    const col = this.periodCol.get(period_id);
+    if (row === undefined || col === undefined) {
+      return {
+        line_id,
+        period_id,
+        formula: null,
+        computed_text: null,
+        error_code: "REFERENCE_BROKEN",
+        precedents: [],
+        dependents: [],
+        cycle: null,
+        is_cycle: false,
+      };
+    }
+
+    const sheetId = this.sheetId;
+    const address = { sheet: sheetId, col, row };
+    const raw = this.hf.getCellValue(address);
+    const formula = this.hf.getCellFormula(address) ?? null;
+    const computed_text = this.cellAmount(line_id, period_id) ?? this.hfValueToText(raw);
+    const error_code = this.hfErrorCode(raw);
+    const is_cycle = error_code === "FORMULA_CYCLE";
+
+    // Resolve HF cell addresses to our grid coordinates. `getCellPrecedents`/`getCellDependents`
+    // return `(SimpleCellRange | SimpleCellAddress)[]` — we only trace single-cell refs for now
+    // (range refs are expanded in a later milestone; this is the error-inspection path).
+    const precedents = this.hf
+      .getCellPrecedents(address)
+      .filter((a): a is SimpleCellAddress => "col" in a)
+      .map((a) => this.resolveRef(a));
+    const dependents = this.hf
+      .getCellDependents(address)
+      .filter((a): a is SimpleCellAddress => "col" in a)
+      .map((a) => this.resolveRef(a));
+
+    // When the cell is a cycle, build the cycle path by tracing deep precedents.
+    let cycle: CellRef[] | null = null;
+    if (is_cycle) {
+      cycle = this.traceCyclePath({ sheet: sheetId, col, row } as SimpleCellAddress);
+    }
+
+    return {
+      line_id,
+      period_id,
+      formula,
+      computed_text,
+      error_code,
+      precedents,
+      dependents,
+      cycle,
+      is_cycle,
+    };
+  }
+
+  /**
+   * Resolve an HF `SimpleCellAddress` back to our grid coordinates. The label column (col 0) or
+   * derived columns (col > periodCount) have no period_id. Returns `null` placeholders when the
+   * address falls outside the loaded grid.
+   */
+  private resolveRef(addr: SimpleCellAddress): CellRef {
+    const line_id = this.rowLine.get(addr.row) ?? null;
+    const period_id = this.colPeriod.get(addr.col) ?? null;
+    return { line_id, period_id, sheet: addr.sheet, col: addr.col, row: addr.row };
+  }
+
+  /**
+   * Walk precedents recursively to find the full cycle path. A cycle is detected when a cell
+   * (indirectly) references itself. Returns the path ordered from the inspected cell through the
+   * cycle loop, or `null` if no cycle is found.
+   */
+  private traceCyclePath(
+    start: SimpleCellAddress,
+    visited = new Set<string>(),
+    path: CellRef[] = [],
+  ): CellRef[] {
+    const key = `${start.sheet}:${start.col}:${start.row}`;
+    if (visited.has(key)) {
+      // Found a loop — close the cycle.
+      const loopStart = path.findIndex(
+        (r) => r.sheet === start.sheet && r.col === start.col && r.row === start.row,
+      );
+      return loopStart >= 0 ? path.slice(loopStart) : [...path, this.resolveRef(start)];
+    }
+    if (visited.size > 64) return []; // safety limit
+    visited.add(key);
+
+    const pre = this.hf.getCellPrecedents(start).filter((a): a is SimpleCellAddress => "col" in a);
+    for (const p of pre) {
+      const subPath = this.traceCyclePath(p, visited, [...path, this.resolveRef(start)]);
+      if (subPath.length > 0) return subPath;
+    }
+    return [];
   }
 
   private readCell(line_id: string, period_id: string): GridCellView {

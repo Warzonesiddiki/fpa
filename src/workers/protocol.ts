@@ -10,7 +10,7 @@
  */
 import type { ModelEngine } from "./modelEngine";
 
-export type EngineOp = "loadGrid" | "setCell" | "recalc" | "getGrid" | "getDerived";
+export type EngineOp = "loadGrid" | "setCell" | "recalc" | "getGrid" | "getDerived" | "inspectCell";
 
 export interface EngineRequest {
   id: number;
@@ -51,6 +51,10 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
       case "getDerived": {
         const { lineId } = req.args as { lineId: string };
         return { id: req.id, ok: true, data: engine.getDerived(lineId) };
+      }
+      case "inspectCell": {
+        const { line_id, period_id } = req.args as { line_id: string; period_id: string };
+        return { id: req.id, ok: true, data: engine.inspectCell(line_id, period_id) };
       }
       default:
         return {

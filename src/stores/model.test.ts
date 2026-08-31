@@ -154,4 +154,31 @@ describe("model grid store (S-041)", () => {
     expect(s.status).toBe("populated");
     expect(s.derived[LINE].ytd).toBe("5");
   });
+
+  it("inspects a cell formula through the engine and returns the precedence/dependency trace", async () => {
+    mockLoad();
+    await useModelGridStore.getState().load();
+    // Engine layout: row 1 = LINE (first line) → cell "B2", row 2 = SRC (second line) → "B3";
+    // period P01 = col 1 (column B). So `=B3+5` on LINE references SRC at P01.
+    const SRC = "3f9f2c9e-9f8b-4e2d-9a1c-400000000011";
+    await useModelGridStore.getState().setCell({ line_id: SRC, period_id: PERIOD, value: "10.00" });
+    await useModelGridStore.getState().setCell({
+      line_id: LINE,
+      period_id: PERIOD,
+      formula: "=B3+5",
+    });
+
+    const r = await useModelGridStore.getState().inspectCell(LINE, PERIOD);
+    expect(r.line_id).toBe(LINE);
+    expect(r.period_id).toBe(PERIOD);
+    expect(r.formula).toBe("=B3+5");
+    expect(r.error_code).toBeNull();
+    expect(r.is_cycle).toBe(false);
+    // The direct precedent (B3 = second line, first period) resolves to the src line/period.
+    expect(r.precedents).toContainEqual(
+      expect.objectContaining({ line_id: SRC, period_id: PERIOD }),
+    );
+    // Read-only — no persistence command is fired for inspection.
+    expect(callMock).not.toHaveBeenCalledWith("model.inspect", expect.anything());
+  });
 });

@@ -8,6 +8,7 @@
  */
 import { ModelEngine } from "./modelEngine";
 import type {
+  CellInspectResult,
   EngineRecalcReport,
   GridCellView,
   GridLayout,
@@ -22,6 +23,7 @@ export interface ModelEngineClient {
   recalc(): Promise<EngineRecalcReport>;
   getGrid(): Promise<GridCellView[]>;
   getDerived(lineId: string): Promise<{ ytd: string | null; fy: string | null }>;
+  inspectCell(lineId: string, periodId: string): Promise<CellInspectResult>;
   destroy(): void;
 }
 
@@ -65,6 +67,9 @@ class SingleFlight implements ModelEngineClient {
   }
   getDerived(lineId: string): Promise<{ ytd: string | null; fy: string | null }> {
     return this.enqueue("getDerived", { lineId });
+  }
+  inspectCell(lineId: string, periodId: string): Promise<CellInspectResult> {
+    return this.enqueue("inspectCell", { line_id: lineId, period_id: periodId });
   }
   destroy(): void {
     this.transport.destroy();

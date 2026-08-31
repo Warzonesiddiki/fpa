@@ -19,6 +19,7 @@ import type { ScreenState } from "@/components/ui/StatePanel";
 import { createModelEngineClient } from "@/workers/modelEngineClient";
 import type { ModelEngineClient } from "@/workers/modelEngineClient";
 import type {
+  CellInspectResult,
   EngineRecalcReport,
   GridCellView,
   ModelGridLine,
@@ -67,6 +68,7 @@ interface ModelGridState {
   client: ModelEngineClient | null;
   load: () => Promise<void>;
   setCell: (input: SetCellInput) => Promise<boolean>;
+  inspectCell: (lineId: string, periodId: string) => Promise<CellInspectResult>;
   recalcAll: () => Promise<void>;
   retry: () => Promise<void>;
   reset: () => void;
@@ -185,6 +187,13 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       set({ status: "error", error: err as BridgeError });
       return false;
     }
+  },
+
+  inspectCell: async (lineId: string, periodId: string): Promise<CellInspectResult> => {
+    const s = get();
+    if (!s.client) throw new Error("MODEL_GRID_NOT_LOADED: load the grid first");
+    // Read-only — no audit event (AUTH-SPEC §3: inspect is session-unlocked only).
+    return s.client.inspectCell(lineId, periodId);
   },
 
   recalcAll: async () => {

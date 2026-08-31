@@ -95,4 +95,24 @@ describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
       expect(r.changed_cells).toEqual([]);
     }
   });
+
+  it("dispatches inspectCell through the protocol", () => {
+    const engine = new ModelEngine();
+    engine.loadGrid({ lines: LINES, periods: PERIODS });
+    engine.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "10.00" });
+    // LINES[0] is row 2 (index 0), PERIODS[0] is col 1 (B).
+    engine.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=B2+5" });
+    const res = handleEngineMessage(engine, {
+      id: 7,
+      op: "inspectCell",
+      args: { line_id: LINES[0].id, period_id: PERIODS[1].id },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const r = res.data as { formula: string | null; precedents: unknown[] };
+      expect(r.formula).toBe("=B2+5");
+      // =B2+5 references B2 (col 1, row 2 = LINES[0]:PERIODS[0]) — resolved as single cell.
+      expect(r.precedents.length).toBeGreaterThanOrEqual(1);
+    }
+  });
 });
