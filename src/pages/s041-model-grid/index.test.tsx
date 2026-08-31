@@ -1,0 +1,219 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
+import { ModelGridPage } from "./index";
+import { useModelGridStore } from "@/stores/model";
+
+const callMock = vi.fn();
+vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
+
+const { companyIdMock } = vi.hoisted(() => ({ companyIdMock: vi.fn() }));
+vi.mock("@/stores/session", () => {
+  const getState = () => ({ companyId: companyIdMock(), companyName: "Meridian" });
+  const useSessionStore = ((selector: (s: unknown) => unknown) =>
+    selector(getState())) as unknown as (typeof import("@/stores/session"))["useSessionStore"];
+  Object.assign(useSessionStore, { getState });
+  return { useSessionStore };
+});
+
+const CO = "3f9f2c9e-9f8b-4e2d-9a1c-000000000001";
+const LINE = "3f9f2c9e-9f8b-4e2d-9a1c-400000000010";
+
+const ACCOUNTS = [
+  { id: LINE, code: "4000", name: "Revenue" },
+  { id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000011", code: "4100", name: "Software Licenses" },
+];
+
+const CALENDAR = {
+  fiscal_years: [
+    {
+      fy_label: "FY2026",
+      periods: [
+        { period_no: 1, code: "P01" },
+        { period_no: 2, code: "P02" },
+        { period_no: 3, code: "P03" },
+        { period_no: 4, code: "P04" },
+        { period_no: 5, code: "P05" },
+        { period_no: 6, code: "P06" },
+        { period_no: 7, code: "P07" },
+        { period_no: 8, code: "P08" },
+        { period_no: 9, code: "P09" },
+        { period_no: 10, code: "P10" },
+        { period_no: 11, code: "P11" },
+        { period_no: 12, code: "P12" },
+      ],
+    },
+  ],
+};
+
+function mockLoad() {
+  callMock.mockImplementation((cmd: string) => {
+    if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+    if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+    return Promise.resolve({});
+  });
+}
+
+function renderPage() {
+  return render(
+    // `<main>` mirrors the app shell's content landmark so the axe `region` rule passes.
+    <main>
+      <MemoryRouter initialEntries={["/app/model/grid"]}>
+        <Routes>
+          <Route path="/app/model/grid" element={<ModelGridPage />} />
+          <Route path="/app/model/packs" element={<div>packs screen</div>} />
+        </Routes>
+      </MemoryRouter>
+    </main>,
+  );
+}
+
+/**
+ * AG Grid + the in-process HyperFormula graph render asynchronously (~1.5s), so the default
+ * 1000ms query timeout is too tight. Wait on the first data cell (`col-id="p-{period_id}"`,
+ * row 0 = first line) with a generous budget instead of relying on `findByText`.
+ */
+async function waitForGridCell(container: HTMLElement): Promise<HTMLElement> {
+  await waitFor(
+    () => {
+      expect(container.querySelector('[col-id="p-fp-2026-p01"]')).not.toBeNull();
+    },
+    { timeout: 8000 },
+  );
+  return container.querySelector('[col-id="p-fp-2026-p01"]') as HTMLElement;
+}
+
+describe("S-041 Model Grid (F-012)", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    useModelGridStore.getState().reset();
+  });
+
+  it("renders the loading state while data is in flight", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return new Promise(() => undefined);
+      return Promise.resolve({});
+    });
+    renderPage();
+    expect(screen.getByRole("heading", { name: "Model Grid" })).toBeInTheDocument();
+    // The StatePanel loading role is announced.
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("renders the empty state with a Pack Studio action when there are no lines", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve([]);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      return Promise.resolve({});
+    });
+    renderPage();
+    expect(await screen.findByText(/No lines/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Browse Pack Studio/ }));
+    expect(await screen.findByText("packs screen")).toBeInTheDocument();
+  });
+
+  it("renders the error state with the locked code and a working Retry", async () => {
+    callMock.mockRejectedValue({
+      code: "FILE_CORRUPT",
+      userMessage: "This Company file could not be read.",
+      httpStatus: 500,
+      retryable: true,
+    });
+    const { container } = renderPage();
+    expect(
+      await screen.findByText("This Company file could not be read.", {}, { timeout: 8000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("FILE_CORRUPT")).toBeInTheDocument();
+
+    // Retry succeeds on the second attempt.
+    mockLoad();
+    await userEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    const cell = await waitForGridCell(container);
+    expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
+    expect(cell).not.toBeNull();
+  }, 20000);
+
+  it("renders the populated grid with money cells after loading", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    // Line rows from coa.list render in the AG Grid.
+    expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
+    expect(screen.getByText("4100 · Software Licenses")).toBeInTheDocument();
+    // Period headers.
+    expect(screen.getByText("P01")).toBeInTheDocument();
+    expect(screen.getByText("P02")).toBeInTheDocument();
+    // Empty cells render as dash (MoneyCell empty state), never a float.
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    });
+  }, 20000);
+
+  it("edits a cell through the formula bar, shows the exact amount, and emits the audit", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    // Select the first line's first-period cell via its AG Grid `col-id` (each data cell is a
+    // `role=gridcell` div carrying `col-id="p-{period_id}"`; row 0 = first line).
+    const cell = await waitForGridCell(container);
+    expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
+    await userEvent.click(cell);
+
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "182500.00");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9001,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+
+    // model.cell.set.v1 is called (audited write) and the exact amount renders.
+    await waitFor(() => {
+      expect(callMock).toHaveBeenCalledWith("model.cell.set.v1", {
+        line_id: LINE,
+        scenario_id: expect.any(String),
+        period_id: "fp-2026-p01",
+        value: "182500.00",
+        formula: null,
+        manual_override: false,
+      });
+    });
+    expect(await screen.findByText(/audit #9001/)).toBeInTheDocument();
+    // MoneyCell formats the exact decimal string — it appears in the edited period cell AND the
+    // derived YTD/FY columns (the line's only value feeds both), hence findAll.
+    expect(await screen.findAllByText("USD 182,500.00", {}, { timeout: 8000 })).not.toHaveLength(0);
+  }, 20000);
+
+  it("edits a formula via the formula bar and the engine computes the result", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    const cell = await waitForGridCell(container);
+    expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
+    await userEvent.click(cell);
+
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "=1+1");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9002,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+    // The real HyperFormula graph (in-process transport in jsdom) computes =1+1 → 2. It appears
+    // in the edited period cell and the derived YTD/FY columns, so findAll is required.
+    expect(await screen.findAllByText("USD 2.00", {}, { timeout: 8000 })).not.toHaveLength(0);
+  }, 20000);
+
+  it("keeps the grid axe-clean", async () => {
+    mockLoad();
+    renderPage();
+    await screen.findByText("4000 · Revenue");
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    });
+    const results = await axe(document.body);
+    // a11y gate (ACCESSIBILITY.md §3): zero violations of WCAG 2.2 AA rules.
+    expect(results.violations).toEqual([]);
+  });
+});

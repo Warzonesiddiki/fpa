@@ -1,6 +1,6 @@
 # FORMULA-ENGINE-SPEC.md
 
-> OneFP&A · v1.0.0 · **The supported function set, syntax, precedence, and error semantics for the Model grid (F-012).** Engine: HyperFormula 3.0.4 in a Web Worker; all authored Formulas live in `model_values.formula`. No function outside the set — anything else fails `FORMULA_UNSUPPORTED_FUNCTION` (never silent).
+> OneFP&A · v1.0.0 · **The supported function set, syntax, precedence, and error semantics for the Model grid (F-012).** Engine: HyperFormula 3.4.0 in a Web Worker (pinned in package.json; the 3.0.4 line in earlier drafts predates the lockfile). All authored Formulas live in `model_values.formula`; nothing outside the set — anything else fails `FORMULA_UNSUPPORTED_FUNCTION` (never silent).
 
 ---
 

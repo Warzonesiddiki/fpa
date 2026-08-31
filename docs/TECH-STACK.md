@@ -37,9 +37,9 @@
 | **TypeScript** | `5.9.3` (strict) | Compile-time contract for the whole UI; ban `any` (except typed boundaries) |
 | **Vite** | `8.0.16` | Fast dev/build; webworker + assets handling; bundling for Tauri |
 | **Tailwind CSS** | `4.3.3` + `@tailwindcss/vite` | Token-driven utility CSS, deterministic output |
-| **AG Grid Community** | `35.3.0` (`ag-grid-community`, `ag-grid-react`) | The only table engine proven at 1M virtualized financial rows |
+| **AG Grid Community** | `36.1.0` (`ag-grid-community`, `ag-grid-react`) | The only table engine proven at 1M virtualized financial rows |
 | **Apache ECharts** | `5.6.0` | Canvas charts at 100k points; waterfall/tornado/seasonality; deterministic export |
-| **HyperFormula** | `3.0.4` | Excel-parity formula engine (Cell refs, cross-Sheet, cycles) — runs in a Web Worker |
+| **HyperFormula** | `3.4.0` | Excel-parity formula engine (Cell refs, cross-Sheet, cycles) — runs in a Web Worker |
 | **Zod** | `4.4.3` | Schema validation for every IPC input at the UI boundary (gate, not guess) |
 | **Zustand** | `5.0.13` + `persist` | Minimal, selector-based UI state; no server |
 | **@tanstack/react-virtual** | `3.13.24` | Row/column virtualization in grids and report tables |

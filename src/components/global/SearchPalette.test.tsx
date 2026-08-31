@@ -67,8 +67,15 @@ describe("S-003 Global Search Palette (⌘K)", () => {
     const { onClose } = renderPalette();
     const user = userEvent.setup();
     await user.type(screen.getByRole("combobox", { name: "Search" }), "model");
-    const coa = await screen.findByRole("option", { name: /Chart of Accounts/ });
-    expect(coa).toHaveAttribute("aria-selected", "true");
+    // "model" now surfaces the Model Grid screen first (S-041), then the COA and Calendar
+    // screens — SCREEN_INDEX order: grid < coa < calendar.
+    const grid = await screen.findByRole("option", { name: /Model Grid/ });
+    expect(grid).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("option", { name: /Chart of Accounts/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("option", { name: /Fiscal Calendar/ })).toHaveAttribute(
       "aria-selected",

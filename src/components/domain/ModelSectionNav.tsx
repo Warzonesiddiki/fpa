@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 const TABS = [
+  { to: "/app/model/grid", key: "grid" },
   { to: "/app/model/coa", key: "coa" },
   { to: "/app/model/calendar", key: "calendar" },
   { to: "/app/model/packs", key: "packs" },
