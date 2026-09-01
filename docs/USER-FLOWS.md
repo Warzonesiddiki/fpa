@@ -56,18 +56,34 @@
      import.” and returns to S-030; it never retries the expired id.
 6. Preview: at most the first 50 **valid mapped** rows plus counts, formatted from integer minor
    units. Invalid raw rows are represented by HARD findings and are not reconstructed in the UI.
-7. **S-032 Tie-Out:** debits ₹41,283,000.00 vs credits ₹41,283,000.05.
-   - *Branch:* diff ₹0.05 → exact row highlighted (one credit line rounding) → user selects "Exclude row (logged)" → tie passes; excluded row retained in batch metadata + Audit Trail.
-8. Commit: batch `2026-08-30_001`, SHA-256 shown, mapping version v3, 47,999 rows.
-9. Post-verify: **S-054 Variance** for P08 — Actuals appear; **S-060 P&L** ties; Health Check green; **S-070 Audit** shows batch.
-10. **Success:** monthly actuals loaded < 5 min.
+7. **S-032 Tie-Out:** the registered Rust command reports exact integer-minor-unit debit/credit/
+   difference totals, valid rows, currency, mapping version, source hash, and only source rows it
+   can actually attribute by posting reference.
+   - *Branch balanced:* a valid batch name enables authoritative Commit.
+   - *Branch unbalanced:* Commit remains engine-blocked. The user may select only an attributed row
+     and must enter a reason. Because `import.tieout` accepts no exclusions, the browser does not
+     invent adjusted totals; `import.commit` reapplies the exclusions and reruns validation and
+     Tie-Out before it can write anything.
+8. Commit batch `2026-08-30_001`: one immediate transaction persists retained GL/IC rows and an
+   HMAC audit event containing SHA-256, mapping id/version, exact totals/currency, batch name, and
+   every excluded line/reason. A duplicate hash hard-fails with `IMPORT_BATCH_HASH_EXISTS`; the
+   locked catalog has no override action.
+9. Return to **S-030**: registered, Company-scoped history shows exact persisted terminal metadata
+   in 25-row pages. A currently committed row may be rolled back with a required reason; Rust
+   deletes only that batch's facts, preserves its terminal history row, and links to the strictly
+   older committed batch of the same kind. Audit-degraded sessions can inspect but cannot mutate.
+10. Post-verify in **S-054/S-060/S-070** remains a later milestone. M2-4 does not fabricate a
+    Variance route from Commit success. **Success target:** monthly actuals loaded < 5 min.
 
-**Current implementation boundary (M2-3):** steps 1–6 are reachable through typed production IPC.
-Validation is read-only, its response is strict snake_case, stale parse/mapping responses are
-invalidated, and S-031 shows bounded finding lists plus the first 50 valid mapped rows. Tie-Out,
-exclusions, warning acknowledgement, and Commit remain later units and are visibly unavailable.
-The current parser is synchronous/in-memory and has no typed progress event or cancel command, so
-those controls are not shown.
+**Current implementation boundary (M2-4):** steps 1–9 are reachable through typed production IPC,
+with stale Company/source/mapping/Tie-Out/history/rollback responses invalidated. Validation and
+Tie-Out are read-only; Commit and rollback are transactionally audited and blocked by a broken
+audit chain. Warning acknowledgement, duplicate override, post-exclusion preview, and Variance
+navigation are not catalogued and are not simulated. The current parser remains synchronous and
+in-memory, with no progress/cancel command, ZIP support, or 500k benchmark evidence. Source Vault
+persistence is also gated: `source_files` is metadata-only and there is no compressed payload
+mutation plus authenticated Company-container reseal path, so no plaintext or sidecar copy is
+written.
 
 **Fallback path (always available):** any connector failure → Manual Import; any file failure → "Download GL dump from your ERP following the GL Template" (help link).
 

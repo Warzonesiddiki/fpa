@@ -18,10 +18,11 @@
 | Dirty cell queue (pending writes) | local (grid) | ephemeral | Flush on commit, blur, save, lock, app close (with confirm) |
 | Recalculation status (dirty cells, cycles, duration) | global | ephemeral | On recalc completion / edit enqueue |
 | Formula worker instance (HyperFormula) | global | ephemeral (webview worker) | Rebuilt on Model/Scenario switch; disposed on lock |
-| Import parse/mapping/validation working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, `mappingStatus/id/version`, `validationStatus/error/result`) + native in-memory parsed rows | On Company/source/kind/mapping change, app-process restart, the native 30-minute parse TTL, or a newer parse/mapping/validation request token. Validation is read-only; expiry returns to S-030 to re-parse and no progress checkpoint/resume is implemented. |
-| Import Batch list + statuses | global | persistent DB target; no registered typed `import.history` read cache/UI yet | On `import.commit`/`rollback`, connector `sync` completion once the read side exists |
+| Import parse/mapping/validation/Tie-Out/commit working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, mapping/validation/Tie-Out/commit status/error/result) + native in-memory parsed rows | On Company/source/kind/mapping change, app restart, native 30-minute parse TTL, or a newer operation token. Validation/Tie-Out are read-only; Commit is a Rust/DB write. Expiry returns to S-030 and no checkpoint/resume exists. S-032 batch-name/exclusion form drafts are local and parse-keyed. |
+| Import Batch history + rollback | active Company | persistent DB facts/audit metadata + page-scoped `importHistory` Zustand read cache (`page`, rows/meta, load/rollback status/error/result) | Clear on Company change; newest history request wins; successful rollback patches only the target row from the authoritative response. The registered read side uses 25-row pages. |
+| Source Vault payload | active Company | unavailable — no client cache or persisted `source_files` claim | Requires compressed bytes stored inside the SQLite image plus authenticated Company-container reseal. Until that lifecycle exists, commit writes no source copy/sidecar/metadata-only vault row. |
 | Connector health | global | persistent (DB `connectors`) + ephemeral last-pull | On sync run end, auth expiry |
-| Mapping templates | active Company | latest body persistent in `mapping_templates`/`mapping_columns`; current S-031 selection ephemeral in import store; historical definitions in HMAC audit events | Same-name save/version bump; no catalogued list/load/history command or template cache |
+| Mapping templates | active Company | latest body persistent in `mapping_templates`/`mapping_columns`; current S-031 selection ephemeral in import store; historical definitions in HMAC audit events | Same-name save/version bump; no catalogued mapping list/load/history command or template cache |
 | Active Company/Model + assumption register | session + global | active model id from Company lifecycle; persistent (DB `assumptions`, `assumption_values`) + read cache | Company open/unlock selects the model; on `assumption.list`/`upsert`; usage cache invalidates after a name change |
 | Scenario list + states | global | persistent (DB, cache) | On create/duplicate/approve/lock; state changes pushed by Rust event |
 | Scenario Version list | global | persistent (DB) | On lock/export/import |
@@ -49,7 +50,8 @@ src/stores/
 ├── sessionStore.ts        # session, company, lock (ephemeral)
 ├── modelStore.ts          # model/sheets/lines/current scenario+period (cache of DB)
 ├── gridStore.ts           # visible cell cache + dirty queue + undo stack (virtualized)
-├── import.ts              # Company-scoped S-030 parse + S-031 mapping and validation working set
+├── import.ts              # Company-scoped S-030→S-032 parse/map/validate/Tie-Out/commit working set
+├── importHistory.ts       # Company-scoped persistent history pages + audited rollback lifecycle
 ├── assumptionsStore.ts    # versioned register + exact period values + usage cache
 ├── connectorStore.ts      # health, runs, auth status
 ├── scenarioStore.ts       # scenarios, versions, states
@@ -74,8 +76,10 @@ src/stores/
 | Two rapid cell edits on same cell | Serialize via queue; last-write-wins only after both recalc responses; never interleave |
 | Import commit while grid editing | Commit takes a model-level Snapshot; edits re-applied on top with conflict dialog if line changed |
 | Undo during background recalc | Undo is disabled while recalc in flight (button state); no half-applied states |
-| HMR/reload/app restart during Parse/Map | The parse registry and Zustand working set are ephemeral; return to S-030 and re-parse. No checkpoint/resume command exists. A later `import.commit` still guards duplicate source hashes. |
-| Company/source/mapping changes while parse, mapping save, or validation is in flight | Independent monotonic request tokens invalidate late responses; validation also rechecks parse id, mapping id, and mapping version before publishing. Stale data cannot repopulate a changed Company/source/mapping. Native mapping writes derive Company from the writable session; validation performs no write. |
+| HMR/reload/app restart during Parse/Map/Tie-Out | The parse registry and import working set are ephemeral; return to S-030 and re-parse. No checkpoint/resume command exists. Persistent history survives, and `import.commit` still guards duplicate source hashes. |
+| Company/source/mapping changes while parse, mapping save, validation, Tie-Out, or Commit is in flight | Independent monotonic operation tokens invalidate late responses; every publish rechecks Company plus the relevant parse/mapping/version. Stale data cannot repopulate a changed working set. Native mapping/Commit writes derive Company from the writable session; validation/Tie-Out perform no write. |
+| Company/page changes while history load or rollback is in flight | The history store invalidates request and mutation tokens and verifies Company before publish/refetch. A late old-page response cannot replace the selected Company's page. Rust scopes history/rollback to the session Company. |
+| Concurrent same-source commits or repeated rollback | Commit hash check+insert and rollback status recheck+mutation each use an immediate transaction. At most one writer succeeds; the other receives the typed duplicate/already-rolled-back error and no second audit event. |
 | Lock scenario while worker has dirty cells | Flush or discard prompt before lock (audited); lock never applies over unflushed edits silently |
 | Export during partial recalc | Export waits for recalc quiescence (max 500ms) or blocks with `RECALC_IN_FLIGHT` |
 | Second instance | OS file lock → read-only, zero writes |

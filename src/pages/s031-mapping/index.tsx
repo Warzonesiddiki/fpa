@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -213,6 +213,7 @@ function SourceFacts({ parsed }: { parsed: ImportParseData }) {
 
 function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readOnly: boolean }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const mappingStatus = useImportStore((state) => state.mappingStatus);
   const mappingError = useImportStore((state) => state.mappingError);
   const mappingId = useImportStore((state) => state.mappingId);
@@ -298,6 +299,7 @@ function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readO
         mappingVersion={mappingVersion}
         readOnly={readOnly}
         onEditMapping={clearMapping}
+        onContinue={() => navigate("/app/import/commit")}
       />
     );
   }

@@ -70,12 +70,13 @@
 
 ### US-008 · F-007 GL Dump Import (primary) · P0 · (R) — *the flagship story*
 
-**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he parses it in S-030 and either selects bundled `canonical-v1` or defines and saves a custom map in S-031, **Then** the target pipeline is Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit; the Trial Balance Tie-Out passes to the cent; an Import Batch `2026-08-30_001` is committed with file SHA-256; Actuals for P08 appear and the variance screen for P08 refreshes. At M2-3, Parse→Normalize→Map→Validate→Preview is reachable through typed IPC: S-031 shows the actual mapping version, HARD/WARNING counts and scope, valid mapped row count, and at most the first 50 valid rows. Tie-Out/Commit remain visibly gated, and saved-map browsing is not claimed without a catalogued list/load command.
+**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he parses it in S-030 and either selects bundled `canonical-v1` or defines and saves a custom map in S-031, **Then** Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit is reachable through typed production IPC. S-031 shows the exact mapping version, HARD/WARNING counts and scope, valid row count, and at most the first 50 valid rows. A clean nonzero result continues to S-032, where Rust supplies exact totals/currency and attributable differences; the authoritative commit creates audited Import Batch `2026-08-30_001` with the file SHA-256. S-030 then reads its persistent terminal metadata and can roll it back with an audited reason. Variance refresh/navigation remains a later milestone and is not fabricated in M2-4.
 
 **Edge cases**
-- Tie-Out fails by ₹0.05 (one conflicting line) → Commit blocked; the later S-032 report names only attributable diff rows. S-031 does not expose exclusion: the user edits the mapping or corrects/re-parses the source. When M2-4 exposes "exclude row (logged)", exclusions must remain in batch metadata and never be silently dropped.
-- Same batch re-imported twice → duplicate detection (`IMPORT_BATCH_HASH_EXISTS`) blocks it. The documented overwrite/new-batch choice is not exposed in S-031 and is not simulated; a later Commit UI must require justification before any new-batch path.
-- Parse expires before validation → exact `IMPORT_PARSE_EXPIRED` text and a return to S-030 to select/re-parse; Retry never resubmits the expired id.
+- Tie-Out fails by five minor units on one attributable line → direct Commit is blocked. S-032 may submit that real line only after Ravi selects it and enters a reason; Rust reapplies the exclusion and reruns validation/Tie-Out. The browser never calculates adjusted financial totals, and the line/reason remains in immutable commit audit metadata rather than being silently dropped.
+- Same source hash is committed twice → `IMPORT_BATCH_HASH_EXISTS` hard-blocks it. The immediate transaction prevents concurrent duplicates. Although the locked error text mentions confirmation, no override command exists, so S-032 exposes no fake overwrite/new-batch action.
+- Rollback of a committed batch requires a 1–500-character reason, removes only that batch's GL/IC facts, retains the `rolled_back` history row, and links only to a strictly older committed batch of the same kind. A repeat returns `BATCH_ALREADY_ROLLED_BACK`; a broken-audit session is read-only.
+- Parse expires before validation, Tie-Out, or Commit → exact `IMPORT_PARSE_EXPIRED` text and a return to S-030 to select/re-parse; Retry never resubmits the expired id.
 - 2M-row dump → background streaming/progress/cancellation and memory < 2 GB remain the acceptance target. The current parser is synchronous/in-memory, has no progress/cancel IPC, and has no native benchmark evidence; S-030 does not simulate those controls.
 - Encrypted/read-protected workbook → `IMPORT_FILE_LOCKED` with instructions (remove password / export unprotected copy); app never stores the source password.
 - ZIP wrapper → visibly unavailable: the registered parser rejects it and the picker excludes it until one-workbook ZIP support is implemented.
@@ -103,6 +104,13 @@
 **Edge cases**
 - Source files exceed vault quota → retention policy rolls off oldest compressed imports with an audited deletion; never deletes the newest.
 - Mismatch flagged, user resolves by choosing a source as authoritative for those accounts → recorded in Audit Trail; statement export does not block, but mismatch banner persists until resolved.
+
+**M2-4 boundary:** persistent `import.history` now supplies the real Company-scoped Import Batch side
+of this story, including rollback lineage. Reconciliation remains M2-10. Vault payload persistence
+is explicitly blocked rather than faked: `source_files` has only metadata/path fields and the current
+lifecycle cannot compress source bytes into the SQLite image and atomically authenticate/reseal the
+encrypted Company File. No original, plaintext sidecar, metadata-only vault row, or retention claim
+is created until that storage path and its crash/rollback tests exist.
 
 ### US-012 · F-011 Mapping Management · P1 · (R)
 

@@ -12,6 +12,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "next": "Next",
+    "previous": "Previous",
     "back": "Back",
     "close": "Close",
     "search": "Search",
@@ -201,8 +202,44 @@
     },
     "history": {
       "title": "Import Batch history",
-      "unavailable": "Batch history is unavailable in this build.",
-      "gate": "import.history is catalogued, but its typed result schema and registered Rust invoke handler are absent. The UI does not substitute browser-only history."
+      "noCompany": "Open a Company to view its Import Batch history.",
+      "loading": "Loading Company-scoped Import Batch history…",
+      "refreshing": "Refreshing persisted history…",
+      "error": "Import Batch history could not be loaded.",
+      "empty": "No Import Batches have been committed for this Company.",
+      "emptyHint": "Parse, map, validate, and pass Tie-Out to create the first audited batch.",
+      "caption": "Persisted Company-scoped Import Batch history",
+      "columns": {
+        "source": "Batch, source, and hash",
+        "status": "Status",
+        "rows": "Rows",
+        "debits": "Debits",
+        "credits": "Credits",
+        "mapping": "Mapping",
+        "committed": "Committed at",
+        "action": "Action"
+      },
+      "status": {
+        "committed": "Committed",
+        "rolled_back": "Rolled back"
+      },
+      "tieOut": {
+        "pass": "Tie-Out passed",
+        "excluded_rows_logged": "Explicit exclusions logged"
+      },
+      "page": "Page {{page}} of {{pages}} · {{total}} batches",
+      "rollback": {
+        "open": "Roll back",
+        "openAria": "Roll back Import Batch from {{source}}",
+        "title": "Roll back {{source}}",
+        "description": "This audited transaction removes only this batch’s live GL/IC facts, marks it rolled back, and preserves its terminal history row.",
+        "readOnly": "Rollback is unavailable while audit integrity has placed this Company in read-only mode.",
+        "reason": "Required rollback reason",
+        "confirm": "Confirm rollback",
+        "rollingBack": "Rolling back…",
+        "successPrevious": "Rollback committed. The prior committed batch is {{id}}.",
+        "successBaseline": "Rollback committed. There is no older committed batch in this Company and import-kind stream."
+      }
     },
     "connectors": {
       "title": "Connector health",
@@ -211,7 +248,7 @@
     "tools": {
       "title": "Source controls",
       "vault": "Source Vault",
-      "vaultGate": "Source-file persistence and retention are not implemented; import.parse keeps only an in-memory working set.",
+      "vaultGate": "Blocked: no compliant compressed SQLite-payload mutation, checkpoint, and atomic authenticated Company-container reseal lifecycle exists. OneFP&A will not write plaintext or sidecar source copies.",
       "reconciliation": "Source Reconciliation",
       "reconciliationGate": "reconcile.run is catalogued but has no typed bridge schema or registered Rust handler.",
       "progress": "Large-file progress and cancellation",
@@ -408,10 +445,73 @@
       "remediation": {
         "title": "Next action",
         "description": "Edit the mapping, or return to the Import Hub to correct and re-parse the source. Then run validation again.",
-        "unsupported": "This screen does not create accounts, remap individual rows, exclude rows, acknowledge warnings, run Tie-Out, or commit a batch because no such S-031 action contract is registered.",
+        "unsupported": "This screen does not create accounts, remap individual rows, or acknowledge warnings. Explicit exclusions and Import Batch commit are handled only by the next registered Tie-Out surface.",
         "hardGate": "Tie-Out is blocked while HARD findings remain. No Tie-Out call was made.",
-        "milestoneGate": "Validation passed its HARD gate. The Tie-Out surface is delivered in M2-4; this screen does not call it early."
+        "emptyGate": "Tie-Out is blocked because there are no valid mapped rows to commit.",
+        "tieOutReady": "Validation passed its HARD gate. Continue to the authoritative Tie-Out and Import Batch commit surface."
       }
+    }
+  },
+  "importCommit": {
+    "title": "Tie-Out & Commit",
+    "subtitle": "Verify exact mapped totals, log every exclusion, then commit one audited Import Batch.",
+    "back": "Back to mapping and validation",
+    "noValidatedImport": "No clean validated import is ready. Complete mapping and validation first.",
+    "returnToMapping": "Return to Mapping Wizard",
+    "loading": "Running authoritative Tie-Out…",
+    "tieOutError": "Tie-Out could not be completed.",
+    "selectAgain": "Return to Import Hub and select the source again",
+    "noRows": "There are no valid mapped rows to commit.",
+    "mappingVersion": "Mapping {{version}}",
+    "readOnly": "This Company is read-only because audit integrity could not be verified. Tie-Out remains available, but Commit is blocked.",
+    "identity": {
+      "title": "Import identity",
+      "source": "Source file",
+      "sourceHash": "SHA-256 source hash",
+      "currency": "Currency",
+      "validRows": "Valid mapped rows"
+    },
+    "tieOut": {
+      "title": "Exact Tie-Out",
+      "debits": "Debits",
+      "credits": "Credits",
+      "state": "Balance state",
+      "balanced": "Balanced",
+      "unbalanced": "Difference requires explicit exclusions"
+    },
+    "exclusions": {
+      "title": "Attributable difference rows",
+      "description": "Only rows attributed by the native Tie-Out engine are shown. Select a row only when it must be excluded and record why; unselected rows are never dropped.",
+      "unattributed": "The difference was not attributed to a source row. Commit remains blocked.",
+      "line": "Source row {{line}}",
+      "postingRef": "Posting reference",
+      "debit": "Debit",
+      "credit": "Credit",
+      "amount": "Amount",
+      "residual": "Attributed residual",
+      "reason": "Required exclusion reason",
+      "authoritative": "The commit engine reapplies these exclusions by physical source row and reruns exact Tie-Out. No adjusted total is calculated in the browser."
+    },
+    "batch": {
+      "title": "Import Batch",
+      "name": "Batch name",
+      "nameHint": "Required. This name, the mapping version, source hash, and any exclusions are retained in audited batch metadata.",
+      "nameError": "Enter a batch name of 1–120 characters."
+    },
+    "gate": {
+      "readOnly": "Commit is unavailable while the Company is read-only.",
+      "ready": "Ready for the authoritative transactional commit gate.",
+      "exclusions": "Commit is blocked until at least one attributable row is selected and every selected row has a reason."
+    },
+    "commit": "Commit Import Batch",
+    "committing": "Committing Import Batch…",
+    "success": {
+      "title": "Import Batch committed",
+      "batch": "Batch ID: {{id}}",
+      "rows": "{{rows}} rows committed; {{excluded}} explicitly excluded.",
+      "audit": "Audit event #{{id}}",
+      "tieOutStatus": "Persisted Tie-Out status: {{status}}",
+      "history": "View Import History"
     }
   },
   "companies": {
@@ -571,6 +671,7 @@
     "screens.companies": "Companies",
     "screens.import": "Import Hub",
     "screens.mapping": "Mapping Wizard",
+    "screens.importCommit": "Tie-Out & Commit",
     "screens.grid": "Model Grid",
     "screens.coa": "Chart of Accounts",
     "screens.calendar": "Fiscal Calendar",

@@ -29,6 +29,7 @@ const SCREEN_INDEX: { id: string; path: string }[] = [
   { id: "companies", path: "/app/companies" },
   { id: "import", path: "/app/import" },
   { id: "mapping", path: "/app/import/map" },
+  { id: "importCommit", path: "/app/import/commit" },
   { id: "grid", path: "/app/model/grid" },
   { id: "coa", path: "/app/model/coa" },
   { id: "calendar", path: "/app/model/calendar" },

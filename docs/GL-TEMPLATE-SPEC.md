@@ -22,8 +22,8 @@
 | 1 | `period` | ✅ | `YYYY-MM` or `YYYYMMDD` | maps to Fiscal Period (calendar-aware). `FY26-P08` accepted for week-based calendars |
 | 2 | `account_code` | ✅ | text | normalized code (leading zeros preserved) |
 | 3 | `account_name` | ⬜ | text | used to disambiguate; never a key |
-| 4 | `debit` | ✅* | decimal (≥ 2 dp) | *either Debit/Credit OR signed `amount`; not both |
-| 5 | `credit` | ✅* | decimal | see above |
+| 4 | `debit` | ✅* | non-negative decimal | *either Debit/Credit OR signed `amount`; not both |
+| 5 | `credit` | ✅* | non-negative decimal | see above; negative values are HARD `VALUE_INVALID` |
 | 6 | `amount` | ✅* | signed decimal | debit-positive convention; credit-negative |
 | 7 | `cost_center` | ⬜ | text | first Dimension (key must exist or auto-create w/ confirm) |
 | 8 | `project` | ⬜ | text | Dimension |
@@ -32,7 +32,7 @@
 | 11 | `business_unit` | ⬜ | text | BU key; required for Group imports (HARD if missing in Group mode) |
 | 12 | `intercompany_tag` | ⬜ | `src_bu→dst_bu` | e.g., `bu-manu→bu-retail`; creates `ic_lines` + elimination |
 | 13 | `currency` | ⬜ | ISO 4217 | defaults to Company/BU currency; `CURRENCY_UNKNOWN` if unrecognized |
-| 14 | `posting_ref` | ⬜ | text | dedupe key (batch + ref unique; duplicate → WARNING → user choice) |
+| 14 | `posting_ref` | ⬜ | text | attribution key; a repeated non-empty value on another valid row is a WARNING (no acknowledgement command exists) |
 | 15 | `doc_type` | ⬜ | text | informational |
 | 16 | `source_row` | auto | integer | generated; used in per-row error report |
 
@@ -76,7 +76,7 @@ The current WARNING rule is a repeated non-empty `posting_ref`; account-name dif
 implemented and are not simulated. S-031 renders at most 50 findings per severity for responsiveness
 while reporting the complete returned array counts.
 
-**Tie-Out gate:** Σ(`debit`) = Σ(`credit`) (or Σ(`amount`) = source-reported balance when the source provides one). Mismatch → `IMPORT_TIE_OUT_FAILED` with exact diff rows; exclude-with-log allowed (never silent).
+**Tie-Out gate:** checked integer-minor-unit Σ(`debit`) must equal Σ(`credit`); signed amounts are reduced to the same debit/absolute-credit totals. A mismatch yields exact totals and only real rows attributable through a nonblank `posting_ref`; a difference with no such reference remains totals-only and is never spread over invented rows. S-032 can submit attributed source-line exclusions only with 1–500-character reasons. The Rust commit engine reapplies them, reruns mapping validation and Tie-Out, rejects zero retained rows, and records every exclusion in the transactional HMAC audit payload. The browser never computes adjusted money or silently drops a row.
 
 ## 4. EXAMPLE ROWS
 
@@ -101,7 +101,7 @@ period,account_code,account_name,debit,credit,cost_center,business_unit,currency
 | Case | Behavior |
 |---|---|
 | 500k rows | Product target: streamed/background, progress, cancellation, memory < 2 GB. **Current registered `import.parse` is a synchronous in-memory grid and emits no progress event or cancel command; S-030 gates both controls and no 500k benchmark is claimed.** |
-| Duplicate (batch, source_row) | `line_no` is generated once per parsed physical row. The current schema has no `(batch_id,line_no)` UNIQUE constraint or dedicated duplicate-source-row code; no stronger duplicate guarantee is claimed until that contract is added. |
+| Duplicate (batch, source_row) | `line_no` is generated once per parsed physical row and `gl_lines` enforces `UNIQUE(batch_id,line_no)`. Submitted exclusions also reject duplicate line numbers before write. |
 | Period outside Company calendar range | HARD `PERIOD_NOT_FOUND` with row detail `PERIOD_OUT_OF_RANGE`; import blocked. S-031 offers source/mapping correction and re-validation, not exclusion. |
 | Account missing from COA during validation | HARD `MAP_ACCOUNT_AMBIGUOUS` with row detail `ACCOUNT_MISSING`; S-031 offers source/mapping correction and re-validation only. It has no account-create or per-row remap action. |
 | Blank required column | HARD per-row error with physical `line_no`; S-031 renders returned findings but has no registered report-export action. |

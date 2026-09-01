@@ -63,6 +63,45 @@ const VALIDATION = {
   mapping_version: "canonical-v1",
 };
 
+const BALANCED_TIE_OUT = {
+  debits_minor: 635_000_000,
+  credits_minor: 635_000_000,
+  balanced: true,
+  currency: "USD",
+  rows: 3,
+  diff_rows: [],
+};
+
+const UNBALANCED_TIE_OUT = {
+  debits_minor: 635_000_005,
+  credits_minor: 635_000_000,
+  balanced: false,
+  currency: "USD",
+  rows: 3,
+  diff_rows: [
+    {
+      line_no: 5,
+      posting_ref: "ROUNDING-5",
+      debit_minor: 5,
+      credit_minor: null,
+      amount_minor: 5,
+      residual_minor: 5,
+    },
+  ],
+};
+
+function readyForTieOut() {
+  useImportStore.setState({
+    parsed: PARSED,
+    status: "success",
+    mappingStatus: "success",
+    mappingId: "canonical",
+    mappingVersion: "canonical-v1",
+    validationStatus: "success",
+    validationResult: VALIDATION,
+  });
+}
+
 function resetStore() {
   useImportStore.setState({
     status: "empty",
@@ -78,9 +117,17 @@ function resetStore() {
     validationStatus: "empty",
     validationError: null,
     validationResult: null,
+    tieOutStatus: "empty",
+    tieOutError: null,
+    tieOutResult: null,
+    commitStatus: "empty",
+    commitError: null,
+    commitResult: null,
     requestId: 0,
     mappingRequestId: 0,
     validationRequestId: 0,
+    tieOutRequestId: 0,
+    commitRequestId: 0,
   });
 }
 
@@ -437,6 +484,185 @@ describe("S-030 import working-set store", () => {
       mappingStatus: "empty",
       mappingId: null,
       filePath: "/tmp/new.csv",
+    });
+  });
+
+  it("runs Tie-Out and commits a balanced batch through strict scoped identities", async () => {
+    readyForTieOut();
+    callMock.mockResolvedValueOnce(BALANCED_TIE_OUT);
+
+    expect(await useImportStore.getState().runTieOut()).toBe(true);
+    expect(callMock).toHaveBeenLastCalledWith("import.tieout", {
+      parse_id: PARSED.parse_id,
+      mapping_id: "canonical",
+    });
+    expect(useImportStore.getState()).toMatchObject({
+      tieOutStatus: "success",
+      tieOutResult: BALANCED_TIE_OUT,
+      commitStatus: "empty",
+    });
+
+    const committed = {
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 3,
+      debits_minor: 635_000_000,
+      credits_minor: 635_000_000,
+      tie_out_status: "pass",
+      audit_id: 99,
+      excluded_rows: 0,
+      source_hash: HASH,
+    };
+    callMock.mockResolvedValueOnce(committed);
+    expect(await useImportStore.getState().commitBatch("August actuals", [])).toBe(true);
+    expect(callMock).toHaveBeenLastCalledWith("import.commit", {
+      parse_id: PARSED.parse_id,
+      mapping_id: "canonical",
+      name: "August actuals",
+      exclusions: [],
+    });
+    expect(useImportStore.getState()).toMatchObject({
+      commitStatus: "success",
+      commitError: null,
+      commitResult: committed,
+    });
+  });
+
+  it("requires attributable exclusions with reasons and preserves authoritative commit errors", async () => {
+    readyForTieOut();
+    callMock.mockResolvedValueOnce(UNBALANCED_TIE_OUT);
+    expect(await useImportStore.getState().runTieOut()).toBe(true);
+    expect(useImportStore.getState().tieOutStatus).toBe("populated");
+
+    expect(await useImportStore.getState().commitBatch("August actuals", [])).toBe(false);
+    expect(
+      await useImportStore.getState().commitBatch("August actuals", [{ line_no: 5, reason: " " }]),
+    ).toBe(false);
+    expect(
+      await useImportStore
+        .getState()
+        .commitBatch("August actuals", [{ line_no: 99, reason: "not attributable" }]),
+    ).toBe(false);
+    expect(callMock).toHaveBeenCalledTimes(1);
+
+    callMock.mockRejectedValueOnce({
+      code: "IMPORT_TIE_OUT_FAILED",
+      userMessage:
+        "Import blocked: debits 6350000.05 vs credits 6350000.00. Review flagged rows below.",
+      httpStatus: 422,
+      retryable: false,
+      retryAfterMs: null,
+      details: { diffRows: [] },
+    });
+    expect(
+      await useImportStore
+        .getState()
+        .commitBatch("August actuals", [{ line_no: 5, reason: "Source rounding adjustment" }]),
+    ).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      commitStatus: "error",
+      commitError: {
+        code: "IMPORT_TIE_OUT_FAILED",
+        userMessage:
+          "Import blocked: debits 6350000.05 vs credits 6350000.00. Review flagged rows below.",
+      },
+      commitResult: null,
+    });
+  });
+
+  it("rejects malformed Tie-Out/commit responses instead of accepting drift", async () => {
+    readyForTieOut();
+    callMock.mockResolvedValueOnce({ ...BALANCED_TIE_OUT, rows: 2 });
+    expect(await useImportStore.getState().runTieOut()).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      tieOutStatus: "error",
+      tieOutError: { code: "INTERNAL" },
+      tieOutResult: null,
+    });
+
+    useImportStore.setState({
+      tieOutStatus: "success",
+      tieOutError: null,
+      tieOutResult: BALANCED_TIE_OUT,
+    });
+    callMock.mockResolvedValueOnce({
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 3,
+      debits_minor: 635_000_000,
+      credits_minor: 635_000_000,
+      tie_out_status: "pass",
+      audit_id: 99,
+      excluded_rows: 0,
+      source_hash: "b".repeat(64),
+    });
+    expect(await useImportStore.getState().commitBatch("August actuals", [])).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      commitStatus: "error",
+      commitError: { code: "INTERNAL" },
+      commitResult: null,
+    });
+
+    callMock.mockResolvedValueOnce({
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 3,
+      debits_minor: 1,
+      credits_minor: 1,
+      tie_out_status: "pass",
+      audit_id: 99,
+      excluded_rows: 0,
+      source_hash: HASH,
+    });
+    expect(await useImportStore.getState().commitBatch("August actuals", [])).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      commitStatus: "error",
+      commitError: { code: "INTERNAL" },
+      commitResult: null,
+    });
+  });
+
+  it("ignores late Tie-Out and commit responses after the source identity changes", async () => {
+    readyForTieOut();
+    let resolveTieOut: (value: typeof BALANCED_TIE_OUT) => void = () => undefined;
+    callMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveTieOut = resolve;
+      }),
+    );
+    const pendingTieOut = useImportStore.getState().runTieOut();
+    useImportStore.getState().selectFile("/tmp/new-source.xlsx");
+    resolveTieOut(BALANCED_TIE_OUT);
+    expect(await pendingTieOut).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      tieOutStatus: "empty",
+      tieOutResult: null,
+      commitResult: null,
+    });
+
+    readyForTieOut();
+    useImportStore.setState({ tieOutStatus: "success", tieOutResult: BALANCED_TIE_OUT });
+    let resolveCommit: (value: unknown) => void = () => undefined;
+    callMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCommit = resolve;
+      }),
+    );
+    const pendingCommit = useImportStore.getState().commitBatch("August actuals", []);
+    useImportStore.getState().clearMapping();
+    resolveCommit({
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 3,
+      debits_minor: 635_000_000,
+      credits_minor: 635_000_000,
+      tie_out_status: "pass",
+      audit_id: 99,
+      excluded_rows: 0,
+      source_hash: HASH,
+    });
+    expect(await pendingCommit).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      mappingId: null,
+      tieOutStatus: "empty",
+      commitStatus: "empty",
+      commitResult: null,
     });
   });
 

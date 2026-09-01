@@ -23,6 +23,7 @@ import { Button, Card, StatePanel } from "@/components/ui";
 import { useImportStore } from "@/stores/import";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
+import { ImportHistoryPanel } from "./ImportHistoryPanel";
 
 const ACCEPTED_EXTENSIONS = ["xlsx", "xlsm", "xlsb", "xls", "ods", "csv", "tsv", "txt"];
 
@@ -177,6 +178,7 @@ export function ImportHubPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const companyId = useSessionStore((s) => s.companyId);
+  const readOnly = useSessionStore((s) => s.readOnly);
   const status = useImportStore((s) => s.status);
   const error = useImportStore((s) => s.error);
   const kind = useImportStore((s) => s.kind);
@@ -461,7 +463,7 @@ export function ImportHubPage() {
       <Card title={t("importHub.workingSet")}>{renderWorkingState()}</Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title={t("importHub.mappings.title")}>
+        <Card title={t("importHub.mappings.title")} className="lg:col-span-2">
           <div className="flex items-start gap-3 rounded-md border border-[var(--color-oneborder)] p-3">
             <ShieldCheck
               aria-hidden="true"
@@ -481,12 +483,8 @@ export function ImportHubPage() {
           </p>
         </Card>
 
-        <Card title={t("importHub.history.title")}>
-          <StatePanel state="empty" message={t("importHub.history.unavailable")}>
-            <p className="text-xs text-[var(--color-onetextmuted)]">
-              {t("importHub.history.gate")}
-            </p>
-          </StatePanel>
+        <Card title={t("importHub.history.title")} className="lg:col-span-2">
+          <ImportHistoryPanel companyId={companyId} readOnly={readOnly} />
         </Card>
       </div>
 

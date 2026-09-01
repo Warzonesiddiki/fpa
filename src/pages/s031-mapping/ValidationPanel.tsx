@@ -15,6 +15,7 @@ interface ValidationPanelProps {
   mappingVersion: string;
   readOnly: boolean;
   onEditMapping: () => void;
+  onContinue: () => void;
 }
 
 interface FindingListProps {
@@ -110,7 +111,7 @@ function MappingContext({
   mappingId,
   mappingVersion,
   onEditMapping,
-}: Omit<ValidationPanelProps, "readOnly" | "onEditMapping"> & {
+}: Pick<ValidationPanelProps, "parsed" | "mappingId" | "mappingVersion"> & {
   onEditMapping?: () => void;
 }) {
   const { t } = useTranslation();
@@ -263,6 +264,7 @@ export function ValidationPanel({
   mappingVersion,
   readOnly,
   onEditMapping,
+  onContinue,
 }: ValidationPanelProps) {
   const { t } = useTranslation();
   const validationStatus = useImportStore((store) => store.validationStatus);
@@ -405,14 +407,20 @@ export function ValidationPanel({
               >
                 {t("mappingWizard.validation.actions.returnToHub")}
               </Link>
-              <Button disabled aria-describedby="tieout-gate">
+              <Button
+                disabled={result.hard.length > 0 || result.rows === 0}
+                aria-describedby="tieout-gate"
+                onClick={onContinue}
+              >
                 {t("mappingWizard.validation.actions.tieOut")}
               </Button>
             </div>
             <p id="tieout-gate" className="mt-3 text-xs text-[var(--color-onetextmuted)]">
               {result.hard.length > 0
                 ? t("mappingWizard.validation.remediation.hardGate")
-                : t("mappingWizard.validation.remediation.milestoneGate")}
+                : result.rows === 0
+                  ? t("mappingWizard.validation.remediation.emptyGate")
+                  : t("mappingWizard.validation.remediation.tieOutReady")}
             </p>
           </Card>
         </>

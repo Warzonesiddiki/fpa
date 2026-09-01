@@ -637,23 +637,70 @@ export const ImportTieoutArgs = ImportValidateArgs;
 
 /** A row named by the Tie-Out gate: only rows carrying a `posting_ref` are ever attributed
  *  (M5 attribution honesty — a difference is never spread onto arbitrary rows). */
-export const TieOutDiffRow = z.object({
-  line_no: z.number().int().positive(),
-  posting_ref: z.string().nullable(),
-  debit_minor: MoneyMinor.nullable(),
-  credit_minor: MoneyMinor.nullable(),
-  amount_minor: MoneyMinor,
-  residual_minor: MoneyMinor,
-});
+export const TieOutDiffRow = z
+  .object({
+    line_no: z.number().int().positive(),
+    posting_ref: z.string().trim().min(1),
+    debit_minor: MoneyMinor.nullable(),
+    credit_minor: MoneyMinor.nullable(),
+    amount_minor: MoneyMinor,
+    residual_minor: MoneyMinor.refine((minor) => minor !== 0, "TIE_OUT_RESIDUAL_REQUIRED"),
+  })
+  .strict();
+export type TieOutDiffRow = z.infer<typeof TieOutDiffRow>;
 
-export const ImportTieoutData = z.object({
-  debits_minor: MoneyMinor,
-  credits_minor: MoneyMinor,
-  diff_rows: z.array(TieOutDiffRow),
-  balanced: z.boolean(),
-  rows: z.number().int().nonnegative(),
-  currency: z.string().length(3),
-});
+export const ImportTieoutData = z
+  .object({
+    debits_minor: MoneyMinor,
+    credits_minor: MoneyMinor,
+    diff_rows: z.array(TieOutDiffRow),
+    balanced: z.boolean(),
+    rows: z.number().int().nonnegative(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.balanced !== (result.debits_minor === result.credits_minor)) {
+      context.addIssue({
+        code: "custom",
+        path: ["balanced"],
+        message: "Tie-Out balance flag does not match the exact totals.",
+      });
+    }
+    if (result.balanced && result.diff_rows.length > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["diff_rows"],
+        message: "A balanced Tie-Out cannot contain difference rows.",
+      });
+    }
+    if (result.rows === 0 && (result.debits_minor !== 0 || result.credits_minor !== 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["rows"],
+        message: "A zero-row Tie-Out must have zero totals.",
+      });
+    }
+    if (result.diff_rows.length > result.rows) {
+      context.addIssue({
+        code: "custom",
+        path: ["diff_rows"],
+        message: "Tie-Out cannot attribute more difference rows than it mapped.",
+      });
+    }
+    const lineNumbers = new Set<number>();
+    result.diff_rows.forEach((row, index) => {
+      if (lineNumbers.has(row.line_no)) {
+        context.addIssue({
+          code: "custom",
+          path: ["diff_rows", index, "line_no"],
+          message: "A source row cannot be attributed more than once.",
+        });
+      }
+      lineNumbers.add(row.line_no);
+    });
+  });
+export type ImportTieoutResult = z.infer<typeof ImportTieoutData>;
 
 /** Exclude-with-log: the row leaves the batch and the reason is written to the audit trail —
  *  never a silent drop (GL-TEMPLATE-SPEC §3). */
@@ -663,6 +710,7 @@ export const ImportExclusion = z
     reason: z.string().trim().min(1, "EXCLUSION_REASON_REQUIRED").max(500),
   })
   .strict();
+export type ImportExclusion = z.infer<typeof ImportExclusion>;
 
 export const ImportCommitArgs = z
   .object({
@@ -671,23 +719,57 @@ export const ImportCommitArgs = z
     name: z.string().trim().min(1, "BATCH_NAME_REQUIRED").max(120, "BATCH_NAME_TOO_LONG"),
     exclusions: z.array(ImportExclusion).default([]),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    const seen = new Set<number>();
+    input.exclusions.forEach((exclusion, index) => {
+      if (seen.has(exclusion.line_no)) {
+        context.addIssue({
+          code: "custom",
+          path: ["exclusions", index, "line_no"],
+          message: "EXCLUSION_DUPLICATE_LINE",
+        });
+      }
+      seen.add(exclusion.line_no);
+    });
+  });
 
 export const TieOutStatus = z.enum(["pass", "fail", "excluded_rows_logged"]);
 export type TieOutStatus = z.infer<typeof TieOutStatus>;
 
-/** API-SPEC §4 — the documented `import.commit` success shape (plus the exclusion count and the
- *  source hash the batch history table shows; new response fields stay additive, B20). */
-export const ImportCommitData = z.object({
-  batch_id: Uuid,
-  rows: z.number().int().nonnegative(),
-  debits_minor: MoneyMinor,
-  credits_minor: MoneyMinor,
-  tie_out_status: TieOutStatus,
-  audit_id: z.number().int().positive(),
-  excluded_rows: z.number().int().nonnegative(),
-  source_hash: z.string().regex(/^[0-9a-f]{64}$/),
-});
+/** API-SPEC §4 — a successful commit is necessarily tied and reports the exact source hash. */
+export const ImportCommitData = z
+  .object({
+    batch_id: Uuid,
+    rows: z.number().int().positive(),
+    debits_minor: MoneyMinor,
+    credits_minor: MoneyMinor,
+    tie_out_status: z.enum(["pass", "excluded_rows_logged"]),
+    audit_id: z.number().int().positive(),
+    excluded_rows: z.number().int().nonnegative(),
+    source_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.debits_minor !== result.credits_minor) {
+      context.addIssue({
+        code: "custom",
+        path: ["credits_minor"],
+        message: "A committed Import Batch must tie exactly.",
+      });
+    }
+    const exclusionsMatch =
+      (result.tie_out_status === "pass" && result.excluded_rows === 0) ||
+      (result.tie_out_status === "excluded_rows_logged" && result.excluded_rows > 0);
+    if (!exclusionsMatch) {
+      context.addIssue({
+        code: "custom",
+        path: ["excluded_rows"],
+        message: "Commit exclusion count does not match its Tie-Out status.",
+      });
+    }
+  });
+export type ImportCommitResult = z.infer<typeof ImportCommitData>;
 
 export const ImportRollbackArgs = z
   .object({
@@ -696,11 +778,100 @@ export const ImportRollbackArgs = z
   })
   .strict();
 
-/** `rolled_back_to` = the batch the Company's Actuals fall back to once this one is excised;
- *  `null` when this was the only batch (the Company returns to "no Actuals"). */
-export const ImportRollbackData = z.object({
-  rolled_back_to: Uuid.nullable(),
-});
+/** `rolled_back_to` = the previous committed batch in the same import stream, or `null`. */
+export const ImportRollbackData = z
+  .object({
+    rolled_back_to: Uuid.nullable(),
+  })
+  .strict();
+export type ImportRollbackResult = z.infer<typeof ImportRollbackData>;
+
+export const ImportBatchKind = z.enum([...ImportKind.options, "connector_sync", "collection"]);
+export type ImportBatchKind = z.infer<typeof ImportBatchKind>;
+
+export const ImportBatchStatus = z.enum(["validated", "committed", "rolled_back", "failed"]);
+export type ImportBatchStatus = z.infer<typeof ImportBatchStatus>;
+
+export const ImportHistoryArgs = z
+  .object({
+    company_id: Uuid,
+    page: z.number().int().positive().max(1_000_000),
+  })
+  .strict();
+
+export const ImportHistoryRow = z
+  .object({
+    batch_id: Uuid,
+    name: z.string().trim().min(1).max(120),
+    kind: ImportBatchKind,
+    source_name: z.string().min(1),
+    source_hash: z.string().regex(/^[0-9a-f]{64}$/),
+    mapping_version: z.string().min(1),
+    status: z.enum(["committed", "rolled_back"]),
+    rows: z.number().int().positive(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    debits_minor: MoneyMinor,
+    credits_minor: MoneyMinor,
+    tie_out_status: z.enum(["pass", "excluded_rows_logged"]),
+    rollback_to_batch_id: Uuid.nullable(),
+    committed_at: z.string().datetime({ offset: true }),
+    created_at: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .superRefine((row, context) => {
+    if (row.debits_minor !== row.credits_minor) {
+      context.addIssue({
+        code: "custom",
+        path: ["credits_minor"],
+        message: "Persisted committed Import Batch totals must tie exactly.",
+      });
+    }
+    if (row.status === "committed" && row.rollback_to_batch_id !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["rollback_to_batch_id"],
+        message: "Only a rolled-back Import Batch can carry rollback lineage.",
+      });
+    }
+  });
+export type ImportHistoryRow = z.infer<typeof ImportHistoryRow>;
+
+export const ImportHistoryData = z
+  .object({
+    rows: z.array(ImportHistoryRow).max(25),
+    meta: z
+      .object({
+        page: z.number().int().positive(),
+        page_size: z.literal(25),
+        total: z.number().int().nonnegative(),
+        total_pages: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    const expectedPages =
+      result.meta.total === 0
+        ? 0
+        : (result.meta.total - 1 - ((result.meta.total - 1) % 25)) / 25 + 1;
+    if (result.meta.total_pages !== expectedPages) {
+      context.addIssue({
+        code: "custom",
+        path: ["meta", "total_pages"],
+        message: "History total page count does not match its total rows.",
+      });
+    }
+    const remaining = result.meta.total - (result.meta.page - 1) * 25;
+    const expectedRows = remaining <= 0 ? 0 : remaining > 25 ? 25 : remaining;
+    if (result.rows.length !== expectedRows) {
+      context.addIssue({
+        code: "custom",
+        path: ["rows"],
+        message: "History page row count does not match its pagination metadata.",
+      });
+    }
+  });
+export type ImportHistoryResult = z.infer<typeof ImportHistoryData>;
 
 /* ── model.* (F-012 — flat grid engine contract; FORMULA-ENGINE-SPEC §2) ──
  * `model.cell.set.v1` + `model.recalc` are the M1 Model-grid commands. The Zod layer is the
@@ -1136,6 +1307,7 @@ export const CommandArgs = {
   "import.tieout": ImportTieoutArgs,
   "import.commit": ImportCommitArgs,
   "import.rollback": ImportRollbackArgs,
+  "import.history": ImportHistoryArgs,
   "model.cell.set.v1": ModelCellSetArgs,
   "model.recalc": ModelRecalcArgs,
   "model.inspect": ModelInspectArgs,

@@ -30,6 +30,13 @@ vi.mock("@tauri-apps/api/webview", () => ({
     onDragDropEvent: (...args: unknown[]) => dragDropMock(...args),
   }),
 }));
+vi.mock("./ImportHistoryPanel", () => ({
+  ImportHistoryPanel: ({ companyId }: { companyId: string | null }) => (
+    <div>
+      {companyId ? "No Import Batches have been committed for this Company." : "Open a Company"}
+    </div>
+  ),
+}));
 
 const COMPANY_ID = "11111111-2222-3333-4444-555555555555";
 const PARSED = {
@@ -99,10 +106,14 @@ describe("S-030 Import Hub (M2-1)", () => {
     expect(screen.getByRole("tab", { name: "Excel / CSV" })).toBeEnabled();
     expect(screen.getByRole("tab", { name: "Connectors" })).toBeDisabled();
     expect(screen.getByText("OneFP&A Canonical GL")).toBeInTheDocument();
-    expect(screen.getByText("Batch history is unavailable in this build.")).toBeInTheDocument();
-    expect(screen.getByText(/import\.history is catalogued/)).toBeInTheDocument();
+    expect(
+      screen.getByText("No Import Batches have been committed for this Company."),
+    ).toBeInTheDocument();
     expect(screen.getByText("QuickBooks Online")).toBeInTheDocument();
     expect(screen.getByText("Source Vault")).toBeInTheDocument();
+    expect(
+      screen.getByText(/no compliant compressed SQLite-payload mutation, checkpoint, and atomic/),
+    ).toBeInTheDocument();
     expect(screen.getByText("Source Reconciliation")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Parse locally" })).toBeDisabled();
     expect(screen.getByLabelText("Choose an import file")).not.toHaveAttribute(

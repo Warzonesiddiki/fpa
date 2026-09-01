@@ -62,10 +62,10 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts, source_name, source_hash, size_bytes, headers}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
 | `import.map.save_v1` | session (write) | `{template{name, columns[], sign_convention, normalization}}` | `{mapping_id, version}` | MAP_TARGET_INVALID, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
 | `import.validate` | session | `{parse_id, mapping_id}` | strict snake_case `{hard[], warnings[], preview[≤50], rows(valid), mapping_version}` | IMPORT_PARSE_EXPIRED, VALUE_INVALID, STORAGE_FILE_CORRUPT, SESSION_LOCKED, INTERNAL; finding codes in §12 |
-| `import.tieout` | session | `{parse_id, mapping_id}` | `{debits_minor, credits_minor, diff_rows[], balanced, rows, currency}` | IMPORT_TIE_OUT_FAILED, STORAGE_FILE_CORRUPT |
-| `import.commit` | session | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id, rows, debits_minor, credits_minor, tie_out_status, excluded_rows, source_hash}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, MODEL_CELL_LOCKED, STORAGE_FILE_CORRUPT |
-| `import.rollback` | session | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK |
-| `import.history` | session | `{company_id, page}` | `{rows[], meta}` | — |
+| `import.tieout` | session | `{parse_id, mapping_id}` | strict `{debits_minor, credits_minor, diff_rows[], balanced, rows, currency}` | IMPORT_PARSE_EXPIRED, VALUE_INVALID, STORAGE_FILE_CORRUPT, SESSION_LOCKED |
+| `import.commit` | session (write) | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id, rows, debits_minor, credits_minor, tie_out_status, excluded_rows, source_hash}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, IMPORT_PARSE_EXPIRED, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
+| `import.rollback` | session (write) | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK, AUDIT_CHAIN_BREAK, VALUE_INVALID |
+| `import.history` | session | `{company_id, page}` | strict `{rows[], meta}` | SESSION_LOCKED, VALUE_INVALID, INTERNAL |
 | `connector.connect` | session | `{connector_key}` | `{auth_url}` | CONNECTOR_ALREADY_CONNECTED |
 | `connector.callback` | session | `{connector_key, code, state}` | `{connected}` | CONNECTOR_AUTH_EXPIRED, CONNECTOR_AUTH_STATE_MISMATCH |
 | `connector.sync` | session | `{connector_key, scope}` | `{run_id}` | CONNECTOR_RATE_LIMITED, CONNECTOR_NETWORK, CONNECTOR_AUTH_EXPIRED |
@@ -136,11 +136,36 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 ```
 **Success**
 ```json
-{ "data": { "batch_id": "ib-1", "rows": 47999, "debits_minor": 4128300000,
-            "credits_minor": 4128300000, "tie_out_status": "excluded_rows_logged",
-            "audit_id": 99 } }
+{
+  "data": {
+    "batch_id": "ib-1",
+    "audit_id": 99,
+    "rows": 47999,
+    "debits_minor": 4128300000,
+    "credits_minor": 4128300000,
+    "tie_out_status": "excluded_rows_logged",
+    "excluded_rows": 1,
+    "source_hash": "aa11…ff"
+  }
+}
 ```
-**All errors** — `IMPORT_TIE_OUT_FAILED (422, retry false, details.diff_rows)` · `IMPORT_BATCH_HASH_EXISTS (409, retry false, details.existing_batch)` · `MODEL_CELL_LOCKED?` no — `SESSION_LOCKED (401)` · `IMPORT_PARSE_EXPIRED (410, retry true)` · `INTERNAL (500, retry true)`.
+
+The write engine, not the browser, first reproduces clean validation and the authoritative baseline
+Tie-Out, then accepts only unique existing source lines named by that Tie-Out, each with a trimmed
+1–500-character reason. It reapplies those exclusions to the ephemeral source working set, reruns
+mapping validation and Tie-Out over retained rows, and rejects a zero-row result. Only then does one
+immediate transaction insert the batch/GL rows and the `import.commit` HMAC audit event. That audit
+payload retains the exact batch name, source hash, mapping id/version, currency, totals, Tie-Out
+status, and every excluded line/reason. Excluded source rows are not silently converted into GL rows.
+A duplicate source hash in the same Company hard-fails; the immediate transaction prevents
+concurrent same-hash commits from both passing. The locked duplicate text is displayed, but the
+catalog has no override command, so S-032 does not fabricate a re-import confirmation.
+
+**All errors** — `IMPORT_TIE_OUT_FAILED (422, retry false, details.diffRows)` ·
+`IMPORT_BATCH_HASH_EXISTS (409, retry false, details.existingBatch)` ·
+`IMPORT_PARSE_EXPIRED (410, retry true)` · `AUDIT_CHAIN_BREAK (409, retry false)` ·
+`STORAGE_FILE_CORRUPT (422, retry false)` · validation finding codes from §12 ·
+`VALUE_INVALID (422, retry false)` · `SESSION_LOCKED (401)` · `INTERNAL (500, retry true)`.
 
 ## 5. DETAILED SPEC — `consolidation.run` (group)
 
@@ -406,3 +431,106 @@ S-031 must not invoke Retry against the same expired id. Mapping/company mismatc
 `SESSION_LOCKED`; unexpected transport/storage failures use the existing `INTERNAL` envelope.
 
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, FEATURE-TRACEABILITY-MATRIX.md, GL-TEMPLATE-SPEC.md, SCREENS-SPEC.md, USER-FLOWS.md.*
+
+## 13. DETAILED SPEC — `import.tieout` / `import.history` / `import.rollback` (M2-4)
+
+### Tie-Out
+
+`import.tieout {parse_id,mapping_id}` is a read-only, Company-scoped preview over the same ephemeral
+parse and exact mapping resolver used by commit. It rejects any remaining HARD mapped-line finding,
+uses checked integer-minor-unit sums, and returns only evidence produced by the Rust engine:
+
+```json
+{
+  "data": {
+    "debits_minor": 635000005,
+    "credits_minor": 635000000,
+    "diff_rows": [
+      {
+        "line_no": 5,
+        "posting_ref": "ROUNDING-5",
+        "amount_minor": 5,
+        "debit_minor": 5,
+        "credit_minor": null,
+        "residual_minor": 5
+      }
+    ],
+    "balanced": false,
+    "rows": 4,
+    "currency": "USD"
+  }
+}
+```
+
+A difference row must be attributable to a real retained source line with a nonblank posting
+reference; the engine never fabricates an “unattributable” row. S-032 may collect reasons against
+those source line numbers, but it does not calculate post-exclusion money. `import.commit` remains
+the authoritative gate and recomputes validation and Tie-Out after exclusions.
+
+### Persistent Import Batch history
+
+`import.history {company_id,page}` verifies that the requested Company is the unlocked session
+Company. Pages are one-indexed, fixed at 25 rows, and ordered by persisted commit timestamp
+descending then batch id descending. Its strict
+response contains only persisted `committed` or `rolled_back` batches with positive row counts,
+equal debit/credit totals, a passing Tie-Out state, and a non-null commit timestamp:
+
+```json
+{
+  "data": {
+    "rows": [
+      {
+        "batch_id": "ib-1",
+        "name": "2026-08-30_001",
+        "kind": "gl_dump",
+        "source_name": "SAP_GL_Aug2026.xlsx",
+        "source_hash": "aa11…ff",
+        "mapping_version": "v3",
+        "status": "committed",
+        "rows": 47999,
+        "debits_minor": 4128300000,
+        "credits_minor": 4128300000,
+        "currency": "USD",
+        "tie_out_status": "excluded_rows_logged",
+        "rollback_to_batch_id": null,
+        "committed_at": "2026-08-30T00:00:00Z",
+        "created_at": "2026-08-30T00:00:00Z"
+      }
+    ],
+    "meta": { "page": 1, "page_size": 25, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+`total_pages` is exactly `ceil(total / 25)` (zero when `total` is zero), and the row count must
+match the requested page metadata. Name and currency come from the latest matching
+`import.commit` audit event; legacy rows fall back to source name and Company currency. The command
+is read-only and remains available in an audit-degraded session so the user can inspect persisted
+facts while all writes stay blocked.
+
+### Rollback
+
+`import.rollback {batch_id,reason}` requires a writable session and a trimmed 1–500-character
+reason. In one immediate transaction it rechecks that the Company-owned batch is currently
+`committed`, deletes its IC/GL facts, marks the batch `rolled_back`, stores the nearest strictly
+older committed batch of the same import kind as `rollback_to_batch_id` (or `null`), and appends an
+HMAC-chained `import.rollback` audit event containing the reason and deleted-row count. The batch
+history row remains; repeated or concurrent rollback attempts fail rather than appending a second
+rollback. No browser-only undo behavior exists.
+
+## 14. SOURCE FILE VAULT IMPLEMENTATION GATE (M2-4)
+
+The locked command catalog has no command that can persist or retrieve a Source Vault payload. The
+`source_files` table is metadata-only (`stored_path`, size, SHA-256); it has no compressed payload
+column. **No compliant compressed SQLite-payload mutation/checkpoint/atomic authenticated
+Company-container reseal lifecycle exists.** More specifically, the current import/app-database
+lifecycle has no transactionally coupled path that compresses source bytes, inserts them into the
+SQLite image inside the Company File, then checkpoints and atomically re-seals that authenticated
+encrypted container. Writing the original, a plaintext sidecar, or a path that falsely implies a
+contained payload would violate the Source Vault and Company-containment requirements.
+
+Therefore M2-4 deliberately exposes an unavailable Source Vault card with this exact architectural
+blocker and persists no source-file row or copy. Vault persistence remains gated until a reviewed
+compressed-payload schema plus authenticated Company-container mutation/reseal lifecycle and
+rollback/crash tests exist. `import.history` is batch metadata/history, not evidence that the source
+file itself was vaulted.

@@ -12,6 +12,7 @@ import {
   CoaMergeData,
   DecimalString,
   ImportCommitData,
+  ImportHistoryData,
   ImportMapSaveData,
   ImportParseData,
   ImportRollbackData,
@@ -50,6 +51,7 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
   it("MoneyMinor rejects floats and decimals that are not integers", () => {
     expect(MoneyMinor.safeParse(12345).success).toBe(true);
     expect(MoneyMinor.safeParse(12.345).success).toBe(false);
+    expect(MoneyMinor.safeParse(9_007_199_254_740_992).success).toBe(false);
     expect(MoneyMinor.safeParse(Number.NaN).success).toBe(false);
   });
 
@@ -737,16 +739,53 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       currency: "USD",
     });
     expect(ok.success).toBe(true);
+    const balanced = {
+      debits_minor: 0,
+      credits_minor: 0,
+      diff_rows: [],
+      balanced: true,
+      rows: 0,
+      currency: "USD",
+    };
+    expect(ImportTieoutData.safeParse(balanced).success).toBe(true);
+    expect(
+      ImportTieoutData.safeParse({ ...balanced, debits_minor: 2, credits_minor: 2 }).success,
+    ).toBe(false);
+    expect(ImportTieoutData.safeParse({ ...balanced, balanced: false }).success).toBe(false);
     expect(
       ImportTieoutData.safeParse({
-        debits_minor: 1,
-        credits_minor: 1,
-        diff_rows: [],
-        balanced: true,
-        rows: 0,
-        currency: "USD",
+        ...balanced,
+        diff_rows: [
+          {
+            line_no: 2,
+            posting_ref: "JE-1",
+            debit_minor: 1,
+            credit_minor: null,
+            amount_minor: 1,
+            residual_minor: 1,
+          },
+        ],
       }).success,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      ImportTieoutData.safeParse({
+        ...balanced,
+        debits_minor: 2,
+        balanced: false,
+        diff_rows: [
+          {
+            line_no: 2,
+            posting_ref: null,
+            debit_minor: 1,
+            credit_minor: null,
+            amount_minor: 1,
+            residual_minor: 1,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(ImportTieoutData.safeParse({ ...balanced, currency: "usd" }).success).toBe(false);
+    expect(ImportTieoutData.safeParse({ ...balanced, extra: true }).success).toBe(false);
   });
 
   it("import.commit args require a batch name and a reason on every exclusion", () => {
@@ -778,6 +817,16 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
         exclusions: [{ line_no: 47129, reason: " " }],
       }).success,
     ).toBe(false); // "an exclusion is logged, never a silent drop"
+    expect(
+      CommandArgs["import.commit"].safeParse({
+        ...base,
+        name: "batch-1",
+        exclusions: [
+          { line_no: 47129, reason: "first" },
+          { line_no: 47129, reason: "duplicate" },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("import.commit data matches the API-SPEC §4 success shape", () => {
@@ -792,18 +841,28 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
     });
     expect(ok.success).toBe(true);
+    const base = {
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      rows: 1,
+      debits_minor: 1,
+      credits_minor: 1,
+      tie_out_status: "pass",
+      audit_id: 1,
+      excluded_rows: 0,
+      source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+    };
+    expect(ImportCommitData.safeParse(base).success).toBe(true);
+    expect(ImportCommitData.safeParse({ ...base, rows: 0 }).success).toBe(false);
+    expect(ImportCommitData.safeParse({ ...base, credits_minor: 2 }).success).toBe(false);
+    expect(ImportCommitData.safeParse({ ...base, tie_out_status: "fail" }).success).toBe(false);
+    expect(ImportCommitData.safeParse({ ...base, excluded_rows: 1 }).success).toBe(false);
     expect(
       ImportCommitData.safeParse({
-        batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
-        rows: 1,
-        debits_minor: 1,
-        credits_minor: 1,
-        tie_out_status: "unknown",
-        audit_id: 1,
-        excluded_rows: 0,
-        source_hash: "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+        ...base,
+        tie_out_status: "excluded_rows_logged",
+        excluded_rows: 1,
       }).success,
-    ).toBe(false); // "tie_out_status is one of pass|fail|excluded_rows_logged (DATABASE-SCHEMA §7)"
+    ).toBe(true);
   });
 
   it("import.rollback requires an audit reason and accepts a null fallback batch", () => {
@@ -823,7 +882,69 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     ).toBe(true);
   });
 
-  it("all six B19 ingestion commands are registered in the command table", () => {
+  it("import.history is a strict, bounded, Company-scoped page", () => {
+    const row = {
+      batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+      name: "August actuals",
+      kind: "gl_dump",
+      source_name: "SAP_GL_Aug2026.xlsx",
+      source_hash: "a".repeat(64),
+      mapping_version: "canonical-v1",
+      status: "committed",
+      rows: 3,
+      currency: "USD",
+      debits_minor: 635_000_000,
+      credits_minor: 635_000_000,
+      tie_out_status: "pass",
+      rollback_to_batch_id: null,
+      committed_at: "2026-09-02T00:00:00Z",
+      created_at: "2026-09-02T00:00:00Z",
+    };
+    const page = {
+      rows: [row],
+      meta: { page: 1, page_size: 25, total: 1, total_pages: 1 },
+    };
+    expect(ImportHistoryData.safeParse(page).success).toBe(true);
+    expect(
+      CommandArgs["import.history"].safeParse({
+        company_id: "11111111-2222-4333-8444-555555555555",
+        page: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      ImportHistoryData.safeParse({ ...page, rows: [{ ...row, sourceHash: row.source_hash }] })
+        .success,
+    ).toBe(false);
+    expect(
+      ImportHistoryData.safeParse({ ...page, meta: { ...page.meta, page_size: 50 } }).success,
+    ).toBe(false);
+    expect(
+      ImportHistoryData.safeParse({
+        ...page,
+        rows: [{ ...row, status: "validated" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportHistoryData.safeParse({
+        ...page,
+        rows: [{ ...row, credits_minor: 635_000_001 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportHistoryData.safeParse({
+        ...page,
+        rows: [{ ...row, rollback_to_batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000010" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportHistoryData.safeParse({
+        ...page,
+        meta: { ...page.meta, total: 26, total_pages: 1 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("all seven B19 ingestion commands are registered in the command table", () => {
     for (const command of [
       "import.parse",
       "import.map.save_v1",
@@ -831,6 +952,7 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       "import.tieout",
       "import.commit",
       "import.rollback",
+      "import.history",
     ] as const) {
       expect(CommandArgs[command]).toBeDefined();
       // No ingestion command accepts an empty payload.

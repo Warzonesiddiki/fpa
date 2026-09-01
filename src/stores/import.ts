@@ -2,12 +2,17 @@ import { create } from "zustand";
 import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 import {
   CANONICAL_MAPPING_ID,
+  ImportCommitData,
   ImportMapSaveData,
   ImportParseData,
+  ImportTieoutData,
   ImportValidateData,
+  type ImportCommitResult,
+  type ImportExclusion,
   type ImportKind,
   type ImportMappingTemplate,
   type ImportParseData as ImportParseResult,
+  type ImportTieoutResult,
   type ImportValidationResult,
 } from "@/api/schema";
 import type { ScreenState } from "@/components/ui/StatePanel";
@@ -29,10 +34,19 @@ interface ImportStoreState {
   validationStatus: ScreenState;
   validationError: BridgeError | null;
   validationResult: ImportValidationResult | null;
-  /** Monotonic tokens: source changes invalidate parse, mapping writes, and validation reads. */
+  /** M2-4 read-only Tie-Out and transactional Import Batch commit lifecycle. */
+  tieOutStatus: ScreenState;
+  tieOutError: BridgeError | null;
+  tieOutResult: ImportTieoutResult | null;
+  commitStatus: ScreenState;
+  commitError: BridgeError | null;
+  commitResult: ImportCommitResult | null;
+  /** Monotonic tokens invalidate every later stage when an earlier identity changes. */
   requestId: number;
   mappingRequestId: number;
   validationRequestId: number;
+  tieOutRequestId: number;
+  commitRequestId: number;
   scopeToCompany: (companyId: string | null) => void;
   setKind: (kind: ImportKind) => void;
   selectFile: (filePath: string) => void;
@@ -44,6 +58,9 @@ interface ImportStoreState {
   clearMapping: () => void;
   validateMapping: () => Promise<boolean>;
   clearValidation: () => void;
+  runTieOut: () => Promise<boolean>;
+  commitBatch: (name: string, exclusions: ImportExclusion[]) => Promise<boolean>;
+  clearFinalization: () => void;
   reset: () => void;
 }
 
@@ -55,6 +72,26 @@ function stateForValidation(result: ImportValidationResult): ScreenState {
   if (result.hard.length > 0) return "populated";
   if (result.rows === 0 && result.preview.length === 0) return "empty";
   return "success";
+}
+
+function stateForTieOut(result: ImportTieoutResult): ScreenState {
+  if (result.rows === 0) return "empty";
+  return result.balanced ? "success" : "populated";
+}
+
+function clearedFinalization(
+  current: Pick<ImportStoreState, "tieOutRequestId" | "commitRequestId">,
+) {
+  return {
+    tieOutStatus: "empty" as const,
+    tieOutError: null,
+    tieOutResult: null,
+    commitStatus: "empty" as const,
+    commitError: null,
+    commitResult: null,
+    tieOutRequestId: current.tieOutRequestId + 1,
+    commitRequestId: current.commitRequestId + 1,
+  };
 }
 
 /**
@@ -79,9 +116,17 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
   validationStatus: "empty",
   validationError: null,
   validationResult: null,
+  tieOutStatus: "empty",
+  tieOutError: null,
+  tieOutResult: null,
+  commitStatus: "empty",
+  commitError: null,
+  commitResult: null,
   requestId: 0,
   mappingRequestId: 0,
   validationRequestId: 0,
+  tieOutRequestId: 0,
+  commitRequestId: 0,
 
   scopeToCompany: (companyId) => {
     const current = get();
@@ -99,6 +144,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
@@ -120,6 +166,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
@@ -141,6 +188,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
@@ -163,6 +211,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
@@ -201,6 +250,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
@@ -220,6 +270,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       mappingRequestId,
       validationRequestId: current.validationRequestId + 1,
     });
@@ -263,6 +314,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
     });
@@ -278,6 +330,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,
     });
@@ -304,6 +357,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "loading",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       validationRequestId,
     });
 
@@ -349,6 +403,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
         validationStatus: "error",
         validationError: toBridgeError(cause),
         validationResult: null,
+        ...clearedFinalization(current),
       });
       return false;
     }
@@ -360,8 +415,201 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       validationRequestId: current.validationRequestId + 1,
     });
+  },
+
+  runTieOut: async () => {
+    const current = get();
+    if (
+      !current.parsed ||
+      !current.mappingId ||
+      !current.mappingVersion ||
+      !current.validationResult ||
+      current.validationResult.hard.length > 0 ||
+      current.validationResult.mapping_version !== current.mappingVersion ||
+      current.tieOutStatus === "loading"
+    ) {
+      return false;
+    }
+
+    const sourceRequestId = current.requestId;
+    const mappingRequestId = current.mappingRequestId;
+    const validationRequestId = current.validationRequestId;
+    const tieOutRequestId = current.tieOutRequestId + 1;
+    const parseId = current.parsed.parse_id;
+    const mappingId = current.mappingId;
+    const mappingVersion = current.mappingVersion;
+    const expectedRows = current.validationResult.rows;
+    set({
+      tieOutStatus: "loading",
+      tieOutError: null,
+      tieOutResult: null,
+      tieOutRequestId,
+      commitStatus: "empty",
+      commitError: null,
+      commitResult: null,
+      commitRequestId: current.commitRequestId + 1,
+    });
+
+    try {
+      const response = await call("import.tieout", {
+        parse_id: parseId,
+        mapping_id: mappingId,
+      });
+      const result = ImportTieoutData.parse(response);
+      if (result.rows !== expectedRows) {
+        throw new Error("import.tieout returned a row count that differs from validation.");
+      }
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.tieOutRequestId !== tieOutRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== mappingVersion
+      ) {
+        return false;
+      }
+      set({
+        tieOutStatus: stateForTieOut(result),
+        tieOutError: null,
+        tieOutResult: result,
+      });
+      return true;
+    } catch (cause) {
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.tieOutRequestId !== tieOutRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== mappingVersion
+      ) {
+        return false;
+      }
+      set({
+        tieOutStatus: "error",
+        tieOutError: toBridgeError(cause),
+        tieOutResult: null,
+      });
+      return false;
+    }
+  },
+
+  commitBatch: async (name, exclusions) => {
+    const current = get();
+    if (
+      !current.parsed ||
+      !current.mappingId ||
+      !current.mappingVersion ||
+      !current.validationResult ||
+      current.validationResult.hard.length > 0 ||
+      !current.tieOutResult ||
+      current.tieOutResult.rows === 0 ||
+      current.commitStatus === "loading"
+    ) {
+      return false;
+    }
+    const attributableRows = new Set(current.tieOutResult.diff_rows.map((row) => row.line_no));
+    if (
+      (current.tieOutResult.balanced && exclusions.length > 0) ||
+      (!current.tieOutResult.balanced &&
+        (exclusions.length === 0 ||
+          exclusions.some(
+            (exclusion) => !attributableRows.has(exclusion.line_no) || !exclusion.reason.trim(),
+          )))
+    ) {
+      return false;
+    }
+
+    const sourceRequestId = current.requestId;
+    const mappingRequestId = current.mappingRequestId;
+    const validationRequestId = current.validationRequestId;
+    const tieOutRequestId = current.tieOutRequestId;
+    const commitRequestId = current.commitRequestId + 1;
+    const parseId = current.parsed.parse_id;
+    const sourceHash = current.parsed.source_hash;
+    const mappingId = current.mappingId;
+    const mappingVersion = current.mappingVersion;
+    const expectedRows = current.tieOutResult.rows - exclusions.length;
+    set({
+      commitStatus: "loading",
+      commitError: null,
+      commitResult: null,
+      commitRequestId,
+    });
+
+    try {
+      const response = await call("import.commit", {
+        parse_id: parseId,
+        mapping_id: mappingId,
+        name,
+        exclusions,
+      });
+      const result = ImportCommitData.parse(response);
+      const balancedPreviewDrifted =
+        current.tieOutResult.balanced &&
+        (result.debits_minor !== current.tieOutResult.debits_minor ||
+          result.credits_minor !== current.tieOutResult.credits_minor);
+      if (
+        result.source_hash !== sourceHash ||
+        result.rows !== expectedRows ||
+        result.excluded_rows !== exclusions.length ||
+        balancedPreviewDrifted
+      ) {
+        throw new Error("import.commit returned a different source identity, row count, or total.");
+      }
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.tieOutRequestId !== tieOutRequestId ||
+        latest.commitRequestId !== commitRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== mappingVersion
+      ) {
+        return false;
+      }
+      set({
+        commitStatus: "success",
+        commitError: null,
+        commitResult: result,
+      });
+      return true;
+    } catch (cause) {
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.tieOutRequestId !== tieOutRequestId ||
+        latest.commitRequestId !== commitRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== mappingVersion
+      ) {
+        return false;
+      }
+      set({
+        commitStatus: "error",
+        commitError: toBridgeError(cause),
+        commitResult: null,
+      });
+      return false;
+    }
+  },
+
+  clearFinalization: () => {
+    const current = get();
+    set(clearedFinalization(current));
   },
 
   reset: () => {
@@ -379,6 +627,7 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationStatus: "empty",
       validationError: null,
       validationResult: null,
+      ...clearedFinalization(current),
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,

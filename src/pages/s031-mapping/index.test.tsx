@@ -343,8 +343,8 @@ describe("S-031 Mapping and Validation Wizard (M2-3)", () => {
     expect(screen.getByText("USD 6,350,000.00")).toBeInTheDocument();
     expect(screen.queryByTestId("hard-findings")).not.toBeInTheDocument();
     expect(screen.queryByTestId("warning-findings")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeDisabled();
-    expect(screen.getByText(/Tie-Out surface is delivered in M2-4/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeEnabled();
+    expect(screen.getByText(/Continue to the authoritative Tie-Out/)).toBeInTheDocument();
   });
 
   it("shows batch and row HARD/WARNING evidence, bounds rendering, and offers only real remediation", async () => {
@@ -426,6 +426,10 @@ describe("S-031 Mapping and Validation Wizard (M2-3)", () => {
     expect(screen.getByText("No mapped rows to preview")).toBeInTheDocument();
     expect(screen.getByText(/Raw source rows are not fabricated/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeDisabled();
+    expect(
+      screen.getByText(/Tie-Out is blocked because there are no valid mapped rows/),
+    ).toBeInTheDocument();
   });
 
   it("routes an expired parse to re-parse and never retries the same parse id", async () => {

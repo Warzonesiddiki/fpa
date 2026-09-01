@@ -386,12 +386,24 @@ INSERT INTO assumption_values VALUES ('av-1','as-wage','fp-2027-p08','4.0');
 | created_at | TEXT | NOT NULL |
 
 ```sql
-INSERT INTO import_batches VALUES ('ib-1','c-01','gl_dump','SAP_GL_Aug2026.xlsx','aa11…ff','v3','committed',47999,4128300000,4128300005,'excluded_rows_logged',NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z');
+INSERT INTO import_batches VALUES ('ib-1','c-01','gl_dump','SAP_GL_Aug2026.xlsx','aa11…ff','v3','committed',47999,4128300000,4128300000,'excluded_rows_logged',NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z');
 ```
 
 `mapping_version` is the immutable label applied to that batch. The matching `import.commit` audit
 payload also records `mappingId`; historical definition recovery therefore follows the verified
-audit chain, not the current materialized mapping row.
+audit chain, not the current materialized mapping row. The schema has no batch-name or
+batch-currency columns, so M2-4 stores both in that same transactional audit payload;
+`import.history` reads the latest matching `import.commit` event and uses source name / Company
+currency only as legacy fallbacks.
+
+M2-4 inserts only terminal `committed` rows with a positive retained `row_count`, equal non-null
+integer totals, `tie_out_status IN ('pass','excluded_rows_logged')`, and a non-null `committed_at`.
+The duplicate source-hash check and insert share an immediate transaction, making the effective
+uniqueness Company + source hash even though the v1 table has no unique index. Rollback preserves
+the batch row, changes status to `rolled_back`, and records the strictly older committed batch of
+the same `kind` in `rollback_to_batch_id`; the removed GL/IC facts are not retained as live Actuals.
+Every commit exclusion line/reason and every rollback reason remains in the corresponding HMAC
+audit metadata.
 
 ### `mapping_templates` / `mapping_columns`
 | Column | Type | Constraints |
@@ -447,8 +459,17 @@ the exact 15 fields in API-SPEC §11 / GL-TEMPLATE-SPEC §7.
 | retained_until | TEXT | NULL |
 
 ```sql
+-- Target-state example only; M2-4 does not insert this row without a contained payload.
 INSERT INTO source_files VALUES ('sf-1','ib-1','SAP_GL_Aug2026.xlsx','vault/ib-1.bin',4821136,'aa11…ff',NULL);
 ```
+
+**M2-4 architecture gate:** this v1 table records metadata and a path but has no compressed-payload
+column. The active Company/import lifecycle also has no transactionally coupled operation that
+compresses source bytes into the SQLite image, checkpoints it, and atomically re-seals the
+authenticated encrypted `.fpa` container. Therefore `import.commit` deliberately inserts no
+`source_files` row and writes no original/plaintext/sidecar copy. `stored_path = 'vault/…'` must not
+be populated until a real Company-contained payload exists. A reviewed additive payload schema,
+compression/hash verification, authenticated reseal path, and crash/rollback tests are required.
 
 ### `gl_lines` (Actuals — largest table; 2M target/Company)
 | Column | Type | Constraints |
@@ -466,13 +487,19 @@ INSERT INTO source_files VALUES ('sf-1','ib-1','SAP_GL_Aug2026.xlsx','vault/ib-1
 | posting_ref | TEXT | NULL |
 | doc_type | TEXT | NULL |
 | is_ic | INTEGER | NOT NULL DEFAULT 0 |
-| is_excluded | INTEGER | NOT NULL DEFAULT 0 (logged exclusions) |
+| is_excluded | INTEGER | NOT NULL DEFAULT 0 (retained M2-4 rows are always 0) |
 | line_no | INTEGER | NOT NULL (source row) |
 | UNIQUE | | (batch_id, line_no) |
 
 ```sql
 INSERT INTO gl_lines VALUES ('gl-1','c-01','ib-1','bu-manu','fp-2027-p08','a-4100','{"d-cc":"dv-north"}',182500,NULL,'INV-2001','',0,0,1);
 ```
+
+M2-4 applies explicit exclusions before insert. Excluded source rows therefore have no `gl_lines`
+record; their source line numbers and required reasons remain in the transactional `import.commit`
+audit payload. This avoids treating an excluded line as live Actuals while preserving why it was
+omitted. Rollback deletes the target batch's `ic_lines` first and then its `gl_lines` in the same
+transaction that changes terminal status and appends the rollback audit event.
 
 ### `ic_lines`
 | Column | Type | Constraints |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ImportValidateData } from "./schema";
+import { ImportHistoryData, ImportValidateData } from "./schema";
 import { isTauriRuntime, mockInvoke } from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
@@ -49,6 +49,22 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       year_count: 1,
     })) as { data: { fiscal_years: { fy_label: string }[] } };
     expect(cal.data.fiscal_years[0].fy_label).toBe("FY2026");
+  });
+
+  it("import preview currency follows the active Company's default", async () => {
+    await mockInvoke("session.unlock", {
+      pin: "Meridian2026",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000002",
+    });
+    const parsed = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/EUR_GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const tieOut = (await mockInvoke("import.tieout", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+    })) as { data: { currency: string } };
+    expect(tieOut.data.currency).toBe("EUR");
   });
 
   it("company.open returns a summary and company.delete honours the retention window", async () => {
@@ -278,6 +294,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
         credits_minor: number;
         balanced: boolean;
         diff_rows: unknown[];
+        currency: string;
       };
     };
     expect(tie.data.debits_minor).toBe(tie.data.credits_minor);
@@ -301,9 +318,11 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     };
     expect(bad.data.balanced).toBe(false);
     expect(bad.data.debits_minor - bad.data.credits_minor).toBe(5);
-    // Attribution honesty: the difference is named on the row that carries a posting ref.
+    // Attribution honesty: the difference is a separate five-cent source row, not a
+    // mathematically unrelated full expense row.
     expect(bad.data.diff_rows).toHaveLength(1);
-    expect(bad.data.diff_rows[0].posting_ref).toBe("PO-8812");
+    expect(bad.data.diff_rows[0].line_no).toBe(5);
+    expect(bad.data.diff_rows[0].posting_ref).toBe("ROUNDING-5");
     expect(bad.data.diff_rows[0].residual_minor).toBe(5);
   });
 
@@ -339,7 +358,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       parse_id: parsed.data.parse_id,
       mapping_id: "canonical",
       name: "2026-08-30_001",
-      exclusions: [{ line_no: 4, reason: "credit_line_rounding_conflict" }],
+      exclusions: [{ line_no: 5, reason: "source rounding adjustment" }],
     })) as { data: { tie_out_status: string; excluded_rows: number; audit_id: number } };
     expect(committed.data.tie_out_status).toBe("excluded_rows_logged");
     expect(committed.data.excluded_rows).toBe(1);
@@ -351,6 +370,15 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       file_path: "/Users/demo/GL.xlsx",
       kind: "gl_dump",
     })) as { data: { parse_id: string } };
+    const arbitraryExclusion = (await mockInvoke("import.commit", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+      name: "crafted request",
+      exclusions: [{ line_no: 2, reason: "Remove a balanced row" }],
+    })) as { error: { code: string; message: string } };
+    expect(arbitraryExclusion.error.code).toBe("VALUE_INVALID");
+    expect(arbitraryExclusion.error.message).toContain("EXCLUSION_LINE_NOT_ATTRIBUTABLE");
+
     const out = (await mockInvoke("import.commit", {
       parse_id: parsed.data.parse_id,
       mapping_id: "canonical",
@@ -416,8 +444,66 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(commit.error.code).toBe("IMPORT_PARSE_EXPIRED");
   });
 
-  it("import.rollback requires a reason and mirrors BATCH_ALREADY_ROLLED_BACK", async () => {
-    const batchId = "3f9f2c9e-9f8b-4e2d-9a1c-300000000777";
+  it("import.history persists committed batches and rollback targets only an older committed batch", async () => {
+    const created = (await mockInvoke("company.create", {
+      name: "History Test Company",
+      path: "/Users/demo/History Test Company.fpa",
+      pack_key: "manufacturing",
+      calendar: {
+        preset: "12month",
+        fy_start_month: 4,
+        week_start_day: 0,
+        anchor_rule: null,
+        year_end_rule: null,
+      },
+      plan_only: true,
+      horizon: "1y",
+    })) as { data: { company_id: string } };
+    const companyId = created.data.company_id;
+    const firstParse = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/unbalanced_GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    await mockInvoke("import.commit", {
+      parse_id: firstParse.data.parse_id,
+      mapping_id: "canonical",
+      name: "First batch",
+      exclusions: [{ line_no: 5, reason: "Source rounding adjustment" }],
+    });
+    const secondParse = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/GL.xlsx",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    await mockInvoke("import.commit", {
+      parse_id: secondParse.data.parse_id,
+      mapping_id: "canonical",
+      name: "Second batch",
+      exclusions: [],
+    });
+    const duplicate = (await mockInvoke("import.commit", {
+      parse_id: secondParse.data.parse_id,
+      mapping_id: "canonical",
+      name: "Duplicate batch",
+      exclusions: [],
+    })) as { error: { code: string; retryable: boolean } };
+    expect(duplicate.error.code).toBe("IMPORT_BATCH_HASH_EXISTS");
+    expect(duplicate.error.retryable).toBe(false);
+
+    const history = (await mockInvoke("import.history", {
+      company_id: companyId,
+      page: 1,
+    })) as {
+      data: {
+        rows: { batch_id: string; status: string; source_hash: string }[];
+        meta: { page_size: number; total: number };
+      };
+    };
+    expect(() => ImportHistoryData.parse(history.data)).not.toThrow();
+    expect(history.data.meta.page_size).toBe(25);
+    expect(history.data.meta.total).toBeGreaterThanOrEqual(2);
+    const batchId = history.data.rows[0].batch_id;
+    const priorBatchId = history.data.rows[1].batch_id;
+
     const noReason = (await mockInvoke("import.rollback", {
       batch_id: batchId,
       reason: " ",
@@ -428,7 +514,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       batch_id: batchId,
       reason: "duplicate import",
     })) as { data: { rolled_back_to: string | null } };
-    expect(first.data.rolled_back_to).toBeNull();
+    expect(first.data.rolled_back_to).toBe(priorBatchId);
 
     const second = (await mockInvoke("import.rollback", {
       batch_id: batchId,
@@ -437,6 +523,14 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(second.error.code).toBe("BATCH_ALREADY_ROLLED_BACK");
     expect(second.error.httpStatus).toBe(409);
     expect(second.error.userMessage).toBe("This batch was already rolled back.");
+
+    const refreshed = (await mockInvoke("import.history", {
+      company_id: companyId,
+      page: 1,
+    })) as { data: { rows: { batch_id: string; status: string }[] } };
+    expect(refreshed.data.rows.find((batch) => batch.batch_id === batchId)?.status).toBe(
+      "rolled_back",
+    );
   });
 
   it("model.cell.set.v1 mirrors the documented recalc envelope and exact minor units", async () => {
