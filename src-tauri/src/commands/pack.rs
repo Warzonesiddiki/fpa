@@ -40,22 +40,37 @@ pub fn seed_bundled_packs(app: &AppHandle, conn: &Connection) -> AppResult<()> {
             Err(e) => return Err(AppError::internal(format!("PACK_BUNDLE_READ: {key}: {e}"))),
         };
         let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: {e}")))?;
-        let name = v["name"].as_str().ok_or_else(|| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: name")))?;
-        let version = v["version"].as_str().ok_or_else(|| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: version")))?;
+        // Canonical pack.json layout (packs/schema/pack.schema.json; INDUSTRY-PACK-SPEC §File
+        // Layout): identity lives in the nested `pack` object, `schema_version` is top-level.
+        // Field paths in errors match the schema paths (S-002 error banner shows the path).
+        let name = v["pack"]["name"].as_str().ok_or_else(|| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: pack.name")))?;
+        let version = v["pack"]["version"].as_str().ok_or_else(|| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: pack.version")))?;
+        let description = v["pack"]["description"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let schema_version =
             v["schema_version"].as_str().ok_or_else(|| AppError::invalid(format!("PACK_SCHEMA_INVALID: {key}: schema_version")))?;
         let checksum = hex_sha256(text.as_bytes());
         conn.execute(
-            "INSERT INTO packs (id, key, name, version, schema_version, is_bundled, source_checksum, installed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, datetime('now'))",
-            rusqlite::params![Uuid::new_v4().to_string(), *key, name, version, schema_version, checksum],
+            "INSERT INTO packs (id, key, name, version, schema_version, description, is_bundled, source_checksum, installed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, datetime('now'))",
+            rusqlite::params![
+                Uuid::new_v4().to_string(),
+                *key,
+                name,
+                version,
+                schema_version,
+                description,
+                checksum
+            ],
         )
         .map_err(AppError::from)?;
     }
     Ok(())
 }
 
-fn find_packs_dir(app: &AppHandle) -> AppResult<std::path::PathBuf> {
+pub(crate) fn find_packs_dir(app: &AppHandle) -> AppResult<std::path::PathBuf> {
     if let Ok(res) = app.path().resource_dir() {
         let candidate = res.join("packs");
         if candidate.join("saas").join("pack.json").exists() {
@@ -83,7 +98,7 @@ pub fn pack_list(app: AppHandle) -> AppResult<serde_json::Value> {
     let conn = crate::storage::db::open_at(&dir).map_err(AppError::from)?;
     seed_bundled_packs(&app, &conn)?;
     let mut stmt = conn
-        .prepare("SELECT key, name, version, schema_version, is_bundled FROM packs ORDER BY key")
+        .prepare("SELECT key, name, version, schema_version, description, is_bundled FROM packs ORDER BY key")
         .map_err(AppError::from)?;
     let rows = stmt
         .query_map([], |r| {
@@ -92,7 +107,8 @@ pub fn pack_list(app: AppHandle) -> AppResult<serde_json::Value> {
                 "name": r.get::<_, String>(1)?,
                 "version": r.get::<_, String>(2)?,
                 "schema_version": r.get::<_, String>(3)?,
-                "is_bundled": r.get::<_, i64>(4)? != 0,
+                "description": r.get::<_, String>(4)?,
+                "is_bundled": r.get::<_, i64>(5)? != 0,
             }))
         })
         .map_err(AppError::from)?
@@ -119,6 +135,27 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
         for k in BUNDLED_KEYS {
             assert!(dir.join(k).join("pack.json").exists(), "bundled pack missing: {k}");
+        }
+    }
+
+    /// The seed reads the NESTED `pack` object (packs/schema/pack.schema.json); if a bundled
+    /// pack.json ever regresses to a flat layout the seed must fail with the schema field
+    /// path — this test pins that contract against the real bundled files.
+    #[test]
+    fn bundled_pack_files_use_the_nested_pack_layout_the_seed_reads() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
+        for k in BUNDLED_KEYS {
+            let text = fs::read_to_string(dir.join(k).join("pack.json")).unwrap();
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert!(
+                v["pack"]["name"].is_string(),
+                "{k}: pack.name missing — seed would fail with PACK_SCHEMA_INVALID"
+            );
+            assert!(v["pack"]["version"].is_string(), "{k}: pack.version missing");
+            assert!(v["pack"]["description"].is_string(), "{k}: pack.description missing");
+            assert!(v["schema_version"].is_string(), "{k}: schema_version missing");
+            // The flat layout must NOT be what the seed sees:
+            assert!(v.get("name").is_none(), "{k}: unexpected flat `name` at top level");
         }
     }
 }

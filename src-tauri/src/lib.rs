@@ -8,12 +8,13 @@ pub mod storage;
 
 use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
 use commands::calendar::{calendar_apply, calendar_preview};
-use commands::coa::coa_list;
+use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{company_create, company_delete, company_list, company_open};
 use commands::import::{
     import_commit, import_parse, import_rollback, import_tieout, import_validate, ParseRegistry,
 };
 use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
+use commands::license::{license_apply_response, license_request_file};
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
@@ -51,12 +52,17 @@ pub fn run() {
             calendar_preview,
             calendar_apply,
             coa_list,
+            coa_import,
+            coa_merge_accounts,
             pack_list,
             import_parse,
             import_validate,
             import_tieout,
             import_commit,
             import_rollback,
+            license_verify,
+            license_request_file,
+            license_apply_response,
             model_cell_set_v1,
             model_recalc,
             assumption_upsert,

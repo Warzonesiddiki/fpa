@@ -1,0 +1,8 @@
+{
+  "license_key_id": "LK-TEST-MISMATCH-0001",
+  "licensed_company_hash": "11111111-2222-3333-4444-555555555555",
+  "plan": "pro",
+  "expires_at": "2099-12-31T23:59:59Z",
+  "machine_fingerprint": "fp-65671af74978de89e7a09c31eb6292bd",
+  "signature": "lP+1cIxtKbXIwiGH27bUF7Tkky41D4bp4CyLMV5JNkrbN2/vrkfDTsrp+Z4wqsyLqVGLRtsfk99lwLAlIDscAQ=="
+}

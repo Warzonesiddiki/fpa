@@ -167,18 +167,20 @@ pub fn session_status(app: AppHandle, state: State<'_, SessionState>) -> AppResu
     let company_id = guard.as_ref().map(|s| s.company_id.clone());
     // Keep the active model discoverable after a frontend reload while preserving the
     // pre-unlock-safe status contract (no model lookup is attempted without a Company).
-    let model_id = if let Some(company_id) = company_id.as_deref() {
+    // The live license summary (S-073) rides the same connection: persisted row re-evaluated
+    // against the current clock (license_status_json), None = not activated.
+    let (model_id, license) = if let Some(company_id) = company_id.as_deref() {
         let dir = app_data_dir(&app)?;
         let conn = db::open_at(&dir).map_err(AppError::from)?;
-        conn.query_row(
-            "SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1",
-            [company_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(AppError::from)?
+        let model_id = conn
+            .query_row("SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1", [company_id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(AppError::from)?;
+        (model_id, crate::commands::license::license_status_json(&conn, company_id))
     } else {
-        None
+        (None, None)
     };
     Ok(serde_json::json!({
         "data": {
@@ -188,7 +190,7 @@ pub fn session_status(app: AppHandle, state: State<'_, SessionState>) -> AppResu
             // AUTH-SPEC §2.5 degraded session: derived at unlock from the chain verdict, never
             // from a UI flag (§3 rule 4 — no capability is granted on UI flags alone).
             "read_only": guard.as_ref().map(|s| s.read_only()).unwrap_or(false),
-            "license": null::<serde_json::Value>,
+            "license": license,
         }
     }))
 }

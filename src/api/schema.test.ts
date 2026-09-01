@@ -5,7 +5,10 @@ import {
   CalendarPreviewData,
   CommandArgs,
   CompanyCreateData,
+  CoaImportData,
   CoaListData,
+  CoaMergeArgs,
+  CoaMergeData,
   DecimalString,
   ImportCommitData,
   ImportParseData,
@@ -323,6 +326,33 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       ]).success,
     ).toBe(true);
     expect(CoaListData.safeParse([{ id: "x" }]).success).toBe(false);
+  });
+
+  it("coa.import requires exactly one source (pack_key XOR file_path)", () => {
+    const valid = (partial: Record<string, unknown>) =>
+      CommandArgs["coa.import"].safeParse({
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+        ...partial,
+      }).success;
+    expect(valid({ pack_key: "saas" })).toBe(true);
+    expect(valid({ file_path: "/home/user/coa.json" })).toBe(true);
+    // Neither → invalid.
+    expect(valid({})).toBe(false);
+    // Both → invalid (ambiguous source).
+    expect(valid({ pack_key: "saas", file_path: "/home/user/coa.json" })).toBe(false);
+    // Extra keys → invalid (.strict()).
+    expect(valid({ pack_key: "saas", bogus: 1 })).toBe(false);
+    expect(CoaImportData.safeParse({ created: 6, updated: 1 }).success).toBe(true);
+    expect(CoaImportData.safeParse({ created: -1, updated: 0 }).success).toBe(false);
+  });
+
+  it("coa.merge_accounts takes two uuids and returns the remapped count", () => {
+    const from = "3f9f2c9e-9f8b-4e2d-9a1c-000000000010";
+    const to = "3f9f2c9e-9f8b-4e2d-9a1c-000000000011";
+    expect(CoaMergeArgs.safeParse({ from_id: from, to_id: to }).success).toBe(true);
+    expect(CoaMergeArgs.safeParse({ from_id: "x", to_id: to }).success).toBe(false);
+    expect(CoaMergeData.safeParse({ remapped: 2 }).success).toBe(true);
+    expect(CoaMergeData.safeParse({ remapped: -2 }).success).toBe(false);
   });
 
   it("import.parse accepts the 5 file-borne kinds and rejects an empty path", () => {

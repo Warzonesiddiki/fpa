@@ -34,7 +34,7 @@
 
 ## 3. UNIT TEST SPECIFICS (what each layer must assert)
 
-**Rust unit:** exact decimal results (e.g., `sumMoney(["1.10","2.20"]) == "3.30"`); rounding modes (HALF_UP, largest-remainder); calendar week counts (2026 NRF = 52 weeks; 2030 or next 53rd — fixtures); leap-year; Transit Period mapping; FX translation math (average/closing); IC elimination net=0; license signature accept/reject vectors; HMAC chain order + tamper detection.
+**Rust unit:** exact decimal results (e.g., `sumMoney(["1.10","2.20"]) == "3.30"`); rounding modes (HALF_UP, largest-remainder); calendar week counts (2026 NRF = 52 weeks; 2030 or next 53rd — fixtures); leap-year; Transit Period mapping; Balance Translation math (Average/Closing rates); Elimination net=0; license signature accept/reject vectors; HMAC chain order + tamper detection.
 
 **TS unit:** every component's 5 states render correctly (loading/empty/error/success/populated); aria/roles; MoneyCell formats (`1,234,567.89`, `000s`, `(1,234.00)`); store invalidation rules (STATE-MANAGEMENT table); zod schemas reject bad IPC payloads; debounce/fill interactions.
 

@@ -1,0 +1,8 @@
+{
+  "license_key_id": "LK-TEST-EXPIRED-0001",
+  "licensed_company_hash": "11111111-2222-3333-4444-555555555555",
+  "plan": "pro",
+  "expires_at": "2020-01-01T00:00:00Z",
+  "machine_fingerprint": "fp-c2860307d791f8c906d07dff32e4db81",
+  "signature": "O+RGmoaNXZ5GggBweqagEF8Gx48vIkO4rdhBz6A8RTG0/w5gE1qnI8GopOySCmA/a5XdXSN/n+XC2ASi2JxABA=="
+}

@@ -1,0 +1,13 @@
+{
+  "existing": [
+    { "code": "4000", "name": "Revenue", "type": "revenue", "section": "Income Statement" }
+  ],
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Revenue (net of discounts)",
+      "type": "revenue",
+      "section": "Income Statement"
+    }
+  ]
+}

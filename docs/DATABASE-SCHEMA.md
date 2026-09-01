@@ -68,12 +68,13 @@ INSERT INTO bu_ownership VALUES ('bo-1','bu-retail','2026-01-01',NULL,80.0,'Boug
 | name | TEXT | NOT NULL |
 | version | TEXT | NOT NULL (semver) |
 | schema_version | TEXT | NOT NULL (`pack.schema.json` rev) |
+| description | TEXT | NOT NULL DEFAULT '' (migration 002; from `pack.description` — wizard/pack-browser card text) |
 | is_bundled | INTEGER | NOT NULL DEFAULT 1 |
 | source_checksum | TEXT | NOT NULL (sha256 of pack archive) |
 | installed_at | TEXT | NOT NULL |
 
 ```sql
-INSERT INTO packs VALUES ('pack-saas','saas','SaaS / Tech','2.1.0','1.0.0',1,'ab12…ef','2026-08-30T00:00:00Z');
+INSERT INTO packs VALUES ('pack-saas','saas','SaaS / Tech','2.1.0','1.0.0','ARR, net revenue retention, CAC payback…',1,'ab12…ef','2026-08-30T00:00:00Z');
 ```
 
 ### `pack_components` (COA/KPI/Driver/Report seeds)
@@ -358,7 +359,7 @@ INSERT INTO driver_values VALUES ('dv-1','dr-units','sc-base','fp-2027-p08','120
 | source | TEXT | NULL (`'HR'`) |
 | bounds_low / bounds_high | TEXT | NULL |
 | effective_from / effective_to | TEXT | NULL |
-| values | (assumption_values: assumption_id, period_id, value_decimal) | UNIQUE(assumption_id, period_id) |
+| values | (assumption_values: id, assumption_id, period_id, value_decimal) | UNIQUE(assumption_id, period_id) |
 
 ```sql
 INSERT INTO assumptions VALUES ('as-wage','m-main','wage_inflation','%','HR','HR',NULL,NULL,NULL,NULL);
@@ -395,7 +396,7 @@ INSERT INTO import_batches VALUES ('ib-1','c-01','gl_dump','SAP_GL_Aug2026.xlsx'
 | templates.name | TEXT | NOT NULL (`'SAP GL dump'`) UNIQUE(company_id,name) |
 | templates.version | TEXT | NOT NULL (`'v3'`) |
 | templates.checksum | TEXT | NOT NULL |
-| columns | (mapping_columns: template_id, source_pattern, semantic_target) | UNIQUE(template_id, source_pattern) |
+| columns | (mapping_columns: id, template_id, source_pattern, semantic_target) | UNIQUE(template_id, source_pattern) |
 
 ```sql
 INSERT INTO mapping_templates VALUES ('mt-1','c-01','SAP GL dump','v3','cc22…');
@@ -505,7 +506,7 @@ INSERT INTO group_rollup_maps VALUES ('grm-1','c-01','bu-manu','a-4100','g-5000'
 ### `kpis` / `report_layouts` / `layout_columns` / `board_packs`
 | Column | Type | Constraints |
 |---|---|---|
-| kpis.id/name/formula/unit/target_owner/definition_text | TEXT | formula validated against cells; UNIQUE(company_id,name) |
+| kpis.id/company_id/name/formula/unit/target_owner/definition_text | TEXT | formula validated against cells; UNIQUE(company_id,name) |
 | report_layouts.id/name/kind/config_json | TEXT | config = rows/cols/filters (JSON schema-validated); UNIQUE(company_id,name) |
 | layout_columns: layout_id, col_type (`period`,`ytd`,`fy`,`variance`,`threeway`,`custom`), period_ref, sort_order | TEXT/INT | UNIQUE(layout_id, sort_order) |
 | board_packs.id/name/template_json/last_generated_at | TEXT | — |

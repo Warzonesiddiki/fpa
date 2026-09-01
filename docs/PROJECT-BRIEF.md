@@ -16,7 +16,7 @@ A finance team's quarterly budget and monthly close runs on **12–40 disconnect
 | **Float rounding drift** | IEEE-754 math in spreadsheets silently produces wrong cents in large aggregates; audit-grade proof is impossible |
 | **No audit trail** | There is no record of who changed what, when, or which version produced the board numbers |
 | **Variance = guesswork** | "Revenue is $50K under budget" with no volume/price/mix decomposition |
-| **Multi-entity chaos** | Groups consolidate via email-and-paste; intercompany lines don't tie; FX translation is hand-built |
+| **Multi-entity chaos** | Groups consolidate via email-and-paste; intercompany lines don't tie; Balance Translation is hand-built |
 | **Industry blindness** | Generic tools force every industry into the same model — retail needs 4-5-4, construction needs WIP/POC, healthcare needs payer mix, SaaS needs NRR |
 | **Cross-platform lock** | The alternatives are cloud-only (Anaplan, Pigment, Adaptive: 2–6 month implementations, per-seat subscriptions) or Excel add-ons (Vena, Datarails, Cube) |
 

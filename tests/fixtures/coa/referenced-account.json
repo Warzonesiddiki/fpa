@@ -1,0 +1,14 @@
+{
+  "existing": [
+    { "code": "4000", "name": "Revenue", "type": "revenue", "section": "Income Statement" }
+  ],
+  "gl_lines": [{ "account_code": "4000", "debit_minor": 1500, "credit_minor": 0 }],
+  "accounts": [
+    {
+      "code": "4000",
+      "name": "Revenue (renamed)",
+      "type": "revenue",
+      "section": "Income Statement"
+    }
+  ]
+}

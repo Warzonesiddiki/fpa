@@ -320,4 +320,137 @@ mod tests {
         let days: i64 = y.periods.iter().map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1).sum();
         assert_eq!(days, y.week_count as i64 * 7);
     }
+
+    // ── Fixture-file oracles (TEST-FIXTURES-SPEC §1 calendar/) ──────────────────────────
+    // The JSON fixtures under tests/fixtures/calendar/ are the documented oracle source;
+    // these tests bind the engine to them so a fixture edit or an engine regression fails CI.
+
+    fn fixture(name: &str) -> serde_json::Value {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/calendar")
+            .join(name);
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    /// Weeks spanned by one period (each period is a whole number of 7-day weeks).
+    fn period_weeks(p: &FiscalPeriod) -> i64 {
+        (d(&p.end_date) - d(&p.start_date)).num_days() / 7 + 1
+    }
+
+    #[test]
+    fn fixture_nrf_454_2024_2028_matches_engine() {
+        let f = fixture("nrf-454-2024-2028.json");
+        let years = build_week_based(
+            CalendarPreset::Nrf454,
+            sunday_nearest(d("2024-02-01")),
+            5,
+            WeekRule::NrfFourDay,
+        );
+        let rows = f["years"].as_array().expect("years[]");
+        assert_eq!(rows.len(), years.len(), "fixture year count");
+        for (row, y) in rows.iter().zip(years.iter()) {
+            assert_eq!(row["fy_label"], y.fy_label, "label");
+            assert_eq!(row["start_date"], y.start_date, "start {}", y.fy_label);
+            assert_eq!(row["end_date"], y.end_date, "end {}", y.fy_label);
+            assert_eq!(row["week_count"], y.week_count, "week_count {}", y.fy_label);
+            assert_eq!(
+                row["period_count"].as_u64().unwrap(),
+                y.periods.len() as u64,
+                "periods {}",
+                y.fy_label
+            );
+        }
+        // FY2028: 53rd week absorbed into P12 (no standalone W53), flag set on P12.
+        let y28 = &years[4];
+        assert_eq!(y28.week_count, 53);
+        assert!(y28.periods[11].is_53rd_week);
+        assert!(!y28.periods.iter().any(|p| p.code == "W53"));
+        // Full-week variant emits a standalone W53 with the exact dates in the fixture.
+        let full = build_week_based(
+            CalendarPreset::Nrf454,
+            sunday_nearest(d("2028-02-01")),
+            1,
+            WeekRule::FullWeek,
+        )[0]
+        .clone();
+        let w53 = &full.periods[12];
+        assert_eq!(w53.code, f["full_week_variant_2028"]["w53"]["code"]);
+        assert_eq!(w53.start_date, f["full_week_variant_2028"]["w53"]["start_date"]);
+        assert_eq!(w53.end_date, f["full_week_variant_2028"]["w53"]["end_date"]);
+    }
+
+    fn assert_days_and_contiguity(y: &FiscalYear, file: &str) {
+        let days: i64 = y.periods.iter().map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1).sum();
+        assert_eq!(days, y.week_count as i64 * 7, "{file}: day sum");
+        for w in y.periods.windows(2) {
+            let next = d(&w[1].start_date);
+            let prev_end = d(&w[0].end_date);
+            assert_eq!(next - prev_end, chrono::Duration::days(1), "{file}: contiguity");
+        }
+    }
+
+    /// 5-4-4 (nrf-544-expected.json): 52w year = 12 periods with quarter week-pattern
+    /// [5,4,4]; a 53w year APPENDS an explicit W53 (13 periods) — the 4-day absorption
+    /// rule is exclusive to 4-5-4 (core comment; CAL_53WEEK_CONFLICT).
+    #[test]
+    fn fixture_nrf_544_satisfies_invariants() {
+        let f = fixture("nrf-544-expected.json");
+        let y = build_week_based(CalendarPreset::Nrf544, sunday_nearest(d("2028-02-01")), 1, WeekRule::NrfFourDay)[0]
+            .clone();
+        assert_eq!(y.week_count, 53);
+        assert_eq!(y.periods.len(), 13, "12 standard + W53");
+        let pattern: Vec<u8> = f["invariants"]["quarter_week_pattern"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u8)
+            .collect();
+        for q in 0..4usize {
+            let weeks: i64 = y.periods[q * 3..q * 3 + 3].iter().map(period_weeks).sum();
+            assert_eq!(weeks, pattern[q] as i64, "quarter {q} weeks");
+        }
+        for (i, p) in y.periods[..12].iter().enumerate() {
+            assert_eq!(p.code, format!("P{:02}", i + 1));
+            assert!(!p.is_53rd_week, "P{i} not flagged");
+        }
+        let w53 = &y.periods[12];
+        assert_eq!(w53.code, f["invariants"]["fifty_third_week"]["w53_code"]);
+        assert!(w53.is_53rd_week);
+        assert_days_and_contiguity(&y, "nrf-544");
+    }
+
+    /// 3-3-3-4 (nrf-3334-expected.json): ALWAYS 13 periods (periods-per-quarter
+    /// 3+3+3+4, 4 weeks each in a 52w year); a 53w year absorbs into P13 (5 weeks,
+    /// flagged) — no W53 code.
+    #[test]
+    fn fixture_nrf_3334_satisfies_invariants() {
+        let f = fixture("nrf-3334-expected.json");
+        let y = build_week_based(
+            CalendarPreset::ThreeThreeThreeFour,
+            sunday_nearest(d("2028-02-01")),
+            1,
+            WeekRule::NrfFourDay,
+        )[0]
+        .clone();
+        assert_eq!(y.week_count, 53);
+        assert_eq!(y.periods.len(), f["invariants"]["periods_total"].as_u64().unwrap() as usize);
+        let per_quarter: Vec<u8> = f["invariants"]["periods_per_quarter"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u8)
+            .collect();
+        assert_eq!(per_quarter.iter().sum::<u8>(), 13);
+        for (i, p) in y.periods.iter().enumerate() {
+            assert_eq!(p.code, format!("P{:02}", i + 1));
+            // 4 weeks each; P13 (last) absorbs the 53rd week in a 53w year.
+            let weeks = period_weeks(p);
+            assert_eq!(weeks, if i == 12 { 5 } else { 4 }, "P{i} weeks");
+            assert_eq!(p.is_53rd_week, i == 12, "P{i} flag");
+        }
+        assert!(!y.periods.iter().any(|p| p.code == "W53"), "no W53 code");
+        assert_days_and_contiguity(&y, "nrf-3334");
+    }
 }
+

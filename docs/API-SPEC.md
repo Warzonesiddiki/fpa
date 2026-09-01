@@ -176,4 +176,54 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 
 All codes referenced in this spec are defined **exactly once** in ERROR-HANDLING.md (§2 taxonomy). This file uses only codes from that table. Adding a new code requires updating BOTH files + the OpenAPI-style command map in `docs-index.json` (Stage 3 audit).
 
-*Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md.*
+## 8. DETAILED SPEC — `license.*` (activation, F-035)
+
+Full protocol in LICENSE-SPEC.md; the command shapes:
+
+- `license.verify {license_payload}` → `{status: active|grace, days_left}`. Session-less
+  (no Company to bind to before unlock); signature + expiry only.
+- `license.request_file {company_path}` → `{file}`. Writes
+  `<company_path>.license-request.json`
+  (`{company_id, machine_fingerprint, license_pubkey_hex, app_version, created_at}`).
+  `company_path` = a `company_file_path` value from `company.list`.
+- `license.apply_response {response_path_or_payload}` → `{status: active|grace, plan, days_left}`.
+  Value is used verbatim when it parses as JSON, otherwise treated as a file path.
+  Upserts `licenses` + audited in the same transaction.
+- `session.status` carries the **live** license summary: `license: null` (not
+  activated) or `{status, days_left, plan, expires_at, license_key_id, machine_fingerprint}`
+  — the persisted row re-evaluated against the current clock (grace → expired without
+  re-activation; `expires_at` NULL = perpetual).
+
+## 9. DETAILED SPEC — `coa.import` / `coa.merge_accounts` (F-002)
+
+`coa.import {company_id, file_path?, pack_key?}` → `{created, updated}`. Exactly ONE
+source — neither or both is `VALUE_INVALID`. The source is a Pack's `coa.json`
+(`pack_key`, path-segment validated) or a JSON file with the same shape
+`{accounts: [{code, name, type, section, is_control?}]}` (file parse/shape problems
+surface as `IMPORT_FILE_UNREADABLE`). Codes are normalized on import (trim + collapse
+whitespace; leading zeros kept — codes are never parsed as numbers; empty after
+normalization → `VALUE_INVALID`). Left-padding to the pack-defined width (default 6) is a
+Pack Builder rule at pack creation (INDUSTRY-PACK-SPEC §2), NOT an import-time rewrite.
+Upsert against the Company's BU-less accounts (S-021):
+
+| Existing code | Behaviour |
+|---|---|
+| absent | INSERT (version 1) → `created++` |
+| same `account_type`, zero `gl_lines` usage | in-place UPDATE (name/section/is_control) + `version += 1` → `updated++` |
+| same `account_type`, ≥1 GL line | `COA_REFERENCED` — history is never rewritten |
+| different `account_type` | `COA_DUPLICATE_CODE` — no silent type flip |
+
+The whole import AND its `coa.import` audit event (object `coa`) run in ONE
+transaction (B18-1). Versioning is in-place — `accounts.id` is stable (gl_lines /
+child FKs never move); change history rides the HMAC audit chain.
+
+`coa.merge_accounts {from_id, to_id}` → `{remapped}`. The Company is resolved from
+`from_id`; both accounts must be active rows of that Company (every UPDATE is
+company-scoped, so a cross-Company `to_id` is impossible). Guards: `from_id == to_id`
+or `from_id`'s parent is `to_id` → `VALUE_INVALID`; different `account_type` →
+`COA_TYPE_MISMATCH`. Effects (single transaction, audited as `coa.merge_accounts`,
+object `account`): remap `gl_lines.account_id` from `from_id` → `to_id` (the returned
+`remapped` count), reparent active children onto `to_id`, soft-deactivate `from_id`
+(`active = 0`, `version += 1` — history preserved).
+
+*Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md, LICENSE-SPEC.md, SCREENS-SPEC.md, TEST-FIXTURES-SPEC.md, DATABASE-SCHEMA.md.*

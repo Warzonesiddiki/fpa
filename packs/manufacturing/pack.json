@@ -4,7 +4,7 @@
     "key": "manufacturing",
     "name": "Manufacturing",
     "version": "2.1.0",
-    "description": "Manufacturing Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Standard costing, production plan, capacity, WIP; OEE, inventory turns, standard cost variance.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,6 +29,7 @@ use rusqlite::{Connection, OptionalExtension};
 use rust_decimal::Decimal;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use tauri::Manager;
 use tauri::State;
 use uuid::Uuid;
 
@@ -1324,10 +1325,33 @@ fn batch_currency(lines: &[MappedLine], fallback: &str) -> String {
 
 /* ── Commands ────────────────────────────────────────────────────── */
 
+/// Resolve the user's `file_path`; a RELATIVE path that does not exist on disk is retried
+/// against the Tauri resource dir, then the working dir (dev fallback) — the same pattern
+/// the Pack loader uses (`commands/pack.rs::find_packs_dir`). This is what lets the demo
+/// flow (S-002 "demo data toggle" / "Open Demo Company") reference the bundled
+/// `assets/demo/sample_gl_dump.csv` by relative path on both dev and installed builds.
+/// Pure (dirs injected) so the fallback order is unit-testable without an AppHandle.
+fn resolve_import_path(direct: &Path, resource_dir: Option<&Path>, cwd: Option<&Path>) -> Option<PathBuf> {
+    if direct.is_file() {
+        return Some(direct.to_path_buf());
+    }
+    if !direct.is_relative() {
+        return None;
+    }
+    for base in resource_dir.iter().chain(cwd.iter()) {
+        let candidate = base.join(direct);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// `import.parse` — {file_path, kind} → {parse_id, sheets, encodings, row_counts}.
 /// Session-scoped (API-SPEC §2): no file bytes are touched while the vault is locked.
 #[tauri::command(name = "import.parse", rename_all = "snake_case")]
 pub fn import_parse(
+    app: tauri::AppHandle,
     file_path: String,
     kind: String,
     registry: State<'_, ParseRegistry>,
@@ -1337,17 +1361,21 @@ pub fn import_parse(
     let kind = ImportKind::parse(&kind)
         .ok_or_else(|| AppError::invalid(format!("IMPORT_KIND_UNKNOWN: {kind}")))?;
 
-    let path = Path::new(&file_path);
-    if !path.is_file() {
-        return Err(AppError::import_file_unreadable(format!("FILE_NOT_FOUND: {file_path}")));
-    }
+    let path = match resolve_import_path(
+        Path::new(&file_path),
+        app.path().resource_dir().ok().as_deref(),
+        std::env::current_dir().ok().as_deref(),
+    ) {
+        Some(p) => p,
+        None => return Err(AppError::import_file_unreadable(format!("FILE_NOT_FOUND: {file_path}"))),
+    };
     let bytes = fs::read(path).map_err(|e| AppError::import_file_unreadable(format!("IO: {e}")))?;
     let size_bytes = bytes.len() as i64;
     let source_hash = sha256_hex(&bytes);
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
     let parsed = match ext.as_str() {
-        "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" => read_workbook(path, &bytes, kind)?,
+        "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" => read_workbook(&path, &bytes, kind)?,
         "csv" | "tsv" | "txt" => read_delimited(&bytes, &ext)?,
         // A .zip is only a transport wrapper; extracting it needs a dependency that is not in
         // TECH-STACK (B13), so it is refused with the documented "export it again" text.
@@ -1778,6 +1806,60 @@ pub fn import_rollback(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /* ── import.parse path resolution (demo asset fallback) ── */
+
+    fn temp_file(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("onefpa-import-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("f.csv");
+        fs::write(&p, "a,b\n1,2\n").unwrap();
+        p
+    }
+
+    #[test]
+    fn resolve_import_path_prefers_the_direct_path_and_never_rewrites_absolute_paths() {
+        let p = temp_file("direct");
+        assert_eq!(
+            resolve_import_path(&p, None, None),
+            Some(p.clone()),
+            "an existing path is used as-is"
+        );
+        let missing_abs = std::path::Path::new("/nonexistent/onefpa/demo.csv");
+        let res = temp_file("res");
+        assert_eq!(
+            resolve_import_path(missing_abs, Some(res.parent().unwrap()), None),
+            None,
+            "absolute paths are never re-based onto the resource dir"
+        );
+    }
+
+    #[test]
+    fn resolve_import_path_falls_back_to_resource_dir_then_cwd_for_relative_paths() {
+        let rel = Path::new("assets/demo/sample_gl_dump.csv");
+        assert_eq!(resolve_import_path(rel, None, None), None, "no bases → None");
+
+        let res_dir = std::env::temp_dir().join("onefpa-import-resdir");
+        let _ = fs::remove_dir_all(&res_dir);
+        fs::create_dir_all(res_dir.join("assets/demo")).unwrap();
+        fs::write(res_dir.join("assets/demo/sample_gl_dump.csv"), "x\n").unwrap();
+        assert_eq!(
+            resolve_import_path(rel, Some(&res_dir), None),
+            Some(res_dir.join("assets/demo/sample_gl_dump.csv")),
+            "relative path resolves against the resource dir (installed build)"
+        );
+
+        let cwd_dir = std::env::temp_dir().join("onefpa-import-cwd");
+        let _ = fs::remove_dir_all(&cwd_dir);
+        fs::create_dir_all(cwd_dir.join("assets/demo")).unwrap();
+        fs::write(cwd_dir.join("assets/demo/sample_gl_dump.csv"), "x\n").unwrap();
+        assert_eq!(
+            resolve_import_path(rel, None, Some(&cwd_dir)),
+            Some(cwd_dir.join("assets/demo/sample_gl_dump.csv")),
+            "relative path resolves against the working dir (dev fallback)"
+        );
+    }
 
     /* ── numbers ── */
 

@@ -4,7 +4,7 @@
     "key": "energy",
     "name": "Energy",
     "version": "2.1.0",
-    "description": "Energy Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Tariff recovery, plant availability, cost per MWh, hedge ratio — generation and trading.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

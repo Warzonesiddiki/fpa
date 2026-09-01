@@ -4,7 +4,7 @@
     "key": "logistics",
     "name": "Logistics",
     "version": "2.1.0",
-    "description": "Logistics Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Cost per mile, fleet utilization, on-time delivery, DSO — fleet and network operations.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

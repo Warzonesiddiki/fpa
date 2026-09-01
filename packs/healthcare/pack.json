@@ -4,7 +4,7 @@
     "key": "healthcare",
     "name": "Healthcare",
     "version": "2.1.0",
-    "description": "Healthcare Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Cost per patient, payer mix, denial rate, net days in AR — clinical and revenue-cycle operations.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

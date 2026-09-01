@@ -6,7 +6,13 @@ import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
-import type { AccountNode } from "@/api/schema";
+import type {
+  AccountNode,
+  CoaImportArgs,
+  CoaImportData,
+  CoaMergeData,
+  PackMeta,
+} from "@/api/schema";
 
 const DIMENSIONS = [
   "cost-center",
@@ -21,7 +27,14 @@ const DIMENSIONS = [
 
 type LoadPhase = "loading" | "ready" | "error";
 
-/** S-021 Chart of Accounts — tree table + dimension tabs (F-002; SCREENS-SPEC S-021). */
+/**
+ * S-021 Chart of Accounts — tree table + dimension tabs + COA import + merge (F-002).
+ *
+ * All five states (SCREENS-SPEC S-021): loading (skeleton), empty (import card + CTA),
+ * populated (tree + import/merge cards), error (retry), edge (filter, version column).
+ * Typed errors from `coa.import` / `coa.merge_accounts` surface inline (COA_DUPLICATE_CODE,
+ * COA_REFERENCED, COA_TYPE_MISMATCH — the core never flips account types silently).
+ */
 export function CoaPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -31,6 +44,24 @@ export function CoaPage() {
   const [error, setError] = useState<BridgeError | null>(null);
   const [filter, setFilter] = useState("");
   const [dimension, setDimension] = useState<(typeof DIMENSIONS)[number]>("cost-center");
+
+  // COA import (pack template or JSON file path) — seeded from the same card in the empty state.
+  const [packs, setPacks] = useState<PackMeta[] | null>(null);
+  const [packsError, setPacksError] = useState<BridgeError | null>(null);
+  const [packKey, setPackKey] = useState("");
+  const [filePath, setFilePath] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number } | null>(
+    null,
+  );
+  const [importError, setImportError] = useState<BridgeError | null>(null);
+
+  // Merge — remaps lines + children into the target, soft-deactivates the source (audited).
+  const [mergeFrom, setMergeFrom] = useState("");
+  const [mergeTo, setMergeTo] = useState("");
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeResult, setMergeResult] = useState<number | null>(null);
+  const [mergeError, setMergeError] = useState<BridgeError | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -44,13 +75,65 @@ export function CoaPage() {
     }
   }, [companyId]);
 
+  const loadPacks = useCallback(async () => {
+    try {
+      const data = (await call("pack.list", {})) as PackMeta[];
+      setPacks(data ?? []);
+    } catch (err) {
+      setPacksError(err as BridgeError);
+    }
+  }, []);
+
   useEffect(() => {
     if (!companyId) return;
     // First statement is an await → no synchronous setState inside the effect body.
     void (async () => {
       await load();
+      await loadPacks();
     })();
-  }, [companyId, load]);
+  }, [companyId, load, loadPacks]);
+
+  const runImport = useCallback(async () => {
+    if (!companyId) return;
+    setImportBusy(true);
+    setImportResult(null);
+    setImportError(null);
+    try {
+      const args: CoaImportArgs = packKey
+        ? { company_id: companyId, pack_key: packKey }
+        : { company_id: companyId, file_path: filePath.trim() };
+      const data = (await call("coa.import", args)) as CoaImportData;
+      setImportResult({ created: data.created, updated: data.updated });
+      setPackKey("");
+      setFilePath("");
+      await load(); // reflect the imported accounts in the tree
+    } catch (err) {
+      setImportError(err as BridgeError);
+    } finally {
+      setImportBusy(false);
+    }
+  }, [companyId, packKey, filePath, load]);
+
+  const runMerge = useCallback(async () => {
+    if (!companyId) return;
+    setMergeBusy(true);
+    setMergeResult(null);
+    setMergeError(null);
+    try {
+      const data = (await call("coa.merge_accounts", {
+        from_id: mergeFrom,
+        to_id: mergeTo,
+      })) as CoaMergeData;
+      setMergeResult(data.remapped);
+      setMergeFrom("");
+      setMergeTo("");
+      await load(); // the merged source account is soft-deactivated → it leaves the tree
+    } catch (err) {
+      setMergeError(err as BridgeError);
+    } finally {
+      setMergeBusy(false);
+    }
+  }, [companyId, mergeFrom, mergeTo, load]);
 
   // Client-side tree: rows indented by depth (parent_id links; roots have depth 0).
   // When filtering, ancestors of a match are kept so children never orphan (S-021 tree table).
@@ -87,6 +170,137 @@ export function CoaPage() {
     walk(null, 0);
     return rows;
   }, [accounts, filter]);
+
+  const importCard = (
+    <div className="rounded-lg border border-[var(--color-oneborder)] p-4">
+      <h2 className="text-sm font-semibold">{t("coa.import.title")}</h2>
+      {packsError ? (
+        <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+          {packsError.userMessage}{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              setPacksError(null);
+              void loadPacks();
+            }}
+          >
+            {t("common.retry")}
+          </button>
+        </p>
+      ) : packs === null ? (
+        <p role="status" className="mt-2 text-sm text-[var(--color-onetextmuted)]">
+          {t("coa.import.packsLoading")}
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-onetextsecondary)]">
+            {t("coa.import.packLabel")}
+            <select
+              value={packKey}
+              onChange={(e) => setPackKey(e.target.value)}
+              className="h-9 min-w-48 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
+            >
+              <option value="">{t("coa.import.packPlaceholder")}</option>
+              {packs.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.name} ({p.version})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-onetextsecondary)]">
+            {t("coa.import.fileLabel")}
+            <input
+              type="text"
+              value={filePath}
+              onChange={(e) => setFilePath(e.target.value)}
+              placeholder={t("coa.import.filePlaceholder")}
+              className="h-9 w-64 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void runImport()}
+            disabled={importBusy || (!packKey && !filePath.trim()) || packs === null}
+            className="h-9 rounded-md bg-[var(--color-oneprimary)] px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("coa.import.cta")}
+          </button>
+        </div>
+      )}
+      {importResult && (
+        <p role="status" className="mt-2 text-sm text-[var(--color-onetext)]">
+          {t("coa.import.success", {
+            created: importResult.created,
+            updated: importResult.updated,
+          })}
+        </p>
+      )}
+      {importError && (
+        <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+          {importError.userMessage}
+        </p>
+      )}
+    </div>
+  );
+
+  const mergeCard =
+    accounts.length > 0 ? (
+      <div className="rounded-lg border border-[var(--color-oneborder)] p-4">
+        <h2 className="text-sm font-semibold">{t("coa.merge.title")}</h2>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-onetextsecondary)]">
+            {t("coa.merge.from")}
+            <select
+              value={mergeFrom}
+              onChange={(e) => setMergeFrom(e.target.value)}
+              className="h-9 min-w-52 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
+            >
+              <option value="">{t("coa.merge.pick")}</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-onetextsecondary)]">
+            {t("coa.merge.to")}
+            <select
+              value={mergeTo}
+              onChange={(e) => setMergeTo(e.target.value)}
+              className="h-9 min-w-52 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
+            >
+              <option value="">{t("coa.merge.pick")}</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void runMerge()}
+            disabled={mergeBusy || !mergeFrom || !mergeTo || mergeFrom === mergeTo}
+            className="h-9 rounded-md bg-[var(--color-oneprimary)] px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("coa.merge.cta")}
+          </button>
+        </div>
+        {mergeResult !== null && (
+          <p role="status" className="mt-2 text-sm text-[var(--color-onetext)]">
+            {t("coa.merge.success", { remapped: mergeResult })}
+          </p>
+        )}
+        {mergeError && (
+          <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+            {mergeError.userMessage}
+          </p>
+        )}
+      </div>
+    ) : null;
 
   if (!companyId) {
     return <StatePanel state="empty" message={t("coa.noCompany")} />;
@@ -129,6 +343,7 @@ export function CoaPage() {
       <div className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">{t("coa.title")}</h1>
         <ModelSectionNav />
+        {importCard}
         <StatePanel
           state="empty"
           message={t("coa.empty.body")}
@@ -143,6 +358,8 @@ export function CoaPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">{t("coa.title")}</h1>
       <ModelSectionNav />
+      {importCard}
+      {mergeCard}
 
       <div className="flex items-center justify-between gap-4">
         <Input
@@ -173,6 +390,9 @@ export function CoaPage() {
                 {t("coa.section")}
               </th>
               <th scope="col" className="px-3 py-2 text-right">
+                {t("coa.version")}
+              </th>
+              <th scope="col" className="px-3 py-2 text-right">
                 {t("coa.usage")}
               </th>
             </tr>
@@ -193,6 +413,7 @@ export function CoaPage() {
                 <td className="px-3 py-2 text-xs text-[var(--color-onetextsecondary)]">
                   {node.report_section}
                 </td>
+                <td className="px-3 py-2 text-right tabular-nums text-xs">{node.version}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-xs">
                   {node.usage_count > 0 ? node.usage_count : "—"}
                 </td>

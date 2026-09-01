@@ -15,6 +15,7 @@ import { CompaniesPage } from "@/pages/s020-companies";
 import { CoaPage } from "@/pages/s021-coa";
 import { CalendarPage } from "@/pages/s022-calendar";
 import { PacksPage } from "@/pages/s023-packs";
+import { LicensePage } from "@/pages/s073-license";
 
 /**
  * Routes per SCREENS-SPEC (hash-free paths in the webview router; App Shell loads `/` → unlock → shell).
@@ -63,6 +64,9 @@ export const router = createBrowserRouter([
       { path: "model/coa", element: <CoaPage /> },
       { path: "model/calendar", element: <CalendarPage /> },
       { path: "model/packs", element: <PacksPage /> },
+      // S-073 (F-035): the shell's "Governance" nav target. S-074 (Backup) lands here in M2.
+      { path: "governance", element: <Navigate to="/app/governance/license" replace /> },
+      { path: "governance/license", element: <LicensePage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

@@ -1,0 +1,8 @@
+{
+  "license_key_id": "LK-TEST-VALID-0001",
+  "licensed_company_hash": "11111111-2222-3333-4444-555555555555",
+  "plan": "pro",
+  "expires_at": "2099-12-31T23:59:59Z",
+  "machine_fingerprint": "fp-c2860307d791f8c906d07dff32e4db81",
+  "signature": "ydj/Buo+OGh+2HlfghsJDaiYJ6ipvqWcd9II6df6OGf6x+7E6+sMcptjOX1FngVm3kqGC6Qs3VO9NVz90gM9Bg=="
+}

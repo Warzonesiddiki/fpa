@@ -4,7 +4,7 @@
     "key": "financial-services",
     "name": "Financial Services",
     "version": "2.1.0",
-    "description": "Financial Services Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Net interest margin, loss ratio, cost/income, medical loss ratio — balance sheet and underwriting.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

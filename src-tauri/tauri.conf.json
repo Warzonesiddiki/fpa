@@ -32,7 +32,7 @@
     "category": "Finance",
     "shortDescription": "Local-first, encrypted, all-industry FP&A",
     "longDescription": "OneFP&A \u2014 plan, model, consolidate and report entirely on your machine. GL-Dump-first ingestion for any ERP, Excel-parity formulas, 12 config-driven Industry Packs, audit-grade statements.",
-    "resources": ["../packs/**/*"]
+    "resources": ["../packs/**/*", "../assets/demo/**/*"]
   },
   "plugins": {
     "updater": {

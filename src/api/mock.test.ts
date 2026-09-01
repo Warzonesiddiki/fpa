@@ -89,10 +89,14 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     })) as { data: { applied: boolean } };
     expect(applied.data.applied).toBe(true);
 
+    // coa.list returns a small sample COA (so S-021 merge/import are exercisable),
+    // not an empty list — each account is a valid AccountNode with a unique code.
     const coa = (await mockInvoke("coa.list", {
       company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
-    })) as { data: unknown[] };
-    expect(coa.data).toEqual([]);
+    })) as { data: { code: string; account_type: string }[] };
+    expect(coa.data).toHaveLength(3);
+    const codes = coa.data.map((a) => a.code);
+    expect(new Set(codes).size).toBe(codes.length);
   });
 
   it("pack.list exposes all 12 bundled packs", async () => {
@@ -597,5 +601,37 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       mapping_id: "canonical",
     })) as { data: { batch_id: string } };
     expect(ok.data.batch_id).toMatch(/^3f9f2c9e-[0-9a-f-]+$/);
+  });
+
+  it("coa.list returns the sample COA and coa.import honours the source XOR", async () => {
+    const list = (await mockInvoke("coa.list", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as { data: { code: string }[] };
+    expect(list.data.length).toBeGreaterThan(0);
+
+    const pack = (await mockInvoke("coa.import", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      pack_key: "saas",
+    })) as { data: { created: number; updated: number } };
+    expect(pack.data.created).toBeGreaterThan(0);
+
+    const neither = (await mockInvoke("coa.import", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as { error: { code: string } };
+    expect(neither.error.code).toBe("VALUE_INVALID");
+  });
+
+  it("coa.merge_accounts remaps lines and rejects merging an account into itself", async () => {
+    const ok = (await mockInvoke("coa.merge_accounts", {
+      from_id: "00000000-0000-4000-8000-000000000001",
+      to_id: "00000000-0000-4000-8000-000000000003",
+    })) as { data: { remapped: number } };
+    expect(ok.data.remapped).toBeGreaterThanOrEqual(0);
+
+    const same = (await mockInvoke("coa.merge_accounts", {
+      from_id: "00000000-0000-4000-8000-000000000001",
+      to_id: "00000000-0000-4000-8000-000000000001",
+    })) as { error: { code: string } };
+    expect(same.error.code).toBe("VALUE_INVALID");
   });
 });

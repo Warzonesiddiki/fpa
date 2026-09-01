@@ -29,11 +29,11 @@ PR → [1 Install cache] → [2 Lint/Type/Fmt] → [3 Unit TS] → [4 Unit Rust+
 | 2 Lint/Type | `tsc --noEmit` · `eslint src --max-warnings 0` · `prettier --check` · `cargo fmt --check` · `cargo clippy -- -D warnings` | 0 errors/warnings |
 | 3 Unit TS | `vitest run` (sharded) | 0 failures; coverage ≥85/80 (≥95 critical) |
 | 4 Unit Rust | `cargo test` (incl. proptest 10k, oracle fixtures) | 0 failures; engines ≥95 lines/90 branch |
-| 5 Coverage | `scripts/coverage-gate.mjs` + `cargo llvm-cov` | threshold + no reduction without waiver |
-| 6 Schema/Docs | `scripts/schema-equality-check.mjs` · `scripts/docs-link-check.mjs --strict` · `scripts/docs-index.mjs` · `money:ast` | 0 drift; index complete; no float |
+| 5 Coverage | `scripts/coverage-gate.mjs` (run right after `vitest run --coverage`, main + critical) + `cargo llvm-cov` | threshold + no reduction without waiver |
+| 6 Schema/Docs | `scripts/schema-equality-check.mjs` · `scripts/docs-link-check.mjs --strict` · `npm run docs:verify` (index↔files, orphans, 5 states, counts) · `money:ast` | 0 drift; index complete; no float |
 | 7 A11y | `vitest-axe` all screens ×5 states; contrast token test | 0 violations |
 | 8 E2E | `playwright test` on 3 OS (tauri-driver; P0 flows = full) | 0 failures; no flake-mask |
-| 9 Perf | `vitest bench` + `cargo bench` | ≤10% regression vs baseline |
+| 9 Perf | `npm run bench` (`vitest bench`) + `cargo bench` | ≤10% regression vs baseline |
 | 10 Security | `npm audit --audit-level=high` · `cargo audit` · `scripts/secret-scan.mjs` · `scripts/license-check.mjs` | HIGH = 0; no secrets; no GPL/AGPL |
 | 11 Docs | link check + `docs:verify` + glossary scan (BANNED terms) | 0 |
 | 12 Release dry-run | `tauri build --no-bundle` (per OS) | build success |

@@ -1,0 +1,24 @@
+{
+  "fixture": "license",
+  "synthetic": true,
+  "company_id": "11111111-2222-3333-4444-555555555555",
+  "company_hash": "11111111-2222-3333-4444-555555555555",
+  "machine_fingerprint": "fp-c2860307d791f8c906d07dff32e4db81",
+  "grace_days": 60,
+  "as_of": "2026-08-31",
+  "expected_status": {
+    "license-valid.json": "active",
+    "license-grace.json": "grace",
+    "license-expired.json": "expired",
+    "license-invalid-signature.json": "invalid",
+    "license-machine-mismatch.json": "invalid"
+  },
+  "files": {
+    "license-valid.json": "fb1f03e4189132ed65c767b60aae8da347a534e3db5e1399c0ee49cfd671b179",
+    "license-expired.json": "b036fd2e27f24f26152ea92d2c30ceb04aa06d17238f471b50d799d5a950f22d",
+    "license-grace.json": "8752aa552294d5f107297c6bedd154cd2ab310273a7df91f33e3316da3c10c83",
+    "license-machine-mismatch.json": "845efedea7d5a674180e512986d96dc72dce5c06be2aafede3c00fb77df655cf",
+    "license-invalid-signature.json": "902869533c04a079ffe7bbbac3cc67bc5247257c49d08a5e69c970c1b8181279",
+    "keys.json": "62e50fe8988fabe0188b4d6516d25ba9387931b630cd084ec74ef7045b41183b"
+  }
+}

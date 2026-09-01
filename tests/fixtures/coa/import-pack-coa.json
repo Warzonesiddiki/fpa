@@ -1,0 +1,46 @@
+{
+  "accounts": [
+    {
+      "code": "1000",
+      "name": "Cash",
+      "type": "asset",
+      "section": "Balance Sheet",
+      "is_control": true
+    },
+    {
+      "code": "2000",
+      "name": "Accounts Payable",
+      "type": "liability",
+      "section": "Balance Sheet",
+      "is_control": false
+    },
+    {
+      "code": "4000",
+      "name": "Revenue",
+      "type": "revenue",
+      "section": "Income Statement",
+      "is_control": false
+    },
+    {
+      "code": "4100",
+      "name": "Deferred Revenue",
+      "type": "revenue",
+      "section": "Income Statement",
+      "is_control": false
+    },
+    {
+      "code": "5000",
+      "name": "Cost of Goods Sold",
+      "type": "cogs",
+      "section": "Income Statement",
+      "is_control": false
+    },
+    {
+      "code": "6000",
+      "name": "Payroll",
+      "type": "opex",
+      "section": "Operating Expenses",
+      "is_control": false
+    }
+  ]
+}

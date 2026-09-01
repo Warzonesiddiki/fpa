@@ -34,12 +34,17 @@ for (const f of tsFiles) {
 }
 
 const rustFiles = walk(join(root, "src-tauri/src")).filter((f) => f.endsWith(".rs"));
+// String-literal contents are masked before scanning: a hex fingerprint like
+// "fp-…ff32e4…" contains the bytes `f32` but can never be a float type (B3 targets
+// f64/f32 in CODE — types, casts, and arithmetic; string payloads are data, not math).
+const maskRustStrings = (line) => line.replace(/"((?:[^"\\]|\\.)*)"/g, '""');
 for (const f of rustFiles) {
   const text = readFileSync(f, "utf8");
   if (/f64|f32/.test(text)) {
     const lines = text.split("\n");
     lines.forEach((l, i) => {
-      if (/f64|f32/.test(l) && !l.trim().startsWith("//"))
+      const code = maskRustStrings(l);
+      if (/f64|f32/.test(code) && !l.trim().startsWith("//"))
         problems.push(`${rel(f)}:${i + 1}: float in core (B3)`);
     });
   }

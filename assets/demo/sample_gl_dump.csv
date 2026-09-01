@@ -1,0 +1,481 @@
+period,account_code,account_name,debit,credit,cost_center,business_unit,currency,posting_ref,doc_type
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-001,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-001,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8801,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8801,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-001,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-001,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-001,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-001,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-001,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-001,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-001,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-001,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-001,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-001,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-001,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-001,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-001,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-001,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-001,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-001,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-002,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-002,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8802,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8802,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-002,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-002,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-002,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-002,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-002,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-002,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-002,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-002,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-002,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-002,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-002,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-002,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-002,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-002,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-002,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-002,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-003,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-003,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8803,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8803,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-003,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-003,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-003,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-003,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-003,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-003,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-003,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-003,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-003,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-003,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-003,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-003,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-003,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-003,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-003,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-003,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-004,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-004,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8804,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8804,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-004,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-004,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-004,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-004,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-004,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-004,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-004,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-004,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-004,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-004,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-004,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-004,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-004,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-004,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-004,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-004,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-005,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-005,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8805,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8805,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-005,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-005,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-005,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-005,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-005,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-005,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-005,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-005,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-005,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-005,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-005,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-005,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-005,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-005,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-005,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-005,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-006,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-006,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8806,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8806,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-006,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-006,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-006,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-006,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-006,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-006,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-006,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-006,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-006,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-006,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-006,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-006,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-006,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-006,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-006,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-006,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-007,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-007,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8807,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8807,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-007,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-007,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-007,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-007,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-007,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-007,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-007,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-007,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-007,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-007,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-007,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-007,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-007,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-007,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-007,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-007,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-008,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-008,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8808,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8808,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-008,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-008,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-008,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-008,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-008,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-008,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-008,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-008,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-008,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-008,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-008,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-008,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-008,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-008,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-008,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-008,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-009,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-009,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8809,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8809,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-009,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-009,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-009,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-009,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-009,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-009,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-009,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-009,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-009,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-009,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-009,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-009,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-009,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-009,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-009,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-009,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-010,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-010,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8810,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8810,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-010,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-010,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-010,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-010,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-010,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-010,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-010,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-010,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-010,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-010,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-010,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-010,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-010,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-010,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-010,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-010,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-011,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-011,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8811,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8811,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-011,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-011,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-011,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-011,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-011,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-011,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-011,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-011,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-011,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-011,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-011,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-011,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-011,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-011,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-011,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-011,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-012,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-012,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8812,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8812,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-012,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-012,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-012,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-012,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-012,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-012,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-012,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-012,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-012,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-012,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-012,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-012,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-012,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-012,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-012,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-012,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-013,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-013,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8813,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8813,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-013,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-013,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-013,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-013,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-013,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-013,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-013,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-013,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-013,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-013,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-013,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-013,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-013,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-013,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-013,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-013,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-014,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-014,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8814,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8814,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-014,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-014,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-014,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-014,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-014,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-014,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-014,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-014,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-014,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-014,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-014,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-014,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-014,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-014,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-014,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-014,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-015,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-015,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8815,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8815,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-015,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-015,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-015,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-015,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-015,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-015,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-015,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-015,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-015,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-015,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-015,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-015,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-015,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-015,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-015,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-015,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-016,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-016,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8816,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8816,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-016,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-016,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-016,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-016,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-016,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-016,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-016,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-016,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-016,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-016,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-016,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-016,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-016,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-016,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-016,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-016,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-017,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-017,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8817,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8817,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-017,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-017,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-017,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-017,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-017,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-017,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-017,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-017,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-017,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-017,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-017,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-017,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-017,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-017,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-017,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-017,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-018,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-018,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8818,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8818,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-018,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-018,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-018,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-018,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-018,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-018,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-018,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-018,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-018,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-018,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-018,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-018,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-018,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-018,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-018,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-018,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-019,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-019,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8819,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8819,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-019,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-019,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-019,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-019,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-019,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-019,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-019,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-019,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-019,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-019,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-019,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-019,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-019,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-019,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-019,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-019,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-020,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-020,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8820,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8820,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-020,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-020,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-020,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-020,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-020,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-020,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-020,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-020,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-020,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-020,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-020,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-020,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-020,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-020,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-020,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-020,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-021,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-021,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8821,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8821,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-021,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-021,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-021,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-021,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-021,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-021,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-021,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-021,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-021,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-021,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-021,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-021,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-021,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-021,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-021,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-021,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-022,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-022,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8822,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8822,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-022,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-022,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-022,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-022,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-022,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-022,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-022,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-022,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-022,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-022,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-022,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-022,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-022,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-022,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-022,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-022,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-023,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-023,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8823,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8823,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-023,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-023,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-023,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-023,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-023,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-023,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-023,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-023,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-023,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-023,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-023,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-023,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-023,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-023,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-023,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-023,BILL
+2026-08,4000,Sales Revenue,,18250.00,sales_north,bu-manu,USD,INV-2026-08-024,INVOICE
+2026-08,1200,Accounts Receivable,18250.00,,sales_north,bu-manu,USD,INV-2026-08-024,INVOICE
+2026-08,4100,Direct Materials,,9125.00,plant_a,bu-manu,USD,PO-8824,PURCHASE
+2026-08,2000,Accounts Payable,9125.00,,plant_a,bu-manu,USD,PO-8824,PURCHASE
+2026-08,4200,Direct Labor,,1825.00,plant_a,bu-manu,USD,PAY-024,PAYROLL
+2026-08,2100,Accrued Expenses,1825.00,,plant_a,bu-manu,USD,PAY-024,PAYROLL
+2026-08,5000,Salaries & Wages,,3650.00,corp,bu-manu,USD,PAY-024,PAYROLL
+2026-08,2100,Accrued Expenses,3650.00,,corp,bu-manu,USD,PAY-024,PAYROLL
+2026-08,5200,Utilities,,456.25,plant_a,bu-manu,USD,UTIL-024,BILL
+2026-08,2000,Accounts Payable,456.25,,plant_a,bu-manu,USD,UTIL-024,BILL
+2026-08,5300,Insurance,,304.16,corp,bu-manu,USD,INS-024,BILL
+2026-08,2000,Accounts Payable,304.16,,corp,bu-manu,USD,INS-024,BILL
+2026-08,5500,Travel & Entertainment,,73.00,corp,bu-manu,USD,T&E-024,EXPENSE
+2026-08,2000,Accounts Payable,73.00,,corp,bu-manu,USD,T&E-024,EXPENSE
+2026-08,5400,Depreciation,,608.33,plant_a,bu-manu,USD,DEP-024,DEPRECIATION
+2026-08,1700,Property & Equipment,608.33,,plant_a,bu-manu,USD,DEP-024,DEPRECIATION
+2026-08,1300,Inventory,,4562.50,plant_a,bu-manu,USD,STK-024,JOURNAL
+2026-08,4100,Direct Materials,4562.50,,plant_a,bu-manu,USD,STK-024,JOURNAL
+2026-08,5100,Rent,,228.12,corp,bu-manu,USD,RENT-024,BILL
+2026-08,2000,Accounts Payable,228.12,,corp,bu-manu,USD,RENT-024,BILL

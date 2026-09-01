@@ -1,0 +1,31 @@
+{
+  "existing": [
+    {
+      "code": "4000",
+      "name": "Revenue",
+      "type": "revenue",
+      "section": "Income Statement",
+      "parent_code": null
+    },
+    {
+      "code": "4010",
+      "name": "Software Licenses",
+      "type": "revenue",
+      "section": "Income Statement",
+      "parent_code": "4000"
+    },
+    {
+      "code": "4100",
+      "name": "Other Revenue",
+      "type": "revenue",
+      "section": "Income Statement",
+      "parent_code": null
+    }
+  ],
+  "gl_lines": [
+    { "account_code": "4000", "debit_minor": 0, "credit_minor": 2000 },
+    { "account_code": "4000", "debit_minor": 0, "credit_minor": 500 }
+  ],
+  "from_code": "4000",
+  "to_code": "4100"
+}

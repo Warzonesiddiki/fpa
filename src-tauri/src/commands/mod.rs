@@ -3,6 +3,7 @@ pub mod calendar;
 pub mod coa;
 pub mod company;
 pub mod import;
+pub mod license;
 pub mod model;
 pub mod pack;
 pub mod security;

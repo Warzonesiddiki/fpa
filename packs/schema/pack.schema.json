@@ -17,7 +17,8 @@
         "description": { "type": "string", "minLength": 10 },
         "default_calendar": { "enum": ["12month", "454", "445", "544", "3334"] },
         "default_currency_hint": { "type": "string", "pattern": "^[A-Z]{3}$" },
-        "locale_hint": { "type": "string", "pattern": "^[a-z]{2}-[A-Z]{2}$" }
+        "locale_hint": { "type": "string", "pattern": "^[a-z]{2}-[A-Z]{2}$" },
+        "logo_ref": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -27,7 +28,15 @@
     "report_layouts": { "type": "string" },
     "gl_template": { "type": "string" },
     "group_rollup_maps": { "type": "string" },
-    "seed_sql": { "type": "string" }
+    "seed_sql": { "type": "string" },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "glossary": { "type": "string" },
+        "help_topics": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }
