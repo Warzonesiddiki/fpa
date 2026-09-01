@@ -4,6 +4,7 @@ import {
   AppErrorShape,
   CalendarPreviewData,
   CommandArgs,
+  CompanyCloneData,
   CompanyCreateData,
   CoaImportData,
   CoaListData,
@@ -238,6 +239,51 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
   it("company.open takes a file path and returns a summary", () => {
     expect(CommandArgs["company.open"].safeParse({ path: "/tmp/Meridian.fpa" }).success).toBe(true);
     expect(CommandArgs["company.open"].safeParse({ path: "" }).success).toBe(false);
+  });
+
+  it("company.clone_sandbox validates {company_id, name} and returns {company_id}", () => {
+    const valid = { company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001", name: "Meridian (Q3)" };
+    expect(CommandArgs["company.clone_sandbox"].safeParse(valid).success).toBe(true);
+    // name trims then must be >= 2 chars
+    expect(
+      CommandArgs["company.clone_sandbox"].safeParse({
+        company_id: valid.company_id,
+        name: " ",
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["company.clone_sandbox"].safeParse({
+        company_id: valid.company_id,
+        name: "A",
+      }).success,
+    ).toBe(false);
+    // strict: rejects extra fields and a non-UUID id
+    expect(
+      CommandArgs["company.clone_sandbox"].safeParse({ ...valid, path: "/x.fpa" }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["company.clone_sandbox"].safeParse({
+        company_id: "not-a-uuid",
+        name: "Meridian (Q3)",
+      }).success,
+    ).toBe(false);
+    const data = { company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000009" };
+    expect(CompanyCloneData.safeParse(data).success).toBe(true);
+    expect(CompanyCloneData.safeParse({ company_id: "nope" }).success).toBe(false);
+  });
+
+  it("company.archive_year validates {company_id, fy_label}", () => {
+    const valid = { company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001", fy_label: "FY2027" };
+    expect(CommandArgs["company.archive_year"].safeParse(valid).success).toBe(true);
+    expect(
+      CommandArgs["company.archive_year"].safeParse({ ...valid, fy_label: "  " }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["company.archive_year"].safeParse({
+        company_id: "not-a-uuid",
+        fy_label: "FY2027",
+      }).success,
+    ).toBe(false);
   });
 
   it("calendar.apply accepts one config + empty bu_map; rejects multiple configs", () => {

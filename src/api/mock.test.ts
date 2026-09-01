@@ -634,4 +634,29 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     })) as { error: { code: string } };
     expect(same.error.code).toBe("VALUE_INVALID");
   });
+
+  it("company.clone_sandbox copies a company into a new sandbox with a derived path", async () => {
+    const out = (await mockInvoke("company.clone_sandbox", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      name: "Meridian (Q3 What-if)",
+    })) as { data: { company_id: string } };
+    expect(out.data.company_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+
+    const list = (await mockInvoke("company.list", {})) as {
+      data: { name: string; company_file_path: string }[];
+    };
+    const created = list.data.find((c) => c.name === "Meridian (Q3 What-if)");
+    expect(created).toBeDefined();
+    // derived from the source file's directory + the sandbox name
+    expect(created?.company_file_path).toBe("/Users/demo/Meridian (Q3 What-if).fpa");
+
+    // a too-short (trimmed) sandbox name is bad input
+    const bad = (await mockInvoke("company.clone_sandbox", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      name: " ",
+    })) as { error: { code: string } };
+    expect(bad.error.code).toBe("VALUE_INVALID");
+  });
 });

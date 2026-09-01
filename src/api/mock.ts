@@ -643,6 +643,49 @@ export async function mockInvoke<C extends CommandName>(
       session.read_only = false;
       return { data: { company_id: id, model_id } };
     }
+    case "company.clone_sandbox": {
+      const { company_id, name } = args as { company_id: string; name: string };
+      const trimmed = name.trim();
+      if (trimmed.length < 2) {
+        return mockError(
+          "VALUE_INVALID",
+          "sandbox name required",
+          "A sandbox name is required.",
+          422,
+        );
+      }
+      const src = companies.find((c) => c.id === company_id);
+      if (!src) {
+        return mockError(
+          "STORAGE_FILE_CORRUPT",
+          "unknown company",
+          "This Company file could not be verified. Restore from Backup?",
+          422,
+        );
+      }
+      if (companies.some((c) => c.name === trimmed)) {
+        return mockError(
+          "VALUE_INVALID",
+          `name '${trimmed}' already in use`,
+          `A Company named “${trimmed}” already exists.`,
+          422,
+        );
+      }
+      const dir = src.company_file_path.replace(/\/[^/]*$/, "");
+      const id = `3f9f2c9e-9f8b-4e2d-9a1c-${String(companies.length + 3).padStart(12, "0")}`;
+      modelIdForCompany(id);
+      companies.unshift({
+        id,
+        name: trimmed,
+        type: src.type,
+        default_currency_code: src.default_currency_code,
+        base_locale: src.base_locale,
+        last_opened_at: new Date().toISOString(),
+        company_file_path: `${dir}/${trimmed}.fpa`,
+        license_status: src.license_status,
+      });
+      return { data: { company_id: id } };
+    }
     case "calendar.preview": {
       const { preset, fy_start_month, from, year_count } = args as {
         preset: string;

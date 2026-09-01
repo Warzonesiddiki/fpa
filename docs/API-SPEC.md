@@ -226,4 +226,27 @@ object `account`): remap `gl_lines.account_id` from `from_id` → `to_id` (the r
 `remapped` count), reparent active children onto `to_id`, soft-deactivate `from_id`
 (`active = 0`, `version += 1` — history preserved).
 
+## 10. DETAILED SPEC — `company.clone_sandbox` (F-001 Clone as Sandbox)
+
+`company.clone_sandbox {company_id, name}` → `{company_id}`. Copies the source Company's
+**structure** into a NEW Company with a freshly sealed `.fpa` container (a what-if sandbox
+that never touches the source; SCREENS-SPEC S-020). Copied with every id remapped in one
+transaction, in FK-safe order: `fiscal_calendars` → `fiscal_years` → `fiscal_periods`,
+`business_units` (parent + calendar remap), `accounts` (bu + parent remap) — parents are
+inserted before children via a fixpoint pass so the BU/COA trees survive regardless of
+source row order — plus a new default Model + Base scenario (source's horizon + pack).
+The sandbox's `company_file_path` is the source file's **directory** + `<name>.fpa`; a path
+that already holds a file is `STORAGE_FILE_EXISTS`, a taken Company name or an empty name
+is `INVALID_ARGUMENT`.
+
+**NOT copied at M1:** GL lines, scenarios, model cells, and any Models beyond the source's
+first — the sandbox starts from the source's structure and calendar and the sandboxer
+imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard (source references an
+archived Fiscal Year) is structurally present but vacuously satisfied at M1, because no
+Fiscal Year can be archived yet (`company.archive_year` lands with the archive schema).
+
+The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is recorded as
+a `company.clone_sandbox` audit event (object `company`) inside the same transaction that
+inserts the rows and seals the container (B18-1) — a failed seal rolls back the whole clone.
+
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md, LICENSE-SPEC.md, SCREENS-SPEC.md, TEST-FIXTURES-SPEC.md, DATABASE-SCHEMA.md.*

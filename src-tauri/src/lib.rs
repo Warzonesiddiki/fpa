@@ -9,7 +9,9 @@ pub mod storage;
 use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::{coa_import, coa_list, coa_merge_accounts};
-use commands::company::{company_create, company_delete, company_list, company_open};
+use commands::company::{
+    company_clone_sandbox, company_create, company_delete, company_list, company_open,
+};
 use commands::import::{
     import_commit, import_parse, import_rollback, import_tieout, import_validate, ParseRegistry,
 };
@@ -48,6 +50,7 @@ pub fn run() {
             company_list,
             company_create,
             company_open,
+            company_clone_sandbox,
             company_delete,
             calendar_preview,
             calendar_apply,

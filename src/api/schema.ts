@@ -235,6 +235,28 @@ export const CompanyCreateArgs = z
   .strict();
 export const CompanyCreateData = z.object({ company_id: Uuid, model_id: Uuid.optional() });
 
+// `company.clone_sandbox` (API-SPEC §2.1): copy a Company's structure (calendar + BUs + COA +
+// default Model) into a new Company with a freshly sealed `.fpa` file derived from the source
+// file's directory + the sandbox name. The GL lines / other Models are NOT copied (M1-5).
+export const CompanyCloneArgs = z
+  .object({
+    company_id: Uuid,
+    name: z.string().trim().min(2, "SANDBOX_NAME_REQUIRED").max(120),
+  })
+  .strict();
+export const CompanyCloneData = z.object({ company_id: Uuid });
+
+// `company.archive_year` (API-SPEC §2.1): detach a Fiscal Year once nothing references it.
+// Contract is locked by the catalog; the handler + archive schema + the fiscal-year list data
+// source land together (TASKBOARD M1-5) — `affected_periods` is the count of periods detached.
+export const CompanyArchiveYearArgs = z
+  .object({
+    company_id: Uuid,
+    fy_label: z.string().trim().min(1, "FY_LABEL_REQUIRED"),
+  })
+  .strict();
+export const CompanyArchiveYearData = z.object({ affected_periods: z.number().int().min(0) });
+
 /* ── calendar.preview ───────────────────────────────────────────── */
 
 export const CalendarPreviewArgs = z
@@ -957,6 +979,8 @@ export const CommandArgs = {
   "company.list": CompanyListArgs,
   "company.create": CompanyCreateArgs,
   "company.open": CompanyOpenArgs,
+  "company.clone_sandbox": CompanyCloneArgs,
+  "company.archive_year": CompanyArchiveYearArgs,
   "company.delete": CompanyDeleteArgs,
   "calendar.preview": CalendarPreviewArgs,
   "calendar.apply": CalendarApplyArgs,
