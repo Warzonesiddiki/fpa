@@ -18,7 +18,7 @@
 | Dirty cell queue (pending writes) | local (grid) | ephemeral | Flush on commit, blur, save, lock, app close (with confirm) |
 | Recalculation status (dirty cells, cycles, duration) | global | ephemeral | On recalc completion / edit enqueue |
 | Formula worker instance (HyperFormula) | global | ephemeral (webview worker) | Rebuilt on Model/Scenario switch; disposed on lock |
-| Import parse/mapping working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, `mappingStatus/id/version`) + native in-memory parsed rows | On Company/source/kind change, app-process restart, the native 30-minute parse TTL, or a newer request token; locked sessions cannot use the hand-off and no progress checkpoint/resume is implemented |
+| Import parse/mapping/validation working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, `mappingStatus/id/version`, `validationStatus/error/result`) + native in-memory parsed rows | On Company/source/kind/mapping change, app-process restart, the native 30-minute parse TTL, or a newer parse/mapping/validation request token. Validation is read-only; expiry returns to S-030 to re-parse and no progress checkpoint/resume is implemented. |
 | Import Batch list + statuses | global | persistent DB target; no registered typed `import.history` read cache/UI yet | On `import.commit`/`rollback`, connector `sync` completion once the read side exists |
 | Connector health | global | persistent (DB `connectors`) + ephemeral last-pull | On sync run end, auth expiry |
 | Mapping templates | active Company | latest body persistent in `mapping_templates`/`mapping_columns`; current S-031 selection ephemeral in import store; historical definitions in HMAC audit events | Same-name save/version bump; no catalogued list/load/history command or template cache |
@@ -49,7 +49,7 @@ src/stores/
 ├── sessionStore.ts        # session, company, lock (ephemeral)
 ├── modelStore.ts          # model/sheets/lines/current scenario+period (cache of DB)
 ├── gridStore.ts           # visible cell cache + dirty queue + undo stack (virtualized)
-├── import.ts              # Company-scoped S-030 parse facts + S-031 mapping write/selection hand-off
+├── import.ts              # Company-scoped S-030 parse + S-031 mapping and validation working set
 ├── assumptionsStore.ts    # versioned register + exact period values + usage cache
 ├── connectorStore.ts      # health, runs, auth status
 ├── scenarioStore.ts       # scenarios, versions, states
@@ -75,7 +75,7 @@ src/stores/
 | Import commit while grid editing | Commit takes a model-level Snapshot; edits re-applied on top with conflict dialog if line changed |
 | Undo during background recalc | Undo is disabled while recalc in flight (button state); no half-applied states |
 | HMR/reload/app restart during Parse/Map | The parse registry and Zustand working set are ephemeral; return to S-030 and re-parse. No checkpoint/resume command exists. A later `import.commit` still guards duplicate source hashes. |
-| Company/source changes while parse or mapping save is in flight | Independent monotonic request tokens invalidate late responses; stale data cannot repopulate the new Company/source. Native mapping writes derive Company from the writable session. |
+| Company/source/mapping changes while parse, mapping save, or validation is in flight | Independent monotonic request tokens invalidate late responses; validation also rechecks parse id, mapping id, and mapping version before publishing. Stale data cannot repopulate a changed Company/source/mapping. Native mapping writes derive Company from the writable session; validation performs no write. |
 | Lock scenario while worker has dirty cells | Flush or discard prompt before lock (audited); lock never applies over unflushed edits silently |
 | Export during partial recalc | Export waits for recalc quiescence (max 500ms) or blocks with `RECALC_IN_FLIGHT` |
 | Second instance | OS file lock → read-only, zero writes |

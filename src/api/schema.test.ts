@@ -599,10 +599,20 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       details: {},
     });
     expect(batchIssue.success).toBe(true);
-    // line numbers are 1-based source rows (0 is not a source row)
-    expect(RowIssue.safeParse({ code: "X", message: "m", line_no: 0, details: {} }).success).toBe(
-      false,
-    );
+    // Line numbers are 1-based source rows (0 is not a source row), and issue codes cannot be
+    // invented outside the validation core's locked ERROR-HANDLING subset.
+    expect(
+      RowIssue.safeParse({
+        code: "VALUE_INVALID",
+        message: "invalid",
+        line_no: 0,
+        details: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      RowIssue.safeParse({ code: "NEW_IMPORT_CODE", message: "invalid", line_no: 2, details: {} })
+        .success,
+    ).toBe(false);
   });
 
   it("import.validate data keeps money in integer minor units", () => {
@@ -652,6 +662,60 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       mapping_version: "v3",
     });
     expect(floatMoney.success).toBe(false); // "B18-2: money crosses IPC as integer minor units"
+  });
+
+  it("import.validate rejects camelCase drift, unbounded previews, and invalid mapping versions", () => {
+    const row = {
+      line_no: 2,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+      account_code: "4000",
+      business_unit_id: null,
+      amount_minor: -100,
+      debit_minor: null,
+      credit_minor: 100,
+      currency: "USD",
+      posting_ref: null,
+      doc_type: null,
+      is_ic: false,
+    };
+    const valid = {
+      hard: [],
+      warnings: [],
+      preview: [row],
+      rows: 1,
+      mapping_version: "v12",
+    };
+    expect(ImportValidateData.safeParse(valid).success).toBe(true);
+    expect(
+      ImportValidateData.safeParse({
+        ...valid,
+        preview: [{ ...row, line_no: undefined, lineNo: 2 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportValidateData.safeParse({
+        ...valid,
+        preview: Array.from({ length: 51 }, (_, index) => ({ ...row, line_no: index + 2 })),
+      }).success,
+    ).toBe(false);
+    expect(ImportValidateData.safeParse({ ...valid, mapping_version: "latest" }).success).toBe(
+      false,
+    );
+    expect(ImportValidateData.safeParse({ ...valid, rows: 0 }).success).toBe(false);
+    expect(
+      ImportValidateData.safeParse({
+        ...valid,
+        preview: [{ ...row, currency: "usd" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportValidateData.safeParse({
+        ...valid,
+        preview: [{ ...row, account_code: "" }],
+      }).success,
+    ).toBe(false);
+    expect(ImportValidateData.safeParse({ ...valid, extra: true }).success).toBe(false);
   });
 
   it("import.tieout data names diff rows with their residual", () => {

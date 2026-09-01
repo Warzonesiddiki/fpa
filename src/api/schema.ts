@@ -444,31 +444,45 @@ export const ImportParseData = z.object({
 });
 export type ImportParseData = z.infer<typeof ImportParseData>;
 
-/** A row-level (or batch-level — `line_no: null`) finding. `code` is always one of the 97 locked
- *  ERROR-HANDLING codes; the specific reason rides in `message` / `details` (B20). */
-export const RowIssue = z.object({
-  code: z.string(),
-  message: z.string(),
-  line_no: z.number().int().positive().nullable(),
-  details: z.record(z.string(), z.unknown()),
-});
+/** The validation core emits only these existing ERROR-HANDLING codes. Specific row reasons
+ * ride in `message` / `details`; adding an ad-hoc issue code is forbidden (B20). */
+export const ImportValidationIssueCode = z.enum([
+  "VALUE_INVALID",
+  "PERIOD_NOT_FOUND",
+  "MAP_ACCOUNT_AMBIGUOUS",
+  "UNIT_PERIOD_MISMATCH",
+  "OPENING_ALREADY_SET",
+]);
+export type ImportValidationIssueCode = z.infer<typeof ImportValidationIssueCode>;
+
+/** A row-level (or batch-level — `line_no: null`) validation finding. */
+export const RowIssue = z
+  .object({
+    code: ImportValidationIssueCode,
+    message: z.string().min(1),
+    line_no: z.number().int().positive().nullable(),
+    details: z.record(z.string(), z.unknown()),
+  })
+  .strict();
 export type RowIssue = z.infer<typeof RowIssue>;
 
 /** A mapped source row as the preview table shows it (SCREENS-SPEC S-031 — first 50 rows). */
-export const MappedPreviewRow = z.object({
-  line_no: z.number().int().positive(),
-  period_id: z.string().min(1),
-  account_id: Uuid,
-  account_code: z.string(),
-  business_unit_id: Uuid.nullable(),
-  amount_minor: MoneyMinor,
-  debit_minor: MoneyMinor.nullable(),
-  credit_minor: MoneyMinor.nullable(),
-  currency: z.string().length(3),
-  posting_ref: z.string().nullable(),
-  doc_type: z.string().nullable(),
-  is_ic: z.boolean(),
-});
+export const MappedPreviewRow = z
+  .object({
+    line_no: z.number().int().positive(),
+    period_id: z.string().min(1),
+    account_id: Uuid,
+    account_code: z.string().min(1),
+    business_unit_id: Uuid.nullable(),
+    amount_minor: MoneyMinor,
+    debit_minor: MoneyMinor.nullable(),
+    credit_minor: MoneyMinor.nullable(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    posting_ref: z.string().nullable(),
+    doc_type: z.string().nullable(),
+    is_ic: z.boolean(),
+  })
+  .strict();
 export type MappedPreviewRow = z.infer<typeof MappedPreviewRow>;
 
 /** The bundled "OneFP&A Canonical GL" template (GL-TEMPLATE-SPEC §7) — a file that follows the
@@ -599,13 +613,25 @@ export const ImportValidateArgs = z
   })
   .strict();
 
-export const ImportValidateData = z.object({
-  hard: z.array(RowIssue),
-  warnings: z.array(RowIssue),
-  preview: z.array(MappedPreviewRow),
-  rows: z.number().int().nonnegative(),
-  mapping_version: z.string(),
-});
+export const ImportValidateData = z
+  .object({
+    hard: z.array(RowIssue),
+    warnings: z.array(RowIssue),
+    preview: z.array(MappedPreviewRow).max(50),
+    rows: z.number().int().nonnegative(),
+    mapping_version: z.union([z.literal("canonical-v1"), z.string().regex(/^v[1-9]\d*$/)]),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.preview.length > result.rows) {
+      context.addIssue({
+        code: "custom",
+        path: ["preview"],
+        message: "Mapped preview cannot contain more rows than the valid-row count.",
+      });
+    }
+  });
+export type ImportValidationResult = z.infer<typeof ImportValidateData>;
 
 export const ImportTieoutArgs = ImportValidateArgs;
 

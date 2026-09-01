@@ -60,8 +60,21 @@ resolver before row validation. It is deterministic and never inferred from a sa
 | period | `month_name_mmm_yy` | additionally accept exactly English `MMMYY` or `MMMYYYY`, case-insensitive; YY means 2000–2099; emit `YYYY-MM` (`AUG26` → `2026-08`) |
 
 An explicit month-name rule does not fuzzily reinterpret other shapes; unchanged invalid input later
-becomes the normal row validation finding. S-031 shows these rule examples but does not claim a
-row-level normalization preview because `import.parse` exposes headers, not source row samples.
+becomes the normal row validation finding. Before validation, S-031 shows rule examples but does
+not claim a row-level normalization preview because `import.parse` exposes headers, not source row
+samples. After mapping selection, its preview is populated only from valid mapped rows returned by
+`import.validate`; it is not a reconstruction of raw source input.
+
+### 3.2 Validation and preview semantics
+
+`import.validate` applies the selected mapping and returns separate `hard` and `warnings` arrays.
+Each item has an existing locked code, reason, details, and either a one-based physical source
+`line_no` or `null` for batch scope. Invalid rows are omitted from `rows` and `preview`; therefore
+`rows` is explicitly the number of valid mapped lines, while `preview` is their source-ordered first
+50. Money is converted once to integer minor units by the core and displayed through `MoneyCell`.
+The current WARNING rule is a repeated non-empty `posting_ref`; account-name differences are not
+implemented and are not simulated. S-031 renders at most 50 findings per severity for responsiveness
+while reporting the complete returned array counts.
 
 **Tie-Out gate:** Σ(`debit`) = Σ(`credit`) (or Σ(`amount`) = source-reported balance when the source provides one). Mismatch → `IMPORT_TIE_OUT_FAILED` with exact diff rows; exclude-with-log allowed (never silent).
 
@@ -89,9 +102,9 @@ period,account_code,account_name,debit,credit,cost_center,business_unit,currency
 |---|---|
 | 500k rows | Product target: streamed/background, progress, cancellation, memory < 2 GB. **Current registered `import.parse` is a synchronous in-memory grid and emits no progress event or cancel command; S-030 gates both controls and no 500k benchmark is claimed.** |
 | Duplicate (batch, source_row) | `line_no` is generated once per parsed physical row. The current schema has no `(batch_id,line_no)` UNIQUE constraint or dedicated duplicate-source-row code; no stronger duplicate guarantee is claimed until that contract is added. |
-| Period outside Company calendar range | HARD `PERIOD_NOT_FOUND` with row detail `PERIOD_OUT_OF_RANGE`; import blocked until excluded |
-| Account missing from COA at commit | HARD `MAP_ACCOUNT_AMBIGUOUS` with row detail `ACCOUNT_MISSING` → offer "create from name (confirmed)" — never auto-create without confirm |
-| Blank required column | HARD per-row error; error report exportable (CSV) |
+| Period outside Company calendar range | HARD `PERIOD_NOT_FOUND` with row detail `PERIOD_OUT_OF_RANGE`; import blocked. S-031 offers source/mapping correction and re-validation, not exclusion. |
+| Account missing from COA during validation | HARD `MAP_ACCOUNT_AMBIGUOUS` with row detail `ACCOUNT_MISSING`; S-031 offers source/mapping correction and re-validation only. It has no account-create or per-row remap action. |
+| Blank required column | HARD per-row error with physical `line_no`; S-031 renders returned findings but has no registered report-export action. |
 | Formula-looking text in source (`=...`) | treated as text; import never executes cells (injection safety) |
 
 ## 7. MAPPING TEMPLATE DEFAULT (bundled with the Canonical GL Template)

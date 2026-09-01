@@ -61,7 +61,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `assumption.find_usages` | session | `{assumption_id}` | `{cells[]}` | — |
 | `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts, source_name, source_hash, size_bytes, headers}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
 | `import.map.save_v1` | session (write) | `{template{name, columns[], sign_convention, normalization}}` | `{mapping_id, version}` | MAP_TARGET_INVALID, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
-| `import.validate` | session | `{parse_id, mapping_id}` | `{hard[], warnings[], preview[], rows, mapping_version}` | MAP_ACCOUNT_AMBIGUOUS, UNIT_PERIOD_MISMATCH, OPENING_ALREADY_SET, STORAGE_FILE_CORRUPT |
+| `import.validate` | session | `{parse_id, mapping_id}` | strict snake_case `{hard[], warnings[], preview[≤50], rows(valid), mapping_version}` | IMPORT_PARSE_EXPIRED, VALUE_INVALID, STORAGE_FILE_CORRUPT, SESSION_LOCKED, INTERNAL; finding codes in §12 |
 | `import.tieout` | session | `{parse_id, mapping_id}` | `{debits_minor, credits_minor, diff_rows[], balanced, rows, currency}` | IMPORT_TIE_OUT_FAILED, STORAGE_FILE_CORRUPT |
 | `import.commit` | session | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id, rows, debits_minor, credits_minor, tie_out_status, excluded_rows, source_hash}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, MODEL_CELL_LOCKED, STORAGE_FILE_CORRUPT |
 | `import.rollback` | session | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK |
@@ -327,3 +327,82 @@ inventing one. The bundled `mapping_id = "canonical"` is read-only, needs no sav
 ```
 
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md, LICENSE-SPEC.md, SCREENS-SPEC.md, TEST-FIXTURES-SPEC.md, DATABASE-SCHEMA.md.*
+
+## 12. DETAILED SPEC — `import.validate` (S-031 validation contract)
+
+`import.validate {parse_id, mapping_id}` is a read-only Company-scoped command. It resolves the
+same ephemeral parse and either bundled `canonical-v1` or the complete latest audited mapping body;
+it is allowed in an audit-degraded read-only session because it writes neither rows nor an audit
+event. A real response uses the following strict snake_case wire shape:
+
+```json
+{
+  "data": {
+    "hard": [
+      {
+        "code": "MAP_ACCOUNT_AMBIGUOUS",
+        "message": "ACCOUNT_MISSING: '99999' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+        "line_no": 3,
+        "details": { "accountCode": "99999", "list": [] }
+      }
+    ],
+    "warnings": [
+      {
+        "code": "VALUE_INVALID",
+        "message": "POSTING_REF_DUPLICATE: 'INV-2001' first seen on row 2",
+        "line_no": 4,
+        "details": { "postingRef": "INV-2001", "firstLineNo": 2 }
+      }
+    ],
+    "preview": [
+      {
+        "line_no": 2,
+        "period_id": "fp-2026-p08",
+        "account_id": "00000000-0000-4000-8000-000000004000",
+        "account_code": "4000",
+        "business_unit_id": null,
+        "amount_minor": -635000000,
+        "debit_minor": null,
+        "credit_minor": 635000000,
+        "currency": "USD",
+        "posting_ref": "INV-2001",
+        "doc_type": "INVOICE",
+        "is_ic": false
+      }
+    ],
+    "rows": 47999,
+    "mapping_version": "v3"
+  }
+}
+```
+
+`line_no` is the one-based physical source row and is `null` only for a batch-scope finding.
+`rows` means **valid mapped rows**, not total parsed source rows. `preview` contains only valid
+mapped rows, in source order, and is capped at 50 by both the core and Zod response schema; invalid
+raw rows are never reconstructed in the browser. Every money field is an integer minor-unit value.
+`mapping_version` is exactly `canonical-v1` or checked `vN`, and the client rejects a version that
+differs from the selected mapping.
+
+The finding code is restricted to the existing locked subset `VALUE_INVALID`, `PERIOD_NOT_FOUND`,
+`MAP_ACCOUNT_AMBIGUOUS`, `UNIT_PERIOD_MISMATCH`, or `OPENING_ALREADY_SET`; an ad-hoc validation
+code is malformed. Current HARD checks cover required/parseable period and amount fields, Company
+calendar resolution, Company/BU-scoped account resolution, supported currency, Group BU presence,
+intercompany tag/BU resolution, mixed-currency batch input, weekly driver data against a monthly
+calendar, and duplicate opening balances. The currently implemented WARNING is a duplicate
+non-empty posting reference on another valid row. Missing account names are not currently a
+WARNING and are not fabricated by the mock or S-031.
+
+HARD and WARNING arrays remain separate and preserve row-versus-batch scope. S-031 reports their
+full returned counts but renders only the first 50 items in each list to keep the webview responsive;
+it says when more returned findings are not rendered. It does not expose row exclusion, account
+creation, per-row remap, warning acknowledgement, Tie-Out, or commit controls. The only S-031
+remediation paths are edit the mapping or return to the Import Hub, correct/re-select the source,
+and re-parse.
+
+Command errors use the normal envelope. In particular, `IMPORT_PARSE_EXPIRED (410, retry true)`
+must display the locked text “This parse session expired. Re-run the import.” and route to S-030;
+S-031 must not invoke Retry against the same expired id. Mapping/company mismatch is
+`VALUE_INVALID`; an audited-body/checksum mismatch is `STORAGE_FILE_CORRUPT`; locked sessions use
+`SESSION_LOCKED`; unexpected transport/storage failures use the existing `INTERNAL` envelope.
+
+*Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, FEATURE-TRACEABILITY-MATRIX.md, GL-TEMPLATE-SPEC.md, SCREENS-SPEC.md, USER-FLOWS.md.*

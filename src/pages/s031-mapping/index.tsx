@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
   FileSpreadsheet,
@@ -28,6 +27,7 @@ import { Button, Card, Input, StatePanel, type ScreenState } from "@/components/
 import { useImportStore } from "@/stores/import";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
+import { ValidationPanel } from "./ValidationPanel";
 
 interface ColumnDraft {
   sourcePattern: string;
@@ -130,18 +130,22 @@ function mappingTargetsReady(columns: ColumnDraft[]): boolean {
   );
 }
 
-function PipelineSteps() {
+type PipelineStage = "map" | "validate" | "preview";
+
+function PipelineSteps({ stage }: { stage: PipelineStage }) {
   const { t } = useTranslation();
+  const currentIndex = stage === "map" ? 2 : stage === "validate" ? 3 : 4;
   return (
     <nav aria-label={t("mappingWizard.steps.aria")}>
       <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {PIPELINE_STEPS.map((step, index) => {
-          const complete = index === 0;
-          const active = step === "normalize" || step === "map";
+          const complete = index < currentIndex;
+          const active =
+            stage === "map" ? step === "normalize" || step === "map" : index === currentIndex;
           return (
             <li
               key={step}
-              aria-current={step === "map" ? "step" : undefined}
+              aria-current={index === currentIndex ? "step" : undefined}
               className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
                 active
                   ? "border-[var(--color-oneprimary)] bg-[var(--color-oneprimary)]/5 text-[var(--color-onetext)]"
@@ -288,45 +292,13 @@ function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readO
 
   if (mappingStatus === "success" && mappingId && mappingVersion) {
     return (
-      <Card title={t("mappingWizard.result.title")}>
-        <StatePanel
-          state="success"
-          message={
-            mappingId === "canonical"
-              ? t("mappingWizard.result.canonical")
-              : t("mappingWizard.result.saved")
-          }
-        >
-          <dl className="w-full rounded-md bg-[var(--color-onesurfacealt)] p-3 text-left text-xs">
-            <div className="flex justify-between gap-4">
-              <dt className="text-[var(--color-onetextmuted)]">{t("mappingWizard.result.id")}</dt>
-              <dd className="break-all font-mono text-[var(--color-onetext)]">{mappingId}</dd>
-            </div>
-            <div className="mt-2 flex justify-between gap-4">
-              <dt className="text-[var(--color-onetextmuted)]">
-                {t("mappingWizard.result.version")}
-              </dt>
-              <dd className="font-medium text-[var(--color-onetext)]">{mappingVersion}</dd>
-            </div>
-          </dl>
-          <p className="text-xs text-[var(--color-onetextmuted)]">
-            {t("mappingWizard.result.notCommitted")}
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" size="sm" onClick={clearMapping}>
-              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-              {t("mappingWizard.result.edit")}
-            </Button>
-            <Button size="sm" disabled aria-describedby="validation-gate">
-              {t("mappingWizard.result.validate")}
-              <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </Button>
-          </div>
-          <p id="validation-gate" className="text-xs text-[var(--color-onetextmuted)]">
-            {t("mappingWizard.result.validationGate")}
-          </p>
-        </StatePanel>
-      </Card>
+      <ValidationPanel
+        parsed={parsed}
+        mappingId={mappingId}
+        mappingVersion={mappingVersion}
+        readOnly={readOnly}
+        onEditMapping={clearMapping}
+      />
     );
   }
 
@@ -626,25 +598,38 @@ function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readO
   );
 }
 
-/** S-031 Mapping Wizard — current parse → explicit normalization/column map → versioned mapping. */
+/** S-031 — current parse → explicit mapping → real validation findings + valid-row preview. */
 export function MappingWizardPage() {
   const { t } = useTranslation();
   const companyId = useSessionStore((state) => state.companyId);
   const readOnly = useSessionStore((state) => state.readOnly);
   const parsed = useImportStore((state) => state.parsed);
   const mappingStatus = useImportStore((state) => state.mappingStatus);
+  const validationStatus = useImportStore((state) => state.validationStatus);
+  const validationResult = useImportStore((state) => state.validationResult);
   const scopeToCompany = useImportStore((state) => state.scopeToCompany);
 
   useLayoutEffect(() => {
     scopeToCompany(companyId);
   }, [companyId, scopeToCompany]);
 
+  const validationStarted =
+    mappingStatus === "success" &&
+    (validationResult !== null || validationStatus === "loading" || validationStatus === "error");
+  const pipelineStage: PipelineStage =
+    mappingStatus !== "success"
+      ? "map"
+      : validationResult && validationResult.hard.length === 0
+        ? "preview"
+        : "validate";
   const screenState: ScreenState =
     !companyId || !parsed
       ? "empty"
-      : mappingStatus === "loading" || mappingStatus === "error" || mappingStatus === "success"
-        ? mappingStatus
-        : "populated";
+      : validationStarted
+        ? validationStatus
+        : mappingStatus === "loading" || mappingStatus === "error" || mappingStatus === "success"
+          ? mappingStatus
+          : "populated";
 
   return (
     <main data-screen-state={screenState} className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -670,7 +655,7 @@ export function MappingWizardPage() {
         </Link>
       </div>
 
-      <PipelineSteps />
+      <PipelineSteps stage={pipelineStage} />
 
       {!companyId || !parsed ? (
         <Card title={t("mappingWizard.editor.title")}>

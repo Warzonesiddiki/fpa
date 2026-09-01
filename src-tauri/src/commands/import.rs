@@ -209,7 +209,8 @@ pub struct ParseSession {
     pub encodings: Vec<ParseEncoding>,
     pub headers: Vec<String>,
     /// The whole grid including the header row — re-mapped per `mapping_id`, so the user can
-    /// change the mapping without re-reading the file (streaming persistence is M2-2).
+    /// change the mapping without re-reading the file. It remains ephemeral and in-memory;
+    /// streaming/checkpoint persistence is not implemented.
     pub grid: Vec<Vec<String>>,
     pub created_ms: i64,
 }
@@ -1000,10 +1001,12 @@ impl RowIssue {
     }
 
     fn to_json(&self) -> serde_json::Value {
+        // IPC-SCHEMA / API-SPEC lock the wire contract to snake_case. Keep this authored
+        // explicitly rather than relying on a serializer rename convention.
         json!({
             "code": self.code,
             "message": self.message,
-            "lineNo": self.line_no,
+            "line_no": self.line_no,
             "details": self.details,
         })
     }
@@ -1034,6 +1037,25 @@ struct BuildResult {
     hard: Vec<RowIssue>,
     warnings: Vec<RowIssue>,
     preview: Vec<serde_json::Value>,
+}
+
+fn mapped_preview_row(line: &MappedLine, account_code: &str) -> serde_json::Value {
+    // IPC-SCHEMA / API-SPEC lock this read model to snake_case. The preview is derived only
+    // from a line that passed every HARD row check; raw source rows never leak into it.
+    json!({
+        "line_no": line.line_no,
+        "period_id": line.period_id,
+        "account_id": line.account_id,
+        "account_code": account_code,
+        "business_unit_id": line.bu_id,
+        "amount_minor": line.amount_minor,
+        "debit_minor": line.debit_minor,
+        "credit_minor": line.credit_minor,
+        "currency": line.currency_code,
+        "posting_ref": line.posting_ref,
+        "doc_type": line.doc_type,
+        "is_ic": line.is_ic,
+    })
 }
 
 /// `YYYY-MM` / `YYYYMM` → month · `YYYYMMDD` / ISO / `DD.MM.YYYY` → exact day ·
@@ -1154,9 +1176,9 @@ fn query_account_ids(
 /// Resolve `account_code` → `accounts.id`.
 ///
 /// Precedence: the row's own BU → the shared (`bu_id IS NULL`) account → nothing. Another BU's
-/// account is never borrowed (that is a missing account, offered as "create from name
-/// (confirmed)" — GL-TEMPLATE-SPEC §6). Two candidates in the winning scope are ambiguous and
-/// are reported with the candidate list, never auto-picked.
+/// account is never borrowed. A missing account is reported for source/mapping correction; this
+/// command does not invent an account-creation or per-row remap action. Two candidates in the
+/// winning scope are reported with the candidate list, never auto-picked.
 fn resolve_account(
     conn: &Connection,
     company_id: &str,
@@ -1408,7 +1430,7 @@ fn build_lines(
                 hard.push(RowIssue::row(
                     "MAP_ACCOUNT_AMBIGUOUS",
                     format!(
-                        "ACCOUNT_MISSING: '{}' is not in the COA — create it from the name (confirmed) or map the row (GL-TEMPLATE-SPEC §6)",
+                        "ACCOUNT_MISSING: '{}' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
                         row.account_code
                     ),
                     row.line_no,
@@ -1511,20 +1533,7 @@ fn build_lines(
             ic: ic.clone(),
         };
         if preview.len() < PREVIEW_ROWS {
-            preview.push(json!({
-                "lineNo": line.line_no,
-                "periodId": line.period_id,
-                "accountId": line.account_id,
-                "accountCode": row.account_code.clone(),
-                "businessUnitId": line.bu_id,
-                "amountMinor": line.amount_minor,
-                "debitMinor": line.debit_minor,
-                "creditMinor": line.credit_minor,
-                "currency": line.currency_code,
-                "postingRef": line.posting_ref,
-                "docType": line.doc_type,
-                "isIc": line.is_ic,
-            }));
+            preview.push(mapped_preview_row(&line, &row.account_code));
         }
         lines.push(line);
     }
@@ -1908,7 +1917,8 @@ pub fn import_map_save_v1(
     Ok(json!({ "data": { "mapping_id": mapping_id, "version": version } }))
 }
 
-/// `import.validate` — {parse_id, mapping_id} → {hard[], warnings[], preview[]}.
+/// `import.validate` — {parse_id, mapping_id} →
+/// {hard[], warnings[], preview[≤50], rows, mapping_version}.
 #[tauri::command(name = "import.validate", rename_all = "snake_case")]
 pub fn import_validate(
     app: tauri::AppHandle,
@@ -2438,6 +2448,218 @@ mod tests {
             is_ic: false,
             ic: None,
         }
+    }
+
+    #[test]
+    fn validation_wire_rows_use_the_locked_snake_case_contract() {
+        let issue = RowIssue::row(
+            "VALUE_INVALID",
+            "POSTING_REF_DUPLICATE: 'JE-1' first seen on row 2",
+            3,
+            json!({ "postingRef": "JE-1", "firstLineNo": 2 }),
+        )
+        .to_json();
+        assert_eq!(issue["line_no"], 3);
+        assert!(issue.get("lineNo").is_none());
+
+        let mut mapped = line(-635_000_000, Some("JE-1"));
+        mapped.line_no = 3;
+        mapped.credit_minor = Some(635_000_000);
+        let preview = mapped_preview_row(&mapped, "4000");
+        assert_eq!(
+            preview,
+            json!({
+                "line_no": 3,
+                "period_id": "fp-1",
+                "account_id": "a-1",
+                "account_code": "4000",
+                "business_unit_id": null,
+                "amount_minor": -635_000_000,
+                "debit_minor": null,
+                "credit_minor": 635_000_000,
+                "currency": "USD",
+                "posting_ref": "JE-1",
+                "doc_type": null,
+                "is_ic": false,
+            })
+        );
+        for camel_key in [
+            "lineNo",
+            "periodId",
+            "accountId",
+            "accountCode",
+            "businessUnitId",
+            "amountMinor",
+            "debitMinor",
+            "creditMinor",
+            "postingRef",
+            "docType",
+            "isIc",
+        ] {
+            assert!(preview.get(camel_key).is_none(), "wire key drifted to {camel_key}");
+        }
+    }
+
+    fn validation_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE fiscal_calendars (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 name TEXT NOT NULL,
+                 preset TEXT NOT NULL
+             );
+             CREATE TABLE fiscal_years (
+                 id TEXT PRIMARY KEY,
+                 calendar_id TEXT NOT NULL,
+                 fy_label TEXT NOT NULL
+             );
+             CREATE TABLE fiscal_periods (
+                 id TEXT PRIMARY KEY,
+                 fiscal_year_id TEXT NOT NULL,
+                 period_no INTEGER NOT NULL,
+                 code TEXT NOT NULL,
+                 start_date TEXT NOT NULL,
+                 end_date TEXT NOT NULL
+             );
+             CREATE TABLE accounts (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 bu_id TEXT,
+                 code TEXT NOT NULL,
+                 active INTEGER NOT NULL,
+                 version INTEGER NOT NULL
+             );
+             CREATE TABLE business_units (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 name TEXT NOT NULL
+             );
+             CREATE TABLE import_batches (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 kind TEXT NOT NULL,
+                 status TEXT NOT NULL
+             );
+             INSERT INTO fiscal_calendars VALUES ('cal-1','company-1','Default','12month');
+             INSERT INTO fiscal_years VALUES ('fy-1','cal-1','FY2026');
+             INSERT INTO fiscal_periods VALUES (
+                 'fp-2026-p08','fy-1',8,'P08','2026-08-01','2026-08-31'
+             );
+             INSERT INTO accounts VALUES ('account-4000','company-1',NULL,'4000',1,1);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn validation_company() -> CompanyCtx {
+        CompanyCtx {
+            id: "company-1".into(),
+            kind: "operating".into(),
+            default_currency: "USD".into(),
+            calendar_preset: "12month".into(),
+        }
+    }
+
+    fn validation_source_row(
+        line_no: i64,
+        period: &str,
+        account_code: &str,
+        posting_ref: Option<String>,
+    ) -> SourceRow {
+        SourceRow {
+            line_no,
+            period: period.into(),
+            account_code: account_code.into(),
+            account_name: String::new(),
+            debit: Some("1.00".into()),
+            credit: None,
+            amount: None,
+            cost_center: None,
+            project: None,
+            product: None,
+            customer: None,
+            business_unit: None,
+            intercompany_tag: None,
+            currency: None,
+            posting_ref,
+            doc_type: None,
+        }
+    }
+
+    #[test]
+    fn validation_returns_only_valid_lines_and_caps_the_preview_at_fifty() {
+        let conn = validation_connection();
+        let rows: Vec<SourceRow> = (0..52)
+            .map(|index| {
+                validation_source_row(
+                    index + 2,
+                    "2026-08",
+                    "4000",
+                    Some(format!("JE-{index}")),
+                )
+            })
+            .collect();
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::GlDump,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.lines.len(), 52);
+        assert!(built.hard.is_empty());
+        assert!(built.warnings.is_empty());
+        assert_eq!(built.preview.len(), PREVIEW_ROWS);
+        assert_eq!(built.preview.first().unwrap()["line_no"], 2);
+        assert_eq!(built.preview.last().unwrap()["line_no"], 51);
+        assert_eq!(built.preview.first().unwrap()["amount_minor"], 100);
+    }
+
+    #[test]
+    fn validation_separates_row_batch_and_warning_findings_without_fake_remediation() {
+        let conn = validation_connection();
+        let mut eur = validation_source_row(6, "2026-08", "4000", Some("JE-1".into()));
+        eur.currency = Some("EUR".into());
+        let rows = vec![
+            validation_source_row(2, "2026-08", "9999", None),
+            validation_source_row(3, "2027-01", "4000", None),
+            validation_source_row(4, "2026-08", "4000", Some("JE-1".into())),
+            validation_source_row(5, "2026-08", "4000", Some("JE-1".into())),
+            eur,
+        ];
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::GlDump,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.lines.len(), 3, "the two invalid source rows are not preview lines");
+        assert_eq!(built.preview.len(), 3);
+        assert_eq!(built.hard.len(), 3);
+        assert_eq!(built.hard[0].code, "VALUE_INVALID");
+        assert_eq!(built.hard[0].line_no, None, "mixed currency is batch scope");
+        assert_eq!(built.hard[1].code, "MAP_ACCOUNT_AMBIGUOUS");
+        assert_eq!(built.hard[1].line_no, Some(2));
+        assert!(!built.hard[1].message.contains("create it"));
+        assert!(!built.hard[1].message.contains("map the row"));
+        assert_eq!(built.hard[2].code, "PERIOD_NOT_FOUND");
+        assert_eq!(built.hard[2].line_no, Some(3));
+        assert_eq!(built.warnings.len(), 2);
+        assert_eq!(built.warnings[0].code, "VALUE_INVALID");
+        assert_eq!(built.warnings[0].line_no, Some(5));
+        assert_eq!(built.warnings[1].line_no, Some(6));
+        assert!(built.preview.iter().all(|row| {
+            let line_no = row["line_no"].as_i64();
+            line_no != Some(2) && line_no != Some(3)
+        }));
     }
 
     #[test]

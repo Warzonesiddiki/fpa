@@ -40,6 +40,29 @@ const PARSED = {
   headers: ["period", "account_code", "debit", "credit"],
 };
 
+const VALIDATION = {
+  hard: [],
+  warnings: [],
+  preview: [
+    {
+      line_no: 2,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+      account_code: "4000",
+      business_unit_id: null,
+      amount_minor: -635_000_000,
+      debit_minor: null,
+      credit_minor: 635_000_000,
+      currency: "USD",
+      posting_ref: "INV-2001",
+      doc_type: "INVOICE",
+      is_ic: false,
+    },
+  ],
+  rows: 3,
+  mapping_version: "canonical-v1",
+};
+
 function resetStore() {
   useImportStore.setState({
     status: "empty",
@@ -52,8 +75,12 @@ function resetStore() {
     mappingError: null,
     mappingId: null,
     mappingVersion: null,
+    validationStatus: "empty",
+    validationError: null,
+    validationResult: null,
     requestId: 0,
     mappingRequestId: 0,
+    validationRequestId: 0,
   });
 }
 
@@ -69,6 +96,8 @@ describe("S-030 import working-set store", () => {
     useImportStore.getState().selectFile("   ");
     expect(await useImportStore.getState().parse()).toBe(false);
     expect(await useImportStore.getState().saveMapping(MAPPING)).toBe(false);
+    expect(await useImportStore.getState().validateMapping()).toBe(false);
+    useImportStore.getState().clearValidation();
     useImportStore.getState().chooseCanonicalMapping();
     useImportStore.getState().clearMapping();
     expect(callMock).not.toHaveBeenCalled();
@@ -193,10 +222,13 @@ describe("S-030 import working-set store", () => {
   });
 
   it("saves a versioned mapping through the typed boundary", async () => {
-    callMock.mockResolvedValueOnce(PARSED).mockResolvedValueOnce({
-      mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
-      version: "v1",
-    });
+    callMock
+      .mockResolvedValueOnce(PARSED)
+      .mockResolvedValueOnce({
+        mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+        version: "v1",
+      })
+      .mockResolvedValueOnce({ ...VALIDATION, mapping_version: "v1" });
     useImportStore.getState().selectFile("/tmp/tally.csv");
     await useImportStore.getState().parse();
 
@@ -208,6 +240,13 @@ describe("S-030 import working-set store", () => {
       mappingId: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
       mappingVersion: "v1",
     });
+
+    expect(await useImportStore.getState().validateMapping()).toBe(true);
+    expect(callMock).toHaveBeenLastCalledWith("import.validate", {
+      parse_id: PARSED.parse_id,
+      mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+    });
+    expect(useImportStore.getState().validationResult?.mapping_version).toBe("v1");
   });
 
   it("selects the bundled canonical mapping without a write and can return to the editor", () => {
@@ -225,6 +264,153 @@ describe("S-030 import working-set store", () => {
       mappingStatus: "populated",
       mappingId: null,
       mappingVersion: null,
+    });
+  });
+
+  it("validates the active parse and mapping through the strict import.validate boundary", async () => {
+    useImportStore.setState({
+      parsed: PARSED,
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    callMock.mockResolvedValueOnce(VALIDATION);
+
+    expect(await useImportStore.getState().validateMapping()).toBe(true);
+    expect(callMock).toHaveBeenCalledWith("import.validate", {
+      parse_id: PARSED.parse_id,
+      mapping_id: "canonical",
+    });
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "success",
+      validationError: null,
+      validationResult: VALIDATION,
+    });
+
+    useImportStore.getState().clearValidation();
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
+    });
+  });
+
+  it("classifies HARD and zero-row validation outcomes without changing their evidence", async () => {
+    useImportStore.setState({
+      parsed: PARSED,
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    const hard = {
+      ...VALIDATION,
+      hard: [
+        {
+          code: "PERIOD_NOT_FOUND",
+          message: "PERIOD_NOT_FOUND: '2028-13' does not identify a valid date or fiscal period",
+          line_no: 3,
+          details: { period: "2028-13" },
+        },
+      ],
+      rows: 2,
+    };
+    callMock.mockResolvedValueOnce(hard);
+    expect(await useImportStore.getState().validateMapping()).toBe(true);
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "populated",
+      validationResult: hard,
+    });
+
+    callMock.mockResolvedValueOnce({ ...VALIDATION, preview: [], rows: 0 });
+    expect(await useImportStore.getState().validateMapping()).toBe(true);
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "empty",
+      validationResult: { preview: [], rows: 0 },
+    });
+  });
+
+  it("rejects contract drift and a mismatched validation mapping version", async () => {
+    useImportStore.setState({
+      parsed: PARSED,
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    const [row] = VALIDATION.preview;
+    callMock.mockResolvedValueOnce({
+      ...VALIDATION,
+      preview: [{ ...row, line_no: undefined, lineNo: 2 }],
+    });
+    expect(await useImportStore.getState().validateMapping()).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "error",
+      validationError: { code: "INTERNAL" },
+      validationResult: null,
+    });
+
+    callMock.mockResolvedValueOnce({ ...VALIDATION, mapping_version: "v2" });
+    expect(await useImportStore.getState().validateMapping()).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "error",
+      validationError: { code: "INTERNAL" },
+      validationResult: null,
+    });
+  });
+
+  it("ignores a late validation response after its mapping is cleared", async () => {
+    useImportStore.setState({
+      parsed: PARSED,
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    let resolveValidation: (value: typeof VALIDATION) => void = () => undefined;
+    callMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveValidation = resolve;
+      }),
+    );
+
+    const pending = useImportStore.getState().validateMapping();
+    expect(useImportStore.getState().validationStatus).toBe("loading");
+    useImportStore.getState().clearMapping();
+    resolveValidation(VALIDATION);
+
+    expect(await pending).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      mappingStatus: "populated",
+      mappingId: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
+    });
+  });
+
+  it("preserves the locked parse-expired validation error for the re-parse route", async () => {
+    useImportStore.setState({
+      parsed: PARSED,
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    callMock.mockRejectedValueOnce({
+      code: "IMPORT_PARSE_EXPIRED",
+      userMessage: "This parse session expired. Re-run the import.",
+      httpStatus: 410,
+      retryable: true,
+      retryAfterMs: null,
+      details: { parseId: PARSED.parse_id },
+    });
+
+    expect(await useImportStore.getState().validateMapping()).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      validationStatus: "error",
+      validationError: {
+        code: "IMPORT_PARSE_EXPIRED",
+        userMessage: "This parse session expired. Re-run the import.",
+        retryable: true,
+      },
+      validationResult: null,
     });
   });
 

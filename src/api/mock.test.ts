@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ImportValidateData } from "./schema";
 import { isTauriRuntime, mockInvoke } from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
@@ -371,6 +372,29 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(out.data.debits_minor).toBe(out.data.credits_minor);
     expect(out.data.tie_out_status).toBe("pass");
     expect(out.data.excluded_rows).toBe(0);
+  });
+
+  it("import.validate exposes bounded snake_case HARD/WARNING and valid-row preview data", async () => {
+    await mockInvoke("company.open", { path: "/Users/demo/Meridian Holdings.fpa" });
+    const parsed = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/validation-findings.csv",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const envelope = (await mockInvoke("import.validate", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: "canonical",
+    })) as { data: unknown };
+    const validated = ImportValidateData.parse(envelope.data);
+
+    expect(validated).toMatchObject({
+      rows: 2,
+      mapping_version: "canonical-v1",
+      hard: [{ code: "MAP_ACCOUNT_AMBIGUOUS", line_no: 3 }],
+      warnings: [{ code: "VALUE_INVALID", line_no: 4 }],
+    });
+    expect(validated.preview).toHaveLength(2);
+    expect(validated.preview[0]).toHaveProperty("line_no", 2);
+    expect(validated.preview[0]).not.toHaveProperty("lineNo");
   });
 
   it("import.validate mirrors IMPORT_PARSE_EXPIRED (410, retryable) for an unknown parse", async () => {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,43 @@ const CANONICAL_PARSED = {
   source_name: "OneFPA_GL.csv",
   headers: ["period", "account_code", "debit", "credit"],
 };
+const PREVIEW_ROWS = [
+  {
+    line_no: 2,
+    period_id: "fp-2026-p08",
+    account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000001",
+    account_code: "4000",
+    business_unit_id: null,
+    amount_minor: -635_000_000,
+    debit_minor: null,
+    credit_minor: 635_000_000,
+    currency: "USD",
+    posting_ref: "INV-2001",
+    doc_type: "INVOICE",
+    is_ic: false,
+  },
+  {
+    line_no: 4,
+    period_id: "fp-2026-p08",
+    account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000003",
+    account_code: "5100",
+    business_unit_id: "3f9f2c9e-9f8b-4e2d-9a1c-220000000001",
+    amount_minor: 452_500_000,
+    debit_minor: 452_500_000,
+    credit_minor: null,
+    currency: "USD",
+    posting_ref: "PO-8812",
+    doc_type: "BILL",
+    is_ic: false,
+  },
+];
+const CLEAN_VALIDATION = {
+  hard: [],
+  warnings: [],
+  preview: PREVIEW_ROWS,
+  rows: 48_000,
+  mapping_version: "canonical-v1",
+};
 
 function resetPageState({
   companyId = COMPANY_ID as string | null,
@@ -54,11 +91,21 @@ function resetPageState({
     mappingError: null,
     mappingId: null,
     mappingVersion: null,
+    validationStatus: "empty",
+    validationError: null,
+    validationResult: null,
     requestId: 0,
     mappingRequestId: 0,
+    validationRequestId: 0,
   });
   useSettingsStore.setState((state) => ({
-    preferences: { ...state.preferences, locale: "en-US" },
+    preferences: {
+      ...state.preferences,
+      locale: "en-US",
+      negativeStyle: "paren",
+      displayThousands: false,
+      displayDecimals: "2",
+    },
   }));
 }
 
@@ -74,7 +121,16 @@ async function nameTemplate(user: ReturnType<typeof userEvent.setup>, name = "Ta
   await user.type(screen.getByRole("textbox", { name: "Template name" }), name);
 }
 
-describe("S-031 Mapping Wizard (M2-2)", () => {
+function readyForValidation({ readOnly = false } = {}) {
+  resetPageState({ parsed: CANONICAL_PARSED, readOnly });
+  useImportStore.setState({
+    mappingStatus: "success",
+    mappingId: "canonical",
+    mappingVersion: "canonical-v1",
+  });
+}
+
+describe("S-031 Mapping and Validation Wizard (M2-3)", () => {
   beforeEach(() => {
     callMock.mockReset();
     resetPageState();
@@ -120,8 +176,12 @@ describe("S-031 Mapping Wizard (M2-2)", () => {
     expect(screen.getByText("100% auto-mapped")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Map Date" })).toHaveValue("period");
     expect(screen.getByRole("combobox", { name: "Map Ledger" })).toHaveValue("account_code");
-    expect(screen.getByText("Mapped row preview begins at Validation.")).toBeInTheDocument();
-    expect(screen.getByText(/Raw source rows are not exposed/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Mapped row preview begins after a mapping is selected and validation runs.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/does not expose raw source rows/)).toBeInTheDocument();
     expect(screen.getByText(/no mapping-list command/)).toBeInTheDocument();
   });
 
@@ -177,8 +237,11 @@ describe("S-031 Mapping Wizard (M2-2)", () => {
     expect(container.querySelector('[data-screen-state="success"]')).not.toBeNull();
     expect(screen.getByText(MAPPING_ID)).toBeInTheDocument();
     expect(screen.getByText("v1")).toBeInTheDocument();
-    expect(screen.getByText(/No source rows or Import Batch were committed/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue to Validation" })).toBeDisabled();
+    expect(
+      screen.getByText(/does not create an Import Batch or commit source rows/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Validate").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "Continue to Validation" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Edit mapping" }));
     expect(screen.getByRole("textbox", { name: "Template name" })).toHaveValue("Tally GL");
@@ -241,6 +304,192 @@ describe("S-031 Mapping Wizard (M2-2)", () => {
     expect(callMock).not.toHaveBeenCalled();
     expect(screen.getByText("OneFP&A Canonical GL selected")).toBeInTheDocument();
     expect(screen.getByText("canonical-v1")).toBeInTheDocument();
+  });
+
+  it("runs import.validate, exposes loading, and renders a clean minor-unit preview", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    let resolveValidation: (value: typeof CLEAN_VALIDATION) => void = () => undefined;
+    callMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveValidation = resolve;
+      }),
+    );
+    const { container } = renderPage();
+
+    expect(screen.getByRole("button", { name: "Continue to Validation" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    expect(callMock).toHaveBeenCalledWith("import.validate", {
+      parse_id: CANONICAL_PARSED.parse_id,
+      mapping_id: "canonical",
+    });
+    expect(container.querySelector('[data-screen-state="loading"]')).not.toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading: Validating mapped rows…" }),
+    ).toBeInTheDocument();
+
+    act(() => resolveValidation(CLEAN_VALIDATION));
+    expect(await screen.findByText("Validation completed")).toBeInTheDocument();
+    expect(container.querySelector('[data-screen-state="success"]')).not.toBeNull();
+    expect(screen.getByText("Preview").closest("li")).toHaveAttribute("aria-current", "step");
+    const summary = screen.getByLabelText("Validation summary");
+    expect(within(summary).getByText("48,000")).toBeInTheDocument();
+    expect(within(summary).getAllByText("0")).toHaveLength(2);
+    expect(
+      screen.getByRole("table", { name: "First valid mapped rows returned by import.validate" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("4000")).toBeInTheDocument();
+    expect(screen.getByText("(USD 6,350,000.00)")).toBeInTheDocument();
+    expect(screen.getByText("USD 6,350,000.00")).toBeInTheDocument();
+    expect(screen.queryByTestId("hard-findings")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("warning-findings")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeDisabled();
+    expect(screen.getByText(/Tie-Out surface is delivered in M2-4/)).toBeInTheDocument();
+  });
+
+  it("shows batch and row HARD/WARNING evidence, bounds rendering, and offers only real remediation", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    const hard = [
+      {
+        code: "VALUE_INVALID",
+        message: "CURRENCY_MIXED: split the file or import one currency at a time",
+        line_no: null,
+        details: { currencies: ["EUR", "USD"] },
+      },
+      ...Array.from({ length: 51 }, (_, index) => ({
+        code: "MAP_ACCOUNT_AMBIGUOUS",
+        message: `ACCOUNT_MISSING: code '${String(9000 + index)}' does not exist for this Company`,
+        line_no: index + 3,
+        details: { accountCode: String(9000 + index), list: [] },
+      })),
+    ];
+    callMock.mockResolvedValueOnce({
+      hard,
+      warnings: [
+        {
+          code: "VALUE_INVALID",
+          message: "POSTING_REF_DUPLICATE: 'INV-2001' first seen on row 2",
+          line_no: 4,
+          details: { postingRef: "INV-2001", firstLineNo: 2 },
+        },
+      ],
+      preview: [PREVIEW_ROWS[0]],
+      rows: 1,
+      mapping_version: "canonical-v1",
+    });
+    const { container } = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    expect(await screen.findByText("Validation found blocking issues")).toBeInTheDocument();
+    expect(container.querySelector('[data-screen-state="populated"]')).not.toBeNull();
+    expect(screen.getByText("Validate").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("HARD findings (52)")).toBeInTheDocument();
+    expect(screen.getByText("WARNING findings (1)")).toBeInTheDocument();
+    expect(screen.getByText("Batch scope")).toBeInTheDocument();
+    expect(screen.getByText("Source row 3")).toBeInTheDocument();
+    expect(screen.getByText(/2 more findings are not rendered here/)).toBeInTheDocument();
+    expect(screen.getByText(/POSTING_REF_DUPLICATE/)).toBeInTheDocument();
+    expect(screen.getByText(/does not create accounts, remap individual rows/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: /run validation again|acknowledge|exclude|create account|remap/i,
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit mapping" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: "Return to Import Hub" })).toHaveAttribute(
+      "href",
+      "/app/import",
+    );
+    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeDisabled();
+    expect(screen.getByText(/Tie-Out is blocked while HARD findings remain/)).toBeInTheDocument();
+
+    const results = await axe(document.body);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("renders an honest zero-valid-row edge state without a fabricated source preview", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    callMock.mockResolvedValueOnce({
+      hard: [],
+      warnings: [],
+      preview: [],
+      rows: 0,
+      mapping_version: "canonical-v1",
+    });
+    const { container } = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    expect(await screen.findByText("No valid mapped rows")).toBeInTheDocument();
+    expect(container.querySelector('[data-screen-state="empty"]')).not.toBeNull();
+    expect(screen.getByText("No mapped rows to preview")).toBeInTheDocument();
+    expect(screen.getByText(/Raw source rows are not fabricated/)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("routes an expired parse to re-parse and never retries the same parse id", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    callMock.mockRejectedValueOnce({
+      code: "IMPORT_PARSE_EXPIRED",
+      userMessage: "This parse session expired. Re-run the import.",
+      httpStatus: 410,
+      retryable: true,
+      retryAfterMs: null,
+      details: { parseId: CANONICAL_PARSED.parse_id },
+    });
+    const { container } = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    expect(
+      await screen.findByText("This parse session expired. Re-run the import."),
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-screen-state="error"]')).not.toBeNull();
+    expect(screen.getByText("IMPORT_PARSE_EXPIRED")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit mapping" })).not.toBeInTheDocument();
+    const reparseLinks = screen.getAllByRole("link", { name: "Return to Import Hub" });
+    expect(reparseLinks.every((link) => link.getAttribute("href") === "/app/import")).toBe(true);
+    await user.click(reparseLinks[0]);
+    expect(useImportStore.getState()).toMatchObject({
+      status: "populated",
+      parsed: null,
+      mappingStatus: "empty",
+      validationStatus: "empty",
+      validationResult: null,
+    });
+    expect(callMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a retryable transport failure without losing the selected mapping", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    callMock
+      .mockRejectedValueOnce({
+        code: "INTERNAL",
+        userMessage: "An unexpected error occurred. Please try again.",
+        httpStatus: 500,
+        retryable: true,
+        retryAfterMs: null,
+        details: {},
+      })
+      .mockResolvedValueOnce(CLEAN_VALIDATION);
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Validation completed")).toBeInTheDocument();
+    expect(screen.getByText("canonical-v1")).toBeInTheDocument();
+    expect(callMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps read-only validation available because it performs no audited write", () => {
+    readyForValidation({ readOnly: true });
+    renderPage();
+
+    expect(screen.getByText(/Validation remains available in read-only mode/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Validation" })).toBeEnabled();
   });
 
   it("gates duplicate/reserved headers and audited writes in read-only mode", async () => {

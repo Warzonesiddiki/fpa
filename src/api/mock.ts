@@ -330,6 +330,7 @@ interface MockParse {
   kind: string;
   rows: number;
   balanced: boolean;
+  validationFindings: boolean;
   companyId: string | null;
 }
 
@@ -779,6 +780,7 @@ export async function mockInvoke<C extends CommandName>(
         kind,
         rows: MOCK_PARSE_ROWS,
         balanced,
+        validationFindings: file_path.toLowerCase().includes("validation-findings"),
         companyId: session.company_id,
       });
       return {
@@ -839,11 +841,38 @@ export async function mockInvoke<C extends CommandName>(
         }
         mappingVersion = saved.version;
       }
+      const preview = mockPreviewRows(parse.balanced);
+      if (parse.validationFindings) {
+        return {
+          data: {
+            hard: [
+              {
+                code: "MAP_ACCOUNT_AMBIGUOUS",
+                message:
+                  "ACCOUNT_MISSING: '99999' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+                line_no: 3,
+                details: { accountCode: "99999", list: [] },
+              },
+            ],
+            warnings: [
+              {
+                code: "VALUE_INVALID",
+                message: "POSTING_REF_DUPLICATE: 'INV-2001' first seen on row 2",
+                line_no: 4,
+                details: { postingRef: "INV-2001", firstLineNo: 2 },
+              },
+            ],
+            preview: [preview[0], { ...preview[2], posting_ref: "INV-2001" }],
+            rows: 2,
+            mapping_version: mappingVersion,
+          },
+        };
+      }
       return {
         data: {
           hard: [],
           warnings: [],
-          preview: mockPreviewRows(parse.balanced),
+          preview,
           rows: parse.rows,
           mapping_version: mappingVersion,
         },

@@ -4,9 +4,11 @@ import {
   CANONICAL_MAPPING_ID,
   ImportMapSaveData,
   ImportParseData,
+  ImportValidateData,
   type ImportKind,
   type ImportMappingTemplate,
   type ImportParseData as ImportParseResult,
+  type ImportValidationResult,
 } from "@/api/schema";
 import type { ScreenState } from "@/components/ui/StatePanel";
 
@@ -23,9 +25,14 @@ interface ImportStoreState {
   mappingError: BridgeError | null;
   mappingId: string | null;
   mappingVersion: string | null;
-  /** Monotonic tokens: source changes invalidate parse and mapping writes independently. */
+  /** M2-3 read-only validation result for the active parse + selected mapping. */
+  validationStatus: ScreenState;
+  validationError: BridgeError | null;
+  validationResult: ImportValidationResult | null;
+  /** Monotonic tokens: source changes invalidate parse, mapping writes, and validation reads. */
   requestId: number;
   mappingRequestId: number;
+  validationRequestId: number;
   scopeToCompany: (companyId: string | null) => void;
   setKind: (kind: ImportKind) => void;
   selectFile: (filePath: string) => void;
@@ -35,11 +42,19 @@ interface ImportStoreState {
   saveMapping: (template: ImportMappingTemplate) => Promise<boolean>;
   chooseCanonicalMapping: () => void;
   clearMapping: () => void;
+  validateMapping: () => Promise<boolean>;
+  clearValidation: () => void;
   reset: () => void;
 }
 
 function stateForPath(filePath: string): ScreenState {
   return filePath.trim() ? "populated" : "empty";
+}
+
+function stateForValidation(result: ImportValidationResult): ScreenState {
+  if (result.hard.length > 0) return "populated";
+  if (result.rows === 0 && result.preview.length === 0) return "empty";
+  return "success";
 }
 
 /**
@@ -61,8 +76,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
   mappingError: null,
   mappingId: null,
   mappingVersion: null,
+  validationStatus: "empty",
+  validationError: null,
+  validationResult: null,
   requestId: 0,
   mappingRequestId: 0,
+  validationRequestId: 0,
 
   scopeToCompany: (companyId) => {
     const current = get();
@@ -77,8 +96,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -94,8 +117,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -111,8 +138,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -129,8 +160,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
     try {
       const response = await call("import.parse", {
@@ -163,8 +198,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -178,7 +217,11 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       mappingRequestId,
+      validationRequestId: current.validationRequestId + 1,
     });
     try {
       const response = await call("import.map.save_v1", { template });
@@ -217,7 +260,11 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: CANONICAL_MAPPING_ID,
       mappingVersion: "canonical-v1",
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -228,7 +275,92 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
+    });
+  },
+
+  validateMapping: async () => {
+    const current = get();
+    if (
+      !current.parsed ||
+      !current.mappingId ||
+      !current.mappingVersion ||
+      current.mappingStatus !== "success"
+    ) {
+      return false;
+    }
+
+    const sourceRequestId = current.requestId;
+    const mappingRequestId = current.mappingRequestId;
+    const validationRequestId = current.validationRequestId + 1;
+    const parseId = current.parsed.parse_id;
+    const mappingId = current.mappingId;
+    const expectedMappingVersion = current.mappingVersion;
+    set({
+      validationStatus: "loading",
+      validationError: null,
+      validationResult: null,
+      validationRequestId,
+    });
+
+    try {
+      const response = await call("import.validate", {
+        parse_id: parseId,
+        mapping_id: mappingId,
+      });
+      const result = ImportValidateData.parse(response);
+      if (result.mapping_version !== expectedMappingVersion) {
+        throw new Error("import.validate returned a different mapping version than requested.");
+      }
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== expectedMappingVersion
+      ) {
+        return false;
+      }
+      set({
+        validationStatus: stateForValidation(result),
+        validationError: null,
+        validationResult: result,
+      });
+      return true;
+    } catch (cause) {
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.validationRequestId !== validationRequestId ||
+        latest.parsed?.parse_id !== parseId ||
+        latest.mappingId !== mappingId ||
+        latest.mappingVersion !== expectedMappingVersion
+      ) {
+        return false;
+      }
+      set({
+        validationStatus: "error",
+        validationError: toBridgeError(cause),
+        validationResult: null,
+      });
+      return false;
+    }
+  },
+
+  clearValidation: () => {
+    const current = get();
+    set({
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 
@@ -244,8 +376,12 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       mappingError: null,
       mappingId: null,
       mappingVersion: null,
+      validationStatus: "empty",
+      validationError: null,
+      validationResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
+      validationRequestId: current.validationRequestId + 1,
     });
   },
 }));

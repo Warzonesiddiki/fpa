@@ -70,11 +70,12 @@
 
 ### US-008 · F-007 GL Dump Import (primary) · P0 · (R) — *the flagship story*
 
-**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he parses it in S-030 and either selects bundled `canonical-v1` or defines and saves a custom map in S-031, **Then** the target pipeline is Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit; the Trial Balance Tie-Out passes to the cent; an Import Batch `2026-08-30_001` is committed with file SHA-256; Actuals for P08 appear and the variance screen for P08 refreshes. At M2-2, Parse→Normalize→Map is reachable and Validation is visibly gated for M2-3; saved-map browsing is not claimed without a catalogued list/load command.
+**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he parses it in S-030 and either selects bundled `canonical-v1` or defines and saves a custom map in S-031, **Then** the target pipeline is Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit; the Trial Balance Tie-Out passes to the cent; an Import Batch `2026-08-30_001` is committed with file SHA-256; Actuals for P08 appear and the variance screen for P08 refreshes. At M2-3, Parse→Normalize→Map→Validate→Preview is reachable through typed IPC: S-031 shows the actual mapping version, HARD/WARNING counts and scope, valid mapped row count, and at most the first 50 valid rows. Tie-Out/Commit remain visibly gated, and saved-map browsing is not claimed without a catalogued list/load command.
 
 **Edge cases**
-- Tie-Out fails by ₹0.05 (one conflicting line) → Commit blocked; error report lists the exact rows, accounts, and amounts; user chooses "exclude row (logged)" or fixes the source; nothing is committed until re-validated; the excluded rows are retained in the batch metadata, never silently dropped.
+- Tie-Out fails by ₹0.05 (one conflicting line) → Commit blocked; the later S-032 report names only attributable diff rows. S-031 does not expose exclusion: the user edits the mapping or corrects/re-parses the source. When M2-4 exposes "exclude row (logged)", exclusions must remain in batch metadata and never be silently dropped.
 - Same batch re-imported twice → duplicate detection (`IMPORT_BATCH_HASH_EXISTS`) blocks it. The documented overwrite/new-batch choice is not exposed in S-031 and is not simulated; a later Commit UI must require justification before any new-batch path.
+- Parse expires before validation → exact `IMPORT_PARSE_EXPIRED` text and a return to S-030 to select/re-parse; Retry never resubmits the expired id.
 - 2M-row dump → background streaming/progress/cancellation and memory < 2 GB remain the acceptance target. The current parser is synchronous/in-memory, has no progress/cancel IPC, and has no native benchmark evidence; S-030 does not simulate those controls.
 - Encrypted/read-protected workbook → `IMPORT_FILE_LOCKED` with instructions (remove password / export unprotected copy); app never stores the source password.
 - ZIP wrapper → visibly unavailable: the registered parser rejects it and the picker excludes it until one-workbook ZIP support is implemented.
@@ -84,7 +85,7 @@
 **Given** Alex's QBO Actuals arrive at month 4, **When** he imports `QBO_Transactions.csv` (long format, signed Amount) and then `OpeningBalances.xlsx`, **Then** Actuals attach to the existing Plan-Only Model without rebuilding drivers; Opening Balances populate BS opening; the first variance for month 5 computes against a 4-month Actual base.
 
 **Edge cases**
-- Operational driver data (units/headcount) imported with headers that map to "New Customers" but periods are weekly → calendar mismatch warning `UNIT_PERIOD_MISMATCH`; user chooses "aggregate to month (sum)" or "reject".
+- Operational driver data (units/headcount) imported with weekly periods against a monthly calendar → batch-scope HARD `UNIT_PERIOD_MISMATCH`. S-031 offers source correction/re-parse, not an invented aggregate/reject command; the dedicated driver-source UI remains M2-5.
 - Opening Balances imported twice → HARD `OPENING_ALREADY_SET`; second batch rejected; manual override requires Audit Trail note.
 
 ### US-010 · F-009 Connectors · P0 · (P)
@@ -105,7 +106,7 @@
 
 ### US-012 · F-011 Mapping Management · P1 · (R)
 
-**Given** Ravi has parsed next month's Tally dump, **When** S-031 auto-suggests its header map and he explicitly selects `month_name_mmm_yy` (`AUG26` → `2026-08`), **Then** saving exact Company/name "Tally GL" keeps the mapping id and advances the checked label to v3. The screen shows rule examples only: `import.parse` exposes no source samples, so it does not fabricate 14 period suggestions or a normalized row preview.
+**Given** Ravi has parsed next month's Tally dump, **When** S-031 auto-suggests its header map and he explicitly selects `month_name_mmm_yy` (`AUG26` → `2026-08`), **Then** saving exact Company/name "Tally GL" keeps the mapping id and advances the checked label to v3. Before validation, the screen shows rule examples only because `import.parse` exposes no source samples. After selection/save, the real `import.validate` response supplies HARD/WARNING evidence and the first 50 valid mapped rows; the browser never fabricates normalized source rows.
 
 **Edge cases**
 - An input outside the selected exact period patterns remains unchanged and becomes a normal Validation finding; the mapper never chooses between fuzzy interpretations.

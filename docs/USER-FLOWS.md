@@ -44,20 +44,30 @@
    audited `import.map.save_v1`, keeps the Company-scoped mapping id, and advances `vN`.
    Saved-template loading/history is unavailable because the locked command catalog has no mapping
    list/load command; S-031 visibly gates it rather than claiming to load "SAP GL dump v3".
-5. Validate: 2 HARD (unmapped account `99999`, duplicate invoice # row), 12 WARNING (missing names).
-   - *Branch HARD:* unresolved → commit blocked; fix mapping or exclude-with-log (never silent).
-6. Preview: first 50 rows + counts; user scroll-checks.
+5. Validate through the registered `import.validate {parse_id,mapping_id}` path. S-031 reports the
+   exact mapping version and valid mapped row count, then separates HARD from WARNING and row scope
+   from batch scope. An unmapped account such as `99999` is HARD; a repeated non-empty posting
+   reference on another valid row is the currently implemented WARNING. Missing names are not
+   fabricated as findings.
+   - *Branch HARD:* the later Tie-Out/Commit path is blocked. S-031 offers only Edit mapping or
+     Return to Import Hub to correct/re-select and re-parse the source; there is no fake account
+     creation, row-remap, exclusion, or acknowledgement action.
+   - *Branch expired parse:* `IMPORT_PARSE_EXPIRED` shows “This parse session expired. Re-run the
+     import.” and returns to S-030; it never retries the expired id.
+6. Preview: at most the first 50 **valid mapped** rows plus counts, formatted from integer minor
+   units. Invalid raw rows are represented by HARD findings and are not reconstructed in the UI.
 7. **S-032 Tie-Out:** debits ₹41,283,000.00 vs credits ₹41,283,000.05.
    - *Branch:* diff ₹0.05 → exact row highlighted (one credit line rounding) → user selects "Exclude row (logged)" → tie passes; excluded row retained in batch metadata + Audit Trail.
 8. Commit: batch `2026-08-30_001`, SHA-256 shown, mapping version v3, 47,999 rows.
 9. Post-verify: **S-054 Variance** for P08 — Actuals appear; **S-060 P&L** ties; Health Check green; **S-070 Audit** shows batch.
 10. **Success:** monthly actuals loaded < 5 min.
 
-**Current implementation boundary (M2-2):** steps 1–4 are reachable. The registered
-`import.validate` core exists, but the HARD/WARNING remediation + first-50-row UI begins in M2-3;
-S-031's Validation action is visibly disabled. Tie-Out/Commit screens and connector adapters remain
-later units. The current parser is synchronous/in-memory and has no typed progress event or cancel
-command, so those controls are not shown.
+**Current implementation boundary (M2-3):** steps 1–6 are reachable through typed production IPC.
+Validation is read-only, its response is strict snake_case, stale parse/mapping responses are
+invalidated, and S-031 shows bounded finding lists plus the first 50 valid mapped rows. Tie-Out,
+exclusions, warning acknowledgement, and Commit remain later units and are visibly unavailable.
+The current parser is synchronous/in-memory and has no typed progress event or cancel command, so
+those controls are not shown.
 
 **Fallback path (always available):** any connector failure → Manual Import; any file failure → "Download GL dump from your ERP following the GL Template" (help link).
 

@@ -221,7 +221,7 @@
   },
   "mappingWizard": {
     "title": "Mapping Wizard",
-    "subtitle": "Confirm source columns and explicit normalization rules before validation.",
+    "subtitle": "Confirm mapping, run the real validation engine, and inspect valid mapped rows before Tie-Out.",
     "back": "Back to Import Hub",
     "steps": {
       "aria": "Import pipeline",
@@ -313,19 +313,106 @@
       "notCommitted": "Only the mapping definition was selected or saved. No source rows or Import Batch were committed.",
       "edit": "Edit mapping",
       "validate": "Continue to Validation",
-      "validationGate": "The S-031 validation and first-50-row preview surface is the next M2-3 unit; this build does not fabricate it."
+      "validationGate": "Validation runs through the registered import.validate command after a mapping is selected."
     },
     "preview": {
       "title": "Source preview",
-      "unavailable": "Mapped row preview begins at Validation.",
-      "gate": "import.validate is registered, but its HARD/WARNING remediation and first-50-row UI belong to M2-3. Raw source rows are not exposed by import.parse, so this screen does not invent a browser preview."
+      "unavailable": "Mapped row preview begins after a mapping is selected and validation runs.",
+      "gate": "import.parse does not expose raw source rows. The mapped preview is derived only from valid rows returned by import.validate."
     },
     "empty": {
       "noParse": "No parsed source is available. Parse a file in Import Hub first.",
       "noCompany": "Open a Company and parse a source before mapping.",
       "return": "Return to Import Hub"
     },
-    "localOnly": "Mapping definitions stay Company-scoped. Production saves use the audited local Rust command; browser development uses only the explicit mock."
+    "localOnly": "Mapping and validation stay Company-scoped. Production uses the local Rust commands; browser development uses only the explicit mock. No validation action commits source rows.",
+    "validation": {
+      "context": {
+        "title": "Validation context",
+        "source": "Parsed source",
+        "mappingVersion": "Mapping version",
+        "mappingId": "Mapping ID"
+      },
+      "actions": {
+        "continue": "Continue to Validation",
+        "editMapping": "Edit mapping",
+        "returnToHub": "Return to Import Hub",
+        "tieOut": "Continue to Tie-Out"
+      },
+      "ready": {
+        "title": "Mapping is ready for validation",
+        "description": "Run the registered import.validate command to resolve periods, accounts, business units, currencies, and exact minor-unit amounts while preserving explicitly normalized dimension text.",
+        "noWrite": "Validation is read-only: it does not create an Import Batch or commit source rows.",
+        "readOnly": "Validation remains available in read-only mode because it does not write or alter audit history."
+      },
+      "loading": {
+        "title": "Validating mapped rows…",
+        "description": "OneFP&A is resolving Company-scoped targets and applying HARD and WARNING rules."
+      },
+      "error": {
+        "title": "Validation could not be completed",
+        "fallback": "An unexpected error occurred. Please try again."
+      },
+      "outcome": {
+        "blockedTitle": "Validation found blocking issues",
+        "blockedDescription": "HARD findings must be corrected in the source or mapping before Tie-Out. Valid mapped rows are still previewed separately.",
+        "emptyTitle": "No valid mapped rows",
+        "emptyDescription": "The source produced no valid mapped rows and no preview. Return to the Import Hub to inspect and re-parse the source.",
+        "cleanTitle": "Validation completed",
+        "cleanDescription": "No HARD or WARNING findings were returned for the valid mapped rows.",
+        "warningDescription": "There are no HARD findings. Review every WARNING before the later Tie-Out and commit stages."
+      },
+      "summary": {
+        "label": "Validation summary",
+        "validRows": "Valid mapped rows",
+        "hard": "HARD findings",
+        "warnings": "WARNING findings",
+        "previewRows": "Preview rows"
+      },
+      "findings": {
+        "hard": {
+          "title": "HARD findings ({{count}})",
+          "description": "A HARD finding blocks Tie-Out and commit. Row findings name the physical source row; batch findings apply to the full source.",
+          "label": "Blocking validation findings"
+        },
+        "warning": {
+          "title": "WARNING findings ({{count}})",
+          "description": "A WARNING does not make a row invalid, but it must be reviewed before commit.",
+          "label": "Validation warnings"
+        },
+        "row": "Source row {{row}}",
+        "batch": "Batch scope",
+        "more": "{{count}} more findings are not rendered here to keep the screen responsive. The summary count includes them."
+      },
+      "preview": {
+        "title": "Valid mapped row preview",
+        "description": "Showing {{shown}} of up to the first 50 valid mapped rows ({{rows}} valid rows total). Invalid source rows appear only as HARD findings.",
+        "caption": "First valid mapped rows returned by import.validate",
+        "emptyTitle": "No mapped rows to preview",
+        "emptyDescription": "Validation returned zero valid mapped rows. Raw source rows are not fabricated on this screen.",
+        "columns": {
+          "row": "Source row",
+          "period": "Period ID",
+          "account": "Account",
+          "businessUnit": "Business unit",
+          "debit": "Debit",
+          "credit": "Credit",
+          "net": "Net amount",
+          "reference": "Posting reference",
+          "type": "Document type",
+          "intercompany": "Intercompany"
+        },
+        "yes": "Yes",
+        "no": "No"
+      },
+      "remediation": {
+        "title": "Next action",
+        "description": "Edit the mapping, or return to the Import Hub to correct and re-parse the source. Then run validation again.",
+        "unsupported": "This screen does not create accounts, remap individual rows, exclude rows, acknowledge warnings, run Tie-Out, or commit a batch because no such S-031 action contract is registered.",
+        "hardGate": "Tie-Out is blocked while HARD findings remain. No Tie-Out call was made.",
+        "milestoneGate": "Validation passed its HARD gate. The Tie-Out surface is delivered in M2-4; this screen does not call it early."
+      }
+    }
   },
   "companies": {
     "title": "Companies",
