@@ -12,6 +12,7 @@ import {
   CoaMergeData,
   DecimalString,
   ImportCommitData,
+  ImportMapSaveData,
   ImportParseData,
   ImportRollbackData,
   ImportTieoutData,
@@ -454,6 +455,135 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     expect(detected.success).toBe(false); // "source_hash must be sha256 hex"
   });
 
+  it("import.map.save_v1 locks versioned columns, sign, and normalization rules", () => {
+    const parsed = CommandArgs["import.map.save_v1"].safeParse({
+      template: {
+        name: " Tally GL ",
+        columns: [
+          { source_pattern: "Posting Date", semantic_target: "period" },
+          { source_pattern: "Ledger Code", semantic_target: "account_code" },
+          { source_pattern: "Dr", semantic_target: "debit" },
+          { source_pattern: "Cr", semantic_target: "credit" },
+        ],
+        sign_convention: "debit_positive",
+        normalization: {
+          account_code: "trim_collapse_whitespace_remove_hyphens",
+          dimension_values: "trim_collapse_whitespace",
+          period: "month_name_mmm_yy",
+        },
+      },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.template.name).toBe("Tally GL");
+  });
+
+  it("import.map.save_v1 rejects reserved sources, duplicate targets, and incomplete money maps", () => {
+    const base = {
+      name: "Bad map",
+      sign_convention: "debit_positive" as const,
+      normalization: {
+        account_code: "trim" as const,
+        dimension_values: "trim" as const,
+        period: "documented" as const,
+      },
+    };
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "sign_convention", semantic_target: "period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "amount", semantic_target: "amount" },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "date", semantic_target: "period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "other account", semantic_target: "account_code" },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "date", semantic_target: "period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "value", semantic_target: "account_name" },
+          ],
+        },
+      }).success,
+    ).toBe(false); // no amount or debit+credit
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "date\u0000", semantic_target: "period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "value", semantic_target: "amount" },
+          ],
+        },
+      }).success,
+    ).toBe(false); // control-character source
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "date", semantic_target: "Period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "value", semantic_target: "amount" },
+          ],
+        },
+      }).success,
+    ).toBe(false); // enums are exact, not case-normalized guesses
+    expect(
+      CommandArgs["import.map.save_v1"].safeParse({
+        template: {
+          ...base,
+          columns: [
+            { source_pattern: "date", semantic_target: "period" },
+            { source_pattern: "account", semantic_target: "account_code" },
+            { source_pattern: "value", semantic_target: "amount" },
+          ],
+          unversioned_rule: true,
+        },
+      }).success,
+    ).toBe(false); // strict object: no undeclared policy fields
+  });
+
+  it("import.map.save_v1 returns a UUID and monotonic vN label", () => {
+    expect(
+      ImportMapSaveData.safeParse({
+        mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+        version: "v3",
+      }).success,
+    ).toBe(true);
+    expect(
+      ImportMapSaveData.safeParse({
+        mapping_id: "not-a-uuid",
+        version: "latest",
+      }).success,
+    ).toBe(false);
+    expect(
+      ImportMapSaveData.safeParse({
+        mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+        version: "v1",
+        mutable_history: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("RowIssue carries a locked error code and either a row or batch scope", () => {
     const rowIssue = RowIssue.safeParse({
       code: "MAP_ACCOUNT_AMBIGUOUS",
@@ -629,9 +759,10 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     ).toBe(true);
   });
 
-  it("all five B19 ingestion commands are registered in the command table", () => {
+  it("all six B19 ingestion commands are registered in the command table", () => {
     for (const command of [
       "import.parse",
+      "import.map.save_v1",
       "import.validate",
       "import.tieout",
       "import.commit",

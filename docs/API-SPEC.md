@@ -59,11 +59,11 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `assumption.upsert` | session | `{model_id, assumption{...}}` | `{assumption_id}` | ASSUMPTION_IN_USE_LOCKED |
 | `assumption.list` | session | `{model_id}` | `AssumptionListRow[]` (`version`, `last_changed_at`) | — |
 | `assumption.find_usages` | session | `{assumption_id}` | `{cells[]}` | — |
-| `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
-| `import.map.save_v1` | session | `{template{...}}` | `{mapping_id, version}` | MAP_TARGET_INVALID |
-| `import.validate` | session | `{parse_id, mapping_id}` | `{hard[], warnings[], preview[]}` | MAP_ACCOUNT_AMBIGUOUS, UNIT_PERIOD_MISMATCH, OPENING_ALREADY_SET |
-| `import.tieout` | session | `{parse_id, mapping_id}` | `{debits_minor, credits_minor, diff_rows[]}` | IMPORT_TIE_OUT_FAILED |
-| `import.commit` | session | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, MODEL_CELL_LOCKED |
+| `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts, source_name, source_hash, size_bytes, headers}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
+| `import.map.save_v1` | session (write) | `{template{name, columns[], sign_convention, normalization}}` | `{mapping_id, version}` | MAP_TARGET_INVALID, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
+| `import.validate` | session | `{parse_id, mapping_id}` | `{hard[], warnings[], preview[], rows, mapping_version}` | MAP_ACCOUNT_AMBIGUOUS, UNIT_PERIOD_MISMATCH, OPENING_ALREADY_SET, STORAGE_FILE_CORRUPT |
+| `import.tieout` | session | `{parse_id, mapping_id}` | `{debits_minor, credits_minor, diff_rows[], balanced, rows, currency}` | IMPORT_TIE_OUT_FAILED, STORAGE_FILE_CORRUPT |
+| `import.commit` | session | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id, rows, debits_minor, credits_minor, tie_out_status, excluded_rows, source_hash}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, MODEL_CELL_LOCKED, STORAGE_FILE_CORRUPT |
 | `import.rollback` | session | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK |
 | `import.history` | session | `{company_id, page}` | `{rows[], meta}` | — |
 | `connector.connect` | session | `{connector_key}` | `{auth_url}` | CONNECTOR_ALREADY_CONNECTED |
@@ -248,5 +248,82 @@ Fiscal Year can be archived yet (`company.archive_year` lands with the archive s
 The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is recorded as
 a `company.clone_sandbox` audit event (object `company`) inside the same transaction that
 inserts the rows and seals the container (B18-1) — a failed seal rolls back the whole clone.
+
+## 11. DETAILED SPEC — `import.map.save_v1` (S-031 mapping contract)
+
+`import.map.save_v1` is the only mapping write in the locked 97-command catalog. It requires a
+writable unlocked session and derives `company_id` from that session; callers cannot write a
+mapping into another Company. The request is strict (unknown object keys or enum values are
+invalid):
+
+```json
+{
+  "template": {
+    "name": "Tally GL",
+    "columns": [
+      { "source_pattern": "Posting Date", "semantic_target": "period" },
+      { "source_pattern": "Ledger Code", "semantic_target": "account_code" },
+      { "source_pattern": "Dr", "semantic_target": "debit" },
+      { "source_pattern": "Cr", "semantic_target": "credit" }
+    ],
+    "sign_convention": "debit_positive",
+    "normalization": {
+      "account_code": "trim_collapse_whitespace_remove_hyphens",
+      "dimension_values": "trim_collapse_whitespace",
+      "period": "month_name_mmm_yy"
+    }
+  }
+}
+```
+
+`semantic_target` is exactly one of `period`, `account_code`, `account_name`, `debit`,
+`credit`, `amount`, `cost_center`, `project`, `product`, `customer`, `business_unit`,
+`intercompany_tag`, `currency`, `posting_ref`, or `doc_type`. Sources and targets are unique
+case-insensitively. `period` and `account_code` are required, plus either `amount` or both
+`debit` and `credit`; 3–15 mapped columns (the finite target set is unique) and a trimmed
+1–120-character name are accepted.
+Unknown, duplicate, missing-required, blank, control-character, or reserved rule sources return
+`MAP_TARGET_INVALID (422, retry false)` with locked text “This column cannot map to that field.
+Choose a supported target.” The same error covers invalid
+sign/normalization enums; validation occurs independently in Zod and serde-backed Rust code.
+
+The finite rule enums are:
+
+- `sign_convention`: `debit_positive | credit_positive`; it applies only to a signed `amount`
+  source. Explicit debit/credit columns retain debit-minus-credit semantics.
+- `normalization.account_code`: `trim | trim_collapse_whitespace |
+  trim_collapse_whitespace_remove_hyphens`. Codes always remain text and leading zeroes survive.
+- `normalization.dimension_values`: `trim | trim_collapse_whitespace` for cost center, project,
+  product, customer, and business-unit values.
+- `normalization.period`: `documented | month_name_mmm_yy`. The additive explicit pattern accepts
+  only `MMMYY` or `MMMYYYY` (English month abbreviation, case-insensitive), maps two-digit years
+  to 2000–2099, and emits `YYYY-MM` (`AUG26` → `2026-08`). Other inputs pass unchanged to the
+  documented period parser and can still fail validation; there is no fuzzy date guess.
+
+A first Company/name save returns `{mapping_id: <uuid>, version: "v1"}`. A later exact-name save
+in that Company keeps the id and increments the checked `vN` label. The current materialized
+`mapping_templates`/`mapping_columns` body is replaced, including the four reserved policy rows
+defined in DATABASE-SCHEMA §7, and its deterministic SHA-256 checksum changes with the semantic
+definition. The replacement and an `import.map.save_v1` HMAC audit event commit in one immediate
+transaction; an audit failure rolls the mapping write back. Resolution recomputes the body checksum
+and matches the complete normalized definition, id, checksum, and version to the latest verified
+mapping audit payload; a materialized-row or metadata mismatch is `STORAGE_FILE_CORRUPT`, never a
+silently altered map. A degraded
+audit-chain session is read-only and returns `AUDIT_CHAIN_BREAK` before opening the transaction.
+
+Historical definitions are immutable in the append-only HMAC audit chain: every event stores the
+full new definition in `after_json`; a version bump also stores the full prior persisted body in
+`before_json`. `import.commit` captures the mapping id and version in its audit payload and the
+version in `import_batches.mapping_version`. The schema intentionally materializes only the latest
+body, so historical versions are not mutable rows and cannot be loaded by id today. There is no
+mapping-list/load/history command in the locked catalog; S-031 visibly gates browsing instead of
+inventing one. The bundled `mapping_id = "canonical"` is read-only, needs no save, and resolves to
+`canonical-v1`.
+
+**Success**
+
+```json
+{ "data": { "mapping_id": "00000000-0000-4000-8000-000000000031", "version": "v1" } }
+```
 
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md, LICENSE-SPEC.md, SCREENS-SPEC.md, TEST-FIXTURES-SPEC.md, DATABASE-SCHEMA.md.*

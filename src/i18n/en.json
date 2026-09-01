@@ -192,12 +192,12 @@
     },
     "parseAnother": "Parse another file",
     "continueMapping": "Continue to Mapping",
-    "mappingUnavailable": "Mapping hand-off remains unavailable: import.map.save_v1 is catalogued, but S-031 and its typed/runtime handler are not registered.",
+    "mappingHint": "Review every suggested column and normalization rule before validation. Nothing has been committed.",
     "mappings": {
       "title": "Recent mappings",
       "canonical": "OneFP&A Canonical GL",
       "canonicalHint": "Built-in canonical-v1 mapping; files with canonical headers need no guessed column mapping.",
-      "savedGate": "Saved mappings are not listed because no mapping-list command is defined. M2-2 must establish that read contract before this panel can claim persisted templates."
+      "savedGate": "Saved mappings are not listed because the locked 97-command catalog defines no mapping-list/load/history command. S-031 can select the bundled canonical map or use a custom map saved in its current working session."
     },
     "history": {
       "title": "Import Batch history",
@@ -218,6 +218,114 @@
       "progressGate": "The current import.parse command emits no typed import:progress event and exposes no cancel command; no percentage or Cancel action is fabricated."
     },
     "localOnly": "Manual parsing uses the local Rust core in the desktop build. Browser development uses the explicitly dev-only mock; production never routes this workflow through the mock."
+  },
+  "mappingWizard": {
+    "title": "Mapping Wizard",
+    "subtitle": "Confirm source columns and explicit normalization rules before validation.",
+    "back": "Back to Import Hub",
+    "steps": {
+      "aria": "Import pipeline",
+      "parse": "Parse",
+      "normalize": "Normalize",
+      "map": "Map",
+      "validate": "Validate",
+      "preview": "Preview",
+      "tieout": "Tie-Out",
+      "commit": "Commit"
+    },
+    "source": {
+      "title": "Parsed source",
+      "file": "File",
+      "rows": "Rows across sheets",
+      "encoding": "Encoding",
+      "delimiter": "Delimiter",
+      "delimiterGate": "Not exposed by import.parse; text-file delimiters are detected locally."
+    },
+    "editor": {
+      "title": "Column mapping",
+      "coverage": "{{mapped}} of {{total}} source columns mapped",
+      "allMapped": "100% auto-mapped",
+      "source": "Source column",
+      "target": "OneFP&A field",
+      "mapAria": "Map {{source}}",
+      "unmapped": "Leave unmapped",
+      "blankHeader": "Blank header",
+      "required": "Map Period, Account code, and either Amount or both Debit and Credit.",
+      "duplicateSources": "Duplicate source headers must be corrected in the source file before this mapping can be saved.",
+      "invalidSource": "Blank, control-character, overlong, and reserved source patterns cannot be mapped. Correct the source header first.",
+      "noHeaders": "The parser returned no source headers. Re-export the file with a header row."
+    },
+    "targets": {
+      "period": "Period",
+      "account_code": "Account code",
+      "account_name": "Account name",
+      "debit": "Debit",
+      "credit": "Credit",
+      "amount": "Signed amount",
+      "cost_center": "Cost center",
+      "project": "Project",
+      "product": "Product",
+      "customer": "Customer",
+      "business_unit": "Business unit",
+      "intercompany_tag": "Intercompany tag",
+      "currency": "Currency",
+      "posting_ref": "Posting reference",
+      "doc_type": "Document type"
+    },
+    "normalization": {
+      "title": "Normalization rules",
+      "account": "Account code",
+      "dimensions": "Dimension values",
+      "period": "Period pattern",
+      "sign": "Signed amount convention",
+      "trim": "Trim outer whitespace only",
+      "collapse": "Trim and collapse internal whitespace",
+      "removeHyphens": "Trim, collapse whitespace, and remove hyphens",
+      "documented": "Documented date and fiscal-period formats",
+      "monthName": "Also accept MMMYY / MMMYYYY (AUG26 → 2026-08)",
+      "debitPositive": "Debit positive",
+      "creditPositive": "Credit positive (invert signed amount)",
+      "exampleTitle": "Deterministic examples"
+    },
+    "template": {
+      "title": "Versioned template",
+      "name": "Template name",
+      "placeholder": "e.g. Tally GL",
+      "versionHint": "Saving the same Company and name advances v1 → v2 without changing its mapping ID.",
+      "readOnly": "This Company is read-only because its audit chain is not writable. Mapping saves are disabled.",
+      "useCanonical": "Use OneFP&A Canonical GL",
+      "save": "Save versioned mapping",
+      "listGate": "Saved-template loading remains unavailable because the locked 97-command catalog has no mapping-list command. This screen can use the bundled canonical mapping or the mapping saved in this session."
+    },
+    "loading": "Saving the mapping and audit event…",
+    "loadingHint": "The mapping definition and its HMAC-chained audit event commit in one transaction.",
+    "error": {
+      "title": "Mapping could not be saved",
+      "fallback": "An unexpected error occurred. Please try again.",
+      "editHint": "Review the highlighted column choices and normalization rules, then save again."
+    },
+    "result": {
+      "title": "Mapping hand-off",
+      "canonical": "OneFP&A Canonical GL selected",
+      "saved": "Mapping template saved",
+      "id": "Mapping ID",
+      "version": "Version",
+      "notCommitted": "Only the mapping definition was selected or saved. No source rows or Import Batch were committed.",
+      "edit": "Edit mapping",
+      "validate": "Continue to Validation",
+      "validationGate": "The S-031 validation and first-50-row preview surface is the next M2-3 unit; this build does not fabricate it."
+    },
+    "preview": {
+      "title": "Source preview",
+      "unavailable": "Mapped row preview begins at Validation.",
+      "gate": "import.validate is registered, but its HARD/WARNING remediation and first-50-row UI belong to M2-3. Raw source rows are not exposed by import.parse, so this screen does not invent a browser preview."
+    },
+    "empty": {
+      "noParse": "No parsed source is available. Parse a file in Import Hub first.",
+      "noCompany": "Open a Company and parse a source before mapping.",
+      "return": "Return to Import Hub"
+    },
+    "localOnly": "Mapping definitions stay Company-scoped. Production saves use the audited local Rust command; browser development uses only the explicit mock."
   },
   "companies": {
     "title": "Companies",
@@ -375,6 +483,7 @@
     "screens.dashboard": "Dashboard",
     "screens.companies": "Companies",
     "screens.import": "Import Hub",
+    "screens.mapping": "Mapping Wizard",
     "screens.grid": "Model Grid",
     "screens.coa": "Chart of Accounts",
     "screens.calendar": "Fiscal Calendar",

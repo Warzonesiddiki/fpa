@@ -18,10 +18,10 @@
 | Dirty cell queue (pending writes) | local (grid) | ephemeral | Flush on commit, blur, save, lock, app close (with confirm) |
 | Recalculation status (dirty cells, cycles, duration) | global | ephemeral | On recalc completion / edit enqueue |
 | Formula worker instance (HyperFormula) | global | ephemeral (webview worker) | Rebuilt on Model/Scenario switch; disposed on lock |
-| Import pipeline state (stage, pct, row counts) | global | ephemeral + progress persisted in `import_batches` for resume | On commit, cancel, app restart (resume from checkpoint) |
-| Import Batch list + statuses | global | persistent (DB, read cache) | On `import.commit`/`rollback`, connector `sync` completion |
+| Import parse/mapping working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, `mappingStatus/id/version`) + native in-memory parsed rows | On Company/source/kind change, app-process restart, the native 30-minute parse TTL, or a newer request token; locked sessions cannot use the hand-off and no progress checkpoint/resume is implemented |
+| Import Batch list + statuses | global | persistent DB target; no registered typed `import.history` read cache/UI yet | On `import.commit`/`rollback`, connector `sync` completion once the read side exists |
 | Connector health | global | persistent (DB `connectors`) + ephemeral last-pull | On sync run end, auth expiry |
-| Mapping templates (list) | global | persistent (DB, cache) | On template save/version bump |
+| Mapping templates | active Company | latest body persistent in `mapping_templates`/`mapping_columns`; current S-031 selection ephemeral in import store; historical definitions in HMAC audit events | Same-name save/version bump; no catalogued list/load/history command or template cache |
 | Active Company/Model + assumption register | session + global | active model id from Company lifecycle; persistent (DB `assumptions`, `assumption_values`) + read cache | Company open/unlock selects the model; on `assumption.list`/`upsert`; usage cache invalidates after a name change |
 | Scenario list + states | global | persistent (DB, cache) | On create/duplicate/approve/lock; state changes pushed by Rust event |
 | Scenario Version list | global | persistent (DB) | On lock/export/import |
@@ -49,7 +49,7 @@ src/stores/
 ├── sessionStore.ts        # session, company, lock (ephemeral)
 ├── modelStore.ts          # model/sheets/lines/current scenario+period (cache of DB)
 ├── gridStore.ts           # visible cell cache + dirty queue + undo stack (virtualized)
-├── importStore.ts         # pipeline progress + batches + mapping list
+├── import.ts              # Company-scoped S-030 parse facts + S-031 mapping write/selection hand-off
 ├── assumptionsStore.ts    # versioned register + exact period values + usage cache
 ├── connectorStore.ts      # health, runs, auth status
 ├── scenarioStore.ts       # scenarios, versions, states
@@ -65,7 +65,7 @@ src/stores/
 3. No writing to DB from stores — mutations always `invoke` (single write path, audit guaranteed).
 4. Zustand selectors are memoized; grid virtualization means the grid store holds only the visible window (≤ 5k cells), not 1M.
 5. Undo is command-based (operator pattern) + occasional model snapshot refs; undo never crosses a lock boundary.
-6. Cross-store events: `audit:event`, `recalc:done`, `import:progress`, `connector:status`, `license:changed` — typed Tauri events, consumed only by owning store.
+6. Cross-store events are consumed only by their owning store. `audit:event`, `recalc:done`, `connector:status`, and `license:changed` are catalog targets; `import:progress` is **not registered or emitted by the current parser**, so the import store never fabricates it.
 
 ## 3. RACE & COHERENCE RULES (zero-compromise)
 
@@ -74,7 +74,8 @@ src/stores/
 | Two rapid cell edits on same cell | Serialize via queue; last-write-wins only after both recalc responses; never interleave |
 | Import commit while grid editing | Commit takes a model-level Snapshot; edits re-applied on top with conflict dialog if line changed |
 | Undo during background recalc | Undo is disabled while recalc in flight (button state); no half-applied states |
-| HMR/reload during import | `import.parse` checkpoints; resume with same hash (no duplicate commit) |
+| HMR/reload/app restart during Parse/Map | The parse registry and Zustand working set are ephemeral; return to S-030 and re-parse. No checkpoint/resume command exists. A later `import.commit` still guards duplicate source hashes. |
+| Company/source changes while parse or mapping save is in flight | Independent monotonic request tokens invalidate late responses; stale data cannot repopulate the new Company/source. Native mapping writes derive Company from the writable session. |
 | Lock scenario while worker has dirty cells | Flush or discard prompt before lock (audited); lock never applies over unflushed edits silently |
 | Export during partial recalc | Export waits for recalc quiescence (max 500ms) or blocks with `RECALC_IN_FLIGHT` |
 | Second instance | OS file lock → read-only, zero writes |

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { ImportHubPage } from "./index";
@@ -47,7 +47,7 @@ const PARSED = {
 };
 
 function resetPageState(companyId: string | null = COMPANY_ID) {
-  useSessionStore.setState({ companyId, unlocked: companyId !== null });
+  useSessionStore.setState({ companyId, unlocked: companyId !== null, readOnly: false });
   useImportStore.setState({
     status: "empty",
     error: null,
@@ -55,7 +55,12 @@ function resetPageState(companyId: string | null = COMPANY_ID) {
     kind: "gl_dump",
     filePath: "",
     parsed: null,
+    mappingStatus: "empty",
+    mappingError: null,
+    mappingId: null,
+    mappingVersion: null,
     requestId: 0,
+    mappingRequestId: 0,
   });
   useSettingsStore.setState((state) => ({
     preferences: { ...state.preferences, locale: "en-US" },
@@ -279,7 +284,31 @@ describe("S-030 Import Hub (M2-1)", () => {
     expect(screen.getByText("4,821,136 bytes")).toBeInTheDocument();
     expect(screen.getByText("a".repeat(64))).toBeInTheDocument();
     expect(screen.getByText("GL: utf-8 · BOM")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue to Mapping" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue to Mapping" })).toBeEnabled();
+    expect(screen.getByText(/Review every suggested column/)).toBeInTheDocument();
+  });
+
+  it("navigates the intact parse working set to S-031", async () => {
+    const user = userEvent.setup();
+    useImportStore.setState({
+      status: "success",
+      mappingStatus: "populated",
+      parsed: PARSED,
+      filePath: "/tmp/SAP_GL_Aug2026.xlsx",
+    });
+    render(
+      <MemoryRouter initialEntries={["/app/import"]}>
+        <Routes>
+          <Route path="/app/import" element={<ImportHubPage />} />
+          <Route path="/app/import/map" element={<div>Mapping route reached</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Continue to Mapping" }));
+
+    expect(screen.getByText("Mapping route reached")).toBeInTheDocument();
+    expect(useImportStore.getState().parsed?.parse_id).toBe(PARSED.parse_id);
   });
 
   it("shows a password-protected workbook error verbatim without a false retry", async () => {

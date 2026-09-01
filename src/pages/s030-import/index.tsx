@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Archive,
@@ -174,6 +175,7 @@ function ParsedSummary({ data }: { data: ImportParseData }) {
 /** S-030 Import Hub — manual-import entry and real `import.parse` working-set hand-off. */
 export function ImportHubPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const companyId = useSessionStore((s) => s.companyId);
   const status = useImportStore((s) => s.status);
   const error = useImportStore((s) => s.error);
@@ -313,15 +315,12 @@ export function ImportHubPage() {
               <RotateCcw aria-hidden="true" className="h-4 w-4" />
               {t("importHub.parseAnother")}
             </Button>
-            <Button disabled aria-describedby="mapping-unavailable">
+            <Button onClick={() => navigate("/app/import/map")}>
               {t("importHub.continueMapping")}
             </Button>
           </div>
-          <p
-            id="mapping-unavailable"
-            className="mt-2 text-right text-xs text-[var(--color-onetextmuted)]"
-          >
-            {t("importHub.mappingUnavailable")}
+          <p className="mt-2 text-right text-xs text-[var(--color-onetextmuted)]">
+            {t("importHub.mappingHint")}
           </p>
         </div>
       );

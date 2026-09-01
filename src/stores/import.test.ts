@@ -10,6 +10,22 @@ vi.mock("@/api/bridge", async (importOriginal) => {
 const COMPANY_ID = "11111111-2222-3333-4444-555555555555";
 const HASH = "a".repeat(64);
 
+const MAPPING = {
+  name: "Tally GL",
+  columns: [
+    { source_pattern: "Date", semantic_target: "period" as const },
+    { source_pattern: "Ledger", semantic_target: "account_code" as const },
+    { source_pattern: "Dr", semantic_target: "debit" as const },
+    { source_pattern: "Cr", semantic_target: "credit" as const },
+  ],
+  sign_convention: "debit_positive" as const,
+  normalization: {
+    account_code: "trim_collapse_whitespace_remove_hyphens" as const,
+    dimension_values: "trim_collapse_whitespace" as const,
+    period: "month_name_mmm_yy" as const,
+  },
+};
+
 const PARSED = {
   parse_id: "3f9f2c9e-9f8b-4e2d-9a1c-100000000001",
   sheets: [
@@ -32,7 +48,12 @@ function resetStore() {
     kind: "gl_dump",
     filePath: "",
     parsed: null,
+    mappingStatus: "empty",
+    mappingError: null,
+    mappingId: null,
+    mappingVersion: null,
     requestId: 0,
+    mappingRequestId: 0,
   });
 }
 
@@ -47,6 +68,9 @@ describe("S-030 import working-set store", () => {
     useImportStore.getState().setKind("gl_dump");
     useImportStore.getState().selectFile("   ");
     expect(await useImportStore.getState().parse()).toBe(false);
+    expect(await useImportStore.getState().saveMapping(MAPPING)).toBe(false);
+    useImportStore.getState().chooseCanonicalMapping();
+    useImportStore.getState().clearMapping();
     expect(callMock).not.toHaveBeenCalled();
     expect(useImportStore.getState()).toMatchObject({ status: "empty", requestId: 1 });
 
@@ -165,6 +189,68 @@ describe("S-030 import working-set store", () => {
       companyId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       filePath: "",
       parsed: null,
+    });
+  });
+
+  it("saves a versioned mapping through the typed boundary", async () => {
+    callMock.mockResolvedValueOnce(PARSED).mockResolvedValueOnce({
+      mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+      version: "v1",
+    });
+    useImportStore.getState().selectFile("/tmp/tally.csv");
+    await useImportStore.getState().parse();
+
+    expect(await useImportStore.getState().saveMapping(MAPPING)).toBe(true);
+    expect(callMock).toHaveBeenLastCalledWith("import.map.save_v1", { template: MAPPING });
+    expect(useImportStore.getState()).toMatchObject({
+      mappingStatus: "success",
+      mappingError: null,
+      mappingId: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+      mappingVersion: "v1",
+    });
+  });
+
+  it("selects the bundled canonical mapping without a write and can return to the editor", () => {
+    useImportStore.setState({ parsed: PARSED, mappingStatus: "populated" });
+    useImportStore.getState().chooseCanonicalMapping();
+
+    expect(callMock).not.toHaveBeenCalled();
+    expect(useImportStore.getState()).toMatchObject({
+      mappingStatus: "success",
+      mappingId: "canonical",
+      mappingVersion: "canonical-v1",
+    });
+    useImportStore.getState().clearMapping();
+    expect(useImportStore.getState()).toMatchObject({
+      mappingStatus: "populated",
+      mappingId: null,
+      mappingVersion: null,
+    });
+  });
+
+  it("normalizes malformed mapping responses and ignores a late save after a source change", async () => {
+    useImportStore.setState({ parsed: PARSED, mappingStatus: "populated" });
+    callMock.mockResolvedValueOnce({ mapping_id: "unsafe", version: "latest" });
+    expect(await useImportStore.getState().saveMapping(MAPPING)).toBe(false);
+    expect(useImportStore.getState().mappingError?.code).toBe("INTERNAL");
+
+    let resolveSave: (value: { mapping_id: string; version: string }) => void = () => undefined;
+    callMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    const pending = useImportStore.getState().saveMapping(MAPPING);
+    useImportStore.getState().selectFile("/tmp/new.csv");
+    resolveSave({
+      mapping_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000002",
+      version: "v2",
+    });
+    expect(await pending).toBe(false);
+    expect(useImportStore.getState()).toMatchObject({
+      mappingStatus: "empty",
+      mappingId: null,
+      filePath: "/tmp/new.csv",
     });
   });
 

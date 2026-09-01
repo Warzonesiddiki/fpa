@@ -13,6 +13,7 @@ import {
   findUnsupportedFunction,
   type CommandInput,
   type CommandName,
+  type ImportMappingTemplate,
   type DriverDef,
   type AssumptionDef,
   type AssumptionListRow,
@@ -329,9 +330,17 @@ interface MockParse {
   kind: string;
   rows: number;
   balanced: boolean;
+  companyId: string | null;
+}
+
+interface MockMapping {
+  mappingId: string;
+  version: string;
+  template: ImportMappingTemplate;
 }
 
 const parses = new Map<string, MockParse>();
+const mappingsByName = new Map<string, MockMapping>();
 const rolledBackBatches = new Set<string>();
 let importSeq = 0;
 
@@ -395,6 +404,15 @@ function parseExpired() {
     "This parse session expired. Re-run the import.",
     410,
     true,
+  );
+}
+
+function parseCompanyMismatch() {
+  return mockError(
+    "VALUE_INVALID",
+    "PARSE_COMPANY_MISMATCH: re-parse the file in this Company",
+    "Invalid arguments.",
+    422,
   );
 }
 
@@ -757,7 +775,12 @@ export async function mockInvoke<C extends CommandName>(
       }
       const parseId = nextImportId("100");
       const balanced = !file_path.includes(MOCK_UNBALANCED_FILE);
-      parses.set(parseId, { kind, rows: MOCK_PARSE_ROWS, balanced });
+      parses.set(parseId, {
+        kind,
+        rows: MOCK_PARSE_ROWS,
+        balanced,
+        companyId: session.company_id,
+      });
       return {
         data: {
           parse_id: parseId,
@@ -774,17 +797,55 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
+    case "import.map.save_v1": {
+      const { template } = args as { template: ImportMappingTemplate };
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "mapping write blocked in degraded session",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      const companyScopedName = `${session.company_id ?? "preview-no-company"}\u0000${template.name}`;
+      const existing = mappingsByName.get(companyScopedName);
+      const nextVersion = existing ? BigInt(existing.version.slice(1)) + 1n : 1n;
+      const mapping: MockMapping = {
+        mappingId: existing?.mappingId ?? nextImportId("500"),
+        version: `v${String(nextVersion)}`,
+        template,
+      };
+      mappingsByName.set(companyScopedName, mapping);
+      return { data: { mapping_id: mapping.mappingId, version: mapping.version } };
+    }
     case "import.validate": {
       const { parse_id, mapping_id } = args as { parse_id: string; mapping_id: string };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
+      let mappingVersion = "canonical-v1";
+      if (mapping_id !== CANONICAL_MAPPING_ID) {
+        const companyPrefix = `${session.company_id ?? "preview-no-company"}\u0000`;
+        const saved = [...mappingsByName.entries()].find(
+          ([key, mapping]) => key.startsWith(companyPrefix) && mapping.mappingId === mapping_id,
+        )?.[1];
+        if (!saved) {
+          return mockError(
+            "VALUE_INVALID",
+            `MAPPING_TEMPLATE_NOT_FOUND: ${mapping_id}`,
+            "Invalid arguments.",
+            422,
+          );
+        }
+        mappingVersion = saved.version;
+      }
       return {
         data: {
           hard: [],
           warnings: [],
           preview: mockPreviewRows(parse.balanced),
           rows: parse.rows,
-          mapping_version: mapping_id === CANONICAL_MAPPING_ID ? "canonical-v1" : "v3",
+          mapping_version: mappingVersion,
         },
       };
     }
@@ -792,6 +853,7 @@ export async function mockInvoke<C extends CommandName>(
       const { parse_id } = args as { parse_id: string };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
       const debits = parse.balanced
         ? MOCK_REVENUE_MINOR
         : MOCK_REVENUE_MINOR + MOCK_IMBALANCE_MINOR;
@@ -827,6 +889,7 @@ export async function mockInvoke<C extends CommandName>(
       };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
       if (!name.trim()) {
         return mockError("VALUE_INVALID", "BATCH_NAME_REQUIRED", "Invalid arguments.", 422);
       }

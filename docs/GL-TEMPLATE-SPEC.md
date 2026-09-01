@@ -8,7 +8,7 @@
 
 | Attribute | Value |
 |---|---|
-| Extensions | `.xlsx` (primary) · `.csv` (UTF-8, delimiter `,` or `;` for EU) · `.tsv` · `.zip` (one workbook) |
+| Extensions | Current registered parser: `.xlsx`/`.xlsm`/`.xlsb`/`.xls`/`.ods` · `.csv` (UTF-8, delimiter `,` or `;` for EU) · `.tsv` · `.txt`. `.zip` (one workbook) remains a target only: the native parser explicitly rejects ZIP wrappers and S-030 excludes ZIP from its picker. |
 | Sheets | `GL` (required) · optional `Mapping Notes`, `COA`, `Dimensions`, `Opening Balances` |
 | Header row | row 1 (always; frozen in our export) |
 | Encoding | UTF-8 with BOM detection; Latin-1 auto-detected w/ preview |
@@ -43,7 +43,25 @@
 | Debit/Credit columns | debit − credit | `amount_minor` signed (debit +, credit −) |
 | Signed `amount` with `debit_positive` | as-is | same |
 | Signed `amount` with `credit_positive` (rare, some ERPs) | −amount | same; mapping explicitly toggles (never auto-detected silently) |
-| Reversed/contra accounts (e.g., contra-revenue, allowance) | code normalization maps "contra" accounts to their Type with `is_control` flag; amounts stay signed; report section places them as deductions per Pack COA | model math unchanged |
+| Reversed/contra accounts (e.g., contra-revenue, allowance) | account code stays text; the existing Pack/COA Type and `is_control` metadata determine report placement. Mapping never infers a contra Type from the code or sign | model math unchanged |
+
+### 3.1 Explicit normalization rules (mapping version owns them)
+
+Normalization is selected in S-031, persisted with that mapping version, and applied by the Rust
+resolver before row validation. It is deterministic and never inferred from a sample:
+
+| Field | Allowed rule | Exact behavior |
+|---|---|---|
+| account code | `trim` | remove outer Unicode whitespace; preserve internal characters and leading zeroes |
+| account code | `trim_collapse_whitespace` | also collapse each internal whitespace run to one ASCII space |
+| account code | `trim_collapse_whitespace_remove_hyphens` | also remove ASCII `-`; `4100-00` → `410000`; never numeric conversion |
+| cost center/project/product/customer/business unit | `trim` / `trim_collapse_whitespace` | same text-only whitespace behavior; canonical keys are stored after normalization |
+| period | `documented` | pass trimmed input to the documented date/fiscal-period parser |
+| period | `month_name_mmm_yy` | additionally accept exactly English `MMMYY` or `MMMYYYY`, case-insensitive; YY means 2000–2099; emit `YYYY-MM` (`AUG26` → `2026-08`) |
+
+An explicit month-name rule does not fuzzily reinterpret other shapes; unchanged invalid input later
+becomes the normal row validation finding. S-031 shows these rule examples but does not claim a
+row-level normalization preview because `import.parse` exposes headers, not source row samples.
 
 **Tie-Out gate:** Σ(`debit`) = Σ(`credit`) (or Σ(`amount`) = source-reported balance when the source provides one). Mismatch → `IMPORT_TIE_OUT_FAILED` with exact diff rows; exclude-with-log allowed (never silent).
 
@@ -69,15 +87,22 @@ period,account_code,account_name,debit,credit,cost_center,business_unit,currency
 
 | Case | Behavior |
 |---|---|
-| 500k rows | streamed, background, progress %, cancellable; memory < 2 GB |
-| Duplicate (batch, source_row) | HARD row error with exact source row |
-| Period outside Company calendar range | HARD `PERIOD_OUT_OF_RANGE` (row listed; import blocked until excluded) |
-| Account missing from COA at commit | HARD `MAP_ACCOUNT_AMBIGUOUS`/`ACCOUNT_MISSING` → offer "create from name (confirmed)" — never auto-create without confirm |
+| 500k rows | Product target: streamed/background, progress, cancellation, memory < 2 GB. **Current registered `import.parse` is a synchronous in-memory grid and emits no progress event or cancel command; S-030 gates both controls and no 500k benchmark is claimed.** |
+| Duplicate (batch, source_row) | `line_no` is generated once per parsed physical row. The current schema has no `(batch_id,line_no)` UNIQUE constraint or dedicated duplicate-source-row code; no stronger duplicate guarantee is claimed until that contract is added. |
+| Period outside Company calendar range | HARD `PERIOD_NOT_FOUND` with row detail `PERIOD_OUT_OF_RANGE`; import blocked until excluded |
+| Account missing from COA at commit | HARD `MAP_ACCOUNT_AMBIGUOUS` with row detail `ACCOUNT_MISSING` → offer "create from name (confirmed)" — never auto-create without confirm |
 | Blank required column | HARD per-row error; error report exportable (CSV) |
 | Formula-looking text in source (`=...`) | treated as text; import never executes cells (injection safety) |
 
 ## 7. MAPPING TEMPLATE DEFAULT (bundled with the Canonical GL Template)
 
-A Mapping Template "OneFP&A Canonical GL" is pre-installed mapping columns 1–15 to the exact fields above — importing a file that already follows this layout needs **zero mapping steps** (Preview shows "100% auto-mapped").
+A read-only bundled Mapping Template "OneFP&A Canonical GL" (`mapping_id = canonical`, version
+`canonical-v1`) maps columns 1–15 to the exact fields above — importing a file that already
+follows this layout needs **zero manual column choices** (S-031 shows "100% auto-mapped" and can
+select it without a persistence write). A custom map is saved only through the strict
+`import.map.save_v1` contract in API-SPEC §11. Same Company/name saves retain the mapping id and
+advance `vN`; latest rows are materialized while immutable before/after definitions remain in the
+HMAC audit chain. The locked command catalog has no map-list/load/history command, so S-031 does
+not fabricate saved-template browsing.
 
 *Referenced by: PRD F-007/F-008/F-011, INTEGRATIONS, TEST-FIXTURES-SPEC, ERROR-HANDLING C.*

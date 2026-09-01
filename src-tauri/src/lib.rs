@@ -13,7 +13,8 @@ use commands::company::{
     company_clone_sandbox, company_create, company_delete, company_list, company_open,
 };
 use commands::import::{
-    import_commit, import_parse, import_rollback, import_tieout, import_validate, ParseRegistry,
+    import_commit, import_map_save_v1, import_parse, import_rollback, import_tieout, import_validate,
+    ParseRegistry,
 };
 use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
 use commands::license::{license_apply_response, license_request_file};
@@ -59,6 +60,7 @@ pub fn run() {
             coa_merge_accounts,
             pack_list,
             import_parse,
+            import_map_save_v1,
             import_validate,
             import_tieout,
             import_commit,

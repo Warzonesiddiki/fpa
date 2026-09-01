@@ -16,6 +16,7 @@ import { CoaPage } from "@/pages/s021-coa";
 import { CalendarPage } from "@/pages/s022-calendar";
 import { PacksPage } from "@/pages/s023-packs";
 import { ImportHubPage } from "@/pages/s030-import";
+import { MappingWizardPage } from "@/pages/s031-mapping";
 import { LicensePage } from "@/pages/s073-license";
 import { SettingsPage } from "@/pages/s075-settings";
 
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
       { path: "companies", element: <CompaniesPage /> },
       { path: "data", element: <Navigate to="/app/import" replace /> },
       { path: "import", element: <ImportHubPage /> },
+      { path: "import/map", element: <MappingWizardPage /> },
       { path: "model", element: <Navigate to="/app/model/grid" replace /> },
       {
         path: "model/grid",

@@ -187,6 +187,82 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     );
   });
 
+  it("import.map.save_v1 scopes stable ids/versions to a writable Company", async () => {
+    await mockInvoke("company.open", { path: "/Users/demo/Meridian Holdings.fpa" });
+    const template = {
+      name: "Tally GL",
+      columns: [
+        { source_pattern: "Posting Date", semantic_target: "period" as const },
+        { source_pattern: "Ledger Code", semantic_target: "account_code" as const },
+        { source_pattern: "Dr", semantic_target: "debit" as const },
+        { source_pattern: "Cr", semantic_target: "credit" as const },
+      ],
+      sign_convention: "debit_positive" as const,
+      normalization: {
+        account_code: "trim_collapse_whitespace_remove_hyphens" as const,
+        dimension_values: "trim_collapse_whitespace" as const,
+        period: "month_name_mmm_yy" as const,
+      },
+    };
+    const first = (await mockInvoke("import.map.save_v1", { template })) as {
+      data: { mapping_id: string; version: string };
+    };
+    const second = (await mockInvoke("import.map.save_v1", { template })) as {
+      data: { mapping_id: string; version: string };
+    };
+
+    expect(first.data.mapping_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second.data.mapping_id).toBe(first.data.mapping_id);
+    expect(first.data.version).toBe("v1");
+    expect(second.data.version).toBe("v2");
+    const parsed = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/Tally.csv",
+      kind: "gl_dump",
+    })) as { data: { parse_id: string } };
+    const validated = (await mockInvoke("import.validate", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: second.data.mapping_id,
+    })) as { data: { mapping_version: string } };
+    expect(validated.data.mapping_version).toBe("v2");
+
+    await mockInvoke("session.unlock", {
+      pin: "AuditBrk9!",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    });
+    const blocked = (await mockInvoke("import.map.save_v1", { template })) as {
+      error: { code: string; userMessage: string };
+    };
+    expect(blocked.error.code).toBe("AUDIT_CHAIN_BREAK");
+    expect(blocked.error.userMessage).toBe(
+      "Audit integrity check failed. Restore from the last verified Snapshot?",
+    );
+
+    await mockInvoke("company.create", {
+      name: "Mapping Scope Company",
+      path: "/Users/demo/Mapping Scope Company.fpa",
+      pack_key: "manufacturing",
+      calendar: {
+        preset: "12month",
+        fy_start_month: 4,
+        week_start_day: 0,
+        anchor_rule: null,
+        year_end_rule: null,
+      },
+      plan_only: true,
+      horizon: "1y",
+    });
+    const otherCompany = (await mockInvoke("import.map.save_v1", { template })) as {
+      data: { mapping_id: string; version: string };
+    };
+    expect(otherCompany.data.mapping_id).not.toBe(first.data.mapping_id);
+    expect(otherCompany.data.version).toBe("v1");
+    const crossCompanyParse = (await mockInvoke("import.validate", {
+      parse_id: parsed.data.parse_id,
+      mapping_id: otherCompany.data.mapping_id,
+    })) as { error: { code: string } };
+    expect(crossCompanyParse.error.code).toBe("VALUE_INVALID");
+  });
+
   it("import.tieout reports a balanced fixture and names the diff row of an unbalanced one", async () => {
     const balanced = (await mockInvoke("import.parse", {
       file_path: "/Users/demo/GL.xlsx",

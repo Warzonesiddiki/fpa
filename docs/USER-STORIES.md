@@ -26,11 +26,11 @@
 
 ### US-003 · F-002 Chart of Accounts & Dimensions · P0 · (R)
 
-**Given** the Manufacturing Pack COA, **When** the user imports the SAP GL dump with account `4100-00`, **Then** the Account is created under Cost of Goods Sold with normalized code `410000`, and the mapping preview shows the match.
+**Given** the Manufacturing Pack COA already contains `410000`, **When** the user imports the SAP GL dump with account `4100-00` and explicitly selects remove-hyphens normalization, **Then** the text code becomes `410000` (leading zeroes would remain) and Validation resolves the existing Account. A missing Account stays HARD-blocked until the later confirmed-create flow exists; mapping never auto-creates it.
 
 **Edge cases**
-- Same account name but different code → mapping shows both candidates; unconfirmed duplicates block Commit (HARD error `MAP_ACCOUNT_AMBIGUOUS`).
-- Dimension value "Sales - North" vs "Sales-North" → normalization setting `trim+collapse` applies; warning shown; user confirms.
+- Same account name but different code → Validation shows both candidates; unconfirmed duplicates block Commit (HARD error `MAP_ACCOUNT_AMBIGUOUS`).
+- Dimension value "Sales - North" vs "Sales-North" → `trim_collapse_whitespace` collapses whitespace only; it does not remove hyphens or guess equivalence.
 
 ### US-004 · F-003 Fiscal Calendar · P0 · (P)
 
@@ -70,13 +70,14 @@
 
 ### US-008 · F-007 GL Dump Import (primary) · P0 · (R) — *the flagship story*
 
-**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he drags it into Import and selects the saved "SAP GL dump" Mapping Template, **Then** the pipeline runs Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit; the Trial Balance Tie-Out passes to the cent; an Import Batch `2026-08-30_001` is committed with file SHA-256; Actuals for P08 appear and the variance screen for P08 refreshes.
+**Given** Ravi has `SAP_GL_Aug2026.xlsx` (3 sheets, 48k lines, debit/credit columns, FY26 P08 period codes), **When** he parses it in S-030 and either selects bundled `canonical-v1` or defines and saves a custom map in S-031, **Then** the target pipeline is Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit; the Trial Balance Tie-Out passes to the cent; an Import Batch `2026-08-30_001` is committed with file SHA-256; Actuals for P08 appear and the variance screen for P08 refreshes. At M2-2, Parse→Normalize→Map is reachable and Validation is visibly gated for M2-3; saved-map browsing is not claimed without a catalogued list/load command.
 
 **Edge cases**
 - Tie-Out fails by ₹0.05 (one conflicting line) → Commit blocked; error report lists the exact rows, accounts, and amounts; user chooses "exclude row (logged)" or fixes the source; nothing is committed until re-validated; the excluded rows are retained in the batch metadata, never silently dropped.
-- Same batch re-imported twice → duplicate detection (`IMPORT_BATCH_HASH_EXISTS`); offered "overwrite identical batch" (no-op) or "create new batch" (must justify); Actuals are versioned, never double-counted.
-- 2M-row dump → background pipeline with progress %, cancellable, UI interactive; memory stays under 2 GB (streaming).
+- Same batch re-imported twice → duplicate detection (`IMPORT_BATCH_HASH_EXISTS`) blocks it. The documented overwrite/new-batch choice is not exposed in S-031 and is not simulated; a later Commit UI must require justification before any new-batch path.
+- 2M-row dump → background streaming/progress/cancellation and memory < 2 GB remain the acceptance target. The current parser is synchronous/in-memory, has no progress/cancel IPC, and has no native benchmark evidence; S-030 does not simulate those controls.
 - Encrypted/read-protected workbook → `IMPORT_FILE_LOCKED` with instructions (remove password / export unprotected copy); app never stores the source password.
+- ZIP wrapper → visibly unavailable: the registered parser rejects it and the picker excludes it until one-workbook ZIP support is implemented.
 
 ### US-009 · F-008 Driver Data & Opening Balances Import · P0 · (A)
 
@@ -104,11 +105,12 @@
 
 ### US-012 · F-011 Mapping Management · P1 · (R)
 
-**Given** the "Tally GL" mapping exists, **When** Ravi imports next month's dump, **Then** mapping preview shows matched columns, 14 unmapped period codes with suggested interpretations (e.g., `AUG26` → P08), and he saves v3 of the Mapping Template.
+**Given** Ravi has parsed next month's Tally dump, **When** S-031 auto-suggests its header map and he explicitly selects `month_name_mmm_yy` (`AUG26` → `2026-08`), **Then** saving exact Company/name "Tally GL" keeps the mapping id and advances the checked label to v3. The screen shows rule examples only: `import.parse` exposes no source samples, so it does not fabricate 14 period suggestions or a normalized row preview.
 
 **Edge cases**
-- Period code matches two interpretations (e.g., "2026-08" as calendar vs fiscal) → WARNING requiring explicit choice; never guessed silently.
-- Mapping template used by a Commit → editing the template creates a new version; historical batches retain the version they used (mapping is immutable per batch).
+- An input outside the selected exact period patterns remains unchanged and becomes a normal Validation finding; the mapper never chooses between fuzzy interpretations.
+- Mapping template used by a Commit → editing advances `vN`; the latest body replaces the materialized rows, while full old/new definitions remain immutable in the HMAC audit chain. `import_batches.mapping_version` and the Commit audit payload retain what the batch used.
+- Saved template/history browsing → visibly unavailable. The locked 97-command catalog defines only `import.map.save_v1`, not a mapping list/load/history command; S-031 can select bundled canonical or use the map saved in the current working session.
 
 ---
 

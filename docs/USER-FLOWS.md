@@ -27,13 +27,23 @@
 
 ## UF-002 · GL Dump Import (flagship — manufacturing manufacturing monthly close) · P0
 
-1. **S-030 Import Hub** → "GL Dump" tab → drop `SAP_GL_Aug2026.xlsx`.
-2. **S-031 Mapping Wizard** Parse: 3 sheets, 48k rows, encoding UTF-8, delimiter auto.
+1. **S-030 Import Hub** → "GL Dump" tab → drop `SAP_GL_Aug2026.xlsx` and run the real
+   Company-scoped `import.parse` command.
+2. S-030 reports parsed sheets/row counts, encoding, source hash, size, and headers, then hands the
+   same ephemeral `parse_id` working set to **S-031 Mapping Wizard** at `/app/import/map`.
+   `import.parse` does not return a delimiter value or raw source samples, so S-031 does not invent
+   either.
    - *Branch:* unreadable file → `IMPORT_FILE_UNREADABLE` → instructions; never partial parse.
-   - *Branch:* zip contains multiple files → file picker with warning.
-3. Normalize: period codes `FY26-P08` → P08 confirmed; account `4100-00` → `410000` (normalization rule shown).
-   - *Branch:* ambiguous period `2026-08` (calendar vs fiscal) → WARNING requires explicit choice.
-4. Map: columns → Account/Period/Debit/Credit/Dimension. Load saved template "SAP GL dump v3" → auto-fills.
+   - *Branch:* `.zip` → currently rejected by the registered parser and excluded from the picker;
+     one-workbook ZIP support is explicitly gated rather than simulated.
+3. Normalize: user explicitly chooses the versioned rules. `FY26-P08` stays on the documented
+   parser; optional `MMMYY` maps `AUG26` → `2026-08`; account `4100-00` → `410000` only when the
+   remove-hyphens rule is selected. Codes remain text and keep leading zeroes.
+4. Map: source headers → Period/Account code/Debit/Credit (or Amount) and optional Dimensions.
+   Canonical headers may select bundled `canonical-v1` with no write. A custom same-name save uses
+   audited `import.map.save_v1`, keeps the Company-scoped mapping id, and advances `vN`.
+   Saved-template loading/history is unavailable because the locked command catalog has no mapping
+   list/load command; S-031 visibly gates it rather than claiming to load "SAP GL dump v3".
 5. Validate: 2 HARD (unmapped account `99999`, duplicate invoice # row), 12 WARNING (missing names).
    - *Branch HARD:* unresolved → commit blocked; fix mapping or exclude-with-log (never silent).
 6. Preview: first 50 rows + counts; user scroll-checks.
@@ -42,6 +52,12 @@
 8. Commit: batch `2026-08-30_001`, SHA-256 shown, mapping version v3, 47,999 rows.
 9. Post-verify: **S-054 Variance** for P08 — Actuals appear; **S-060 P&L** ties; Health Check green; **S-070 Audit** shows batch.
 10. **Success:** monthly actuals loaded < 5 min.
+
+**Current implementation boundary (M2-2):** steps 1–4 are reachable. The registered
+`import.validate` core exists, but the HARD/WARNING remediation + first-50-row UI begins in M2-3;
+S-031's Validation action is visibly disabled. Tie-Out/Commit screens and connector adapters remain
+later units. The current parser is synchronous/in-memory and has no typed progress event or cancel
+command, so those controls are not shown.
 
 **Fallback path (always available):** any connector failure → Manual Import; any file failure → "Download GL dump from your ERP following the GL Template" (help link).
 

@@ -93,7 +93,7 @@
 - **Success:** preview + "Apply to company/BUs" (diff shown).
 - **Populated:** saved calendars; BU rows show preset + status.
 
-### S-030 Import Hub | `/import`
+### S-030 Import Hub | `/app/import`
 **Purpose:** entry to all ingestion — F-007/008/009/010/011.
 **Elements:** source tabs (GL Dump / Excel/CSV / Connectors), native file picker + desktop/browser-development drop zone, current parse working set, canonical mapping card, recent mappings, Import Batch history table (date, type, rows, status, hash, rollback), Source Reconciliation link, Source Vault link, Connector health cards.
 - **Loading:** local parser spinner with the selected path; no fabricated percentage while `import:progress` is absent.
@@ -102,16 +102,18 @@
 - **Success:** typed parse response shows source name, byte size, full SHA-256, sheets/row counts, and encoding detection while explicitly stating that nothing was committed.
 - **Populated:** selected local source + type with Parse enabled; a Company/type/source change invalidates stale parse responses.
 
-**M2-1 availability:** `/app/import`, shell Data navigation, and global search are wired. Production file selection uses the registered Tauri dialog plugin and desktop drag events; browser file input is limited to the explicit development mock path. The real registered `import.parse` handler supports XLSX/XLSM/XLSB/XLS/ODS/CSV/TSV/TXT, UTF-8 BOM and visible Latin-1 detection, delimiter detection, exact locale-number normalization, SHA-256, and Company-scoped ephemeral parse IDs. ZIP remains explicitly rejected by the current Rust handler despite the GL template contract; background streaming/progress/cancel and the 500k-row benchmark remain open. `import.history`, saved-mapping listing/S-031 hand-off, `connector.*`, `reconcile.run`, and Source Vault persistence lack complete typed/registered runtime paths, so those S-030 panels remain visibly unavailable rather than using browser-only substitutes.
+**M2-1/M2-2 availability:** `/app/import`, shell Data navigation, global search, and its real S-031 parse hand-off are wired. Production file selection uses the registered Tauri dialog plugin and desktop drag events; browser file input is limited to the explicit development mock path. The real registered `import.parse` handler supports XLSX/XLSM/XLSB/XLS/ODS/CSV/TSV/TXT, UTF-8 BOM and visible Latin-1 detection, delimiter detection, exact locale-number normalization, SHA-256, and Company-scoped ephemeral parse IDs. ZIP remains explicitly rejected by the current Rust handler; background streaming/progress/cancel and the 500k-row benchmark remain open. `import.history`, saved-mapping listing, `connector.*`, `reconcile.run`, and Source Vault persistence lack complete typed/registered runtime paths, so those S-030 panels remain visibly unavailable rather than using browser-only substitutes.
 
-### S-031 Mapping Wizard | `/import/map`
-**Purpose:** F-011 column/field mapping (saved templates).
-**Elements:** step indicator (Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit), file info, encoding/delimiter detectors, column cards (source → semantic: Account/Dimension/Period/Debit/Credit/Amount…), period pattern suggestions, Account normalization rules, preview table (first 50 rows), mapping template save/load.
-- **Loading:** parse progress (streaming %, cancellable).
-- **Empty:** "Drop a file to begin".
-- **Error:** row-level HARD/WARNING list w/ exact rows; `FILE_UNREADABLE`, `ENCODING_UNSUPPORTED` (auto-heal Latin-1 → UTF-8 option).
-- **Success:** mapping saved / batch committed.
-- **Populated:** preview + suggestions + options.
+### S-031 Mapping Wizard | `/app/import/map`
+**Purpose:** F-011 explicit source-column mapping, normalization policy, canonical selection, and audited custom-template versioning.
+**Elements:** step indicator (Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit), real S-030 file/row/encoding facts, an honest delimiter gate, source→canonical target cards, required-target/duplicate-header checks, finite Account/Dimension/Period/sign rules with deterministic examples, bundled canonical selection, custom template name/save, persisted id/version result, and visible saved-list/preview/Validation gates.
+- **Loading:** `import.map.save_v1` save + transactional audit spinner; no percentage or Cancel because no event/command exists.
+- **Empty:** no active Company or no matching Company-scoped `parse_id` hand-off → return to Import Hub.
+- **Error:** typed save error displays exact user text and code; non-retryable `MAP_TARGET_INVALID` has no false Retry, while a retryable bridge failure retains the draft. Read-only audit sessions disable the write.
+- **Success:** bundled `canonical-v1` selected without a write, or a custom mapping id + monotonic `vN` returned after the audited transaction; explicitly no source rows or Import Batch committed. Validation remains disabled for M2-3.
+- **Populated:** auto-suggested/editable header cards, required-map guidance, normalization controls, source facts, and template actions; zero-header and duplicate-header edge states block save.
+
+**M2-2 availability and limits:** the strict Zod command schema, typed store registration, native `import.map.save_v1` handler/invoke registration, stable-id version bump, deterministic checksum, reserved-row rule persistence, one-transaction HMAC audit, and normalization-aware native resolver are implemented. Same-name materialized rows advance `vN`; immutable historical definitions are retained as full audit before/after payloads, not separately loadable mapping rows. The 97-command catalog contains no map-list/load/history command, so S-031 cannot browse saved history and says so. `import.parse` exposes no source-row samples; rule examples are shown, but a row normalization preview is not fabricated. The registered `import.validate` core exists, but its HARD/WARNING remediation and first-50-row surface begin in M2-3.
 
 ### S-032 Tie-Out & Commit | `/import/commit`
 **Purpose:** Trial Balance Tie-Out gate + commit (F-007).

@@ -25,7 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use calamine::{open_workbook_auto, Data, Reader};
 use chrono::NaiveDate;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use rust_decimal::Decimal;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -74,6 +74,51 @@ const CANONICAL_TARGETS: [&str; 15] = [
 /// The pre-installed "OneFP&A Canonical GL" mapping (GL-TEMPLATE-SPEC §7): a file that already
 /// follows the template needs zero mapping steps — its headers ARE the semantic targets.
 pub const CANONICAL_MAPPING_ID: &str = "canonical";
+
+// `mapping_columns` is the locked two-column persistence surface. These reserved source patterns
+// keep the explicit, versioned normalization/sign policy beside the column map without adding an
+// undocumented table or silently changing the 56-table schema (API-SPEC §11).
+const RULE_ACCOUNT_CODE: &str = "__onefpa_account_code";
+const RULE_DIMENSION_VALUES: &str = "__onefpa_dimension_values";
+const RULE_PERIOD: &str = "__onefpa_period";
+const RULE_SIGN_CONVENTION: &str = "sign_convention";
+const DEFAULT_ACCOUNT_NORMALIZATION: &str = "trim";
+const DEFAULT_DIMENSION_NORMALIZATION: &str = "trim";
+const DEFAULT_PERIOD_NORMALIZATION: &str = "documented";
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingColumnInput {
+    pub source_pattern: String,
+    pub semantic_target: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingNormalizationInput {
+    pub account_code: String,
+    pub dimension_values: String,
+    pub period: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingTemplateInput {
+    pub name: String,
+    pub columns: Vec<MappingColumnInput>,
+    pub sign_convention: String,
+    pub normalization: MappingNormalizationInput,
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedMappingTemplate {
+    name: String,
+    columns: Vec<(String, String)>,
+    sign_convention: String,
+    account_normalization: String,
+    dimension_normalization: String,
+    period_normalization: String,
+}
 
 /* ── Parse sessions ──────────────────────────────────────────────── */
 
@@ -215,6 +260,9 @@ struct Mapping {
     /// Signed-amount sources that store credits positive. An explicit mapping toggle only —
     /// the parser never auto-detects a sign convention (GL-TEMPLATE-SPEC §3).
     credit_positive: bool,
+    account_normalization: String,
+    dimension_normalization: String,
+    period_normalization: String,
 }
 
 fn canonical_mapping() -> Mapping {
@@ -223,45 +271,234 @@ fn canonical_mapping() -> Mapping {
         version: "canonical-v1".to_string(),
         columns: CANONICAL_TARGETS.iter().map(|t| (t.to_string(), t.to_string())).collect(),
         credit_positive: false,
+        account_normalization: DEFAULT_ACCOUNT_NORMALIZATION.to_string(),
+        dimension_normalization: DEFAULT_DIMENSION_NORMALIZATION.to_string(),
+        period_normalization: DEFAULT_PERIOD_NORMALIZATION.to_string(),
     }
+}
+
+fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<ValidatedMappingTemplate> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() || name.chars().count() > 120 {
+        return Err(AppError::map_target_invalid("MAPPING_NAME: expected 1..120 characters"));
+    }
+    if !(3..=15).contains(&input.columns.len()) {
+        return Err(AppError::map_target_invalid("MAPPING_COLUMNS: expected 3..15 columns"));
+    }
+
+    let mut sources = BTreeSet::new();
+    let mut targets = BTreeSet::new();
+    let mut columns = Vec::with_capacity(input.columns.len());
+    for column in input.columns {
+        let source = column.source_pattern.trim().to_lowercase();
+        let target = column.semantic_target;
+        if source.is_empty()
+            || source.chars().count() > 120
+            || source.chars().any(|c| c.is_control())
+            || source == RULE_SIGN_CONVENTION
+            || source.starts_with("__onefpa_")
+        {
+            return Err(AppError::map_target_invalid(format!(
+                "MAPPING_SOURCE_INVALID: {}",
+                column.source_pattern
+            )));
+        }
+        if !CANONICAL_TARGETS.contains(&target.as_str()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_UNKNOWN: {target}")));
+        }
+        if !sources.insert(source.clone()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_SOURCE_DUPLICATE: {source}")));
+        }
+        if !targets.insert(target.clone()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_DUPLICATE: {target}")));
+        }
+        columns.push((source, target));
+    }
+    if !targets.contains("period") || !targets.contains("account_code") {
+        return Err(AppError::map_target_invalid(
+            "MAPPING_TARGET_REQUIRED: period and account_code",
+        ));
+    }
+    if !targets.contains("amount")
+        && !(targets.contains("debit") && targets.contains("credit"))
+    {
+        return Err(AppError::map_target_invalid(
+            "MAPPING_AMOUNT_REQUIRED: amount or debit+credit",
+        ));
+    }
+
+    let sign_convention = input.sign_convention;
+    if !["debit_positive", "credit_positive"].contains(&sign_convention.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_SIGN_CONVENTION"));
+    }
+    let account_normalization = input.normalization.account_code;
+    if ![
+        "trim",
+        "trim_collapse_whitespace",
+        "trim_collapse_whitespace_remove_hyphens",
+    ]
+    .contains(&account_normalization.as_str())
+    {
+        return Err(AppError::map_target_invalid("MAPPING_ACCOUNT_NORMALIZATION"));
+    }
+    let dimension_normalization = input.normalization.dimension_values;
+    if !["trim", "trim_collapse_whitespace"].contains(&dimension_normalization.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_DIMENSION_NORMALIZATION"));
+    }
+    let period_normalization = input.normalization.period;
+    if !["documented", "month_name_mmm_yy"].contains(&period_normalization.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_PERIOD_NORMALIZATION"));
+    }
+
+    columns.sort();
+    Ok(ValidatedMappingTemplate {
+        name,
+        columns,
+        sign_convention,
+        account_normalization,
+        dimension_normalization,
+        period_normalization,
+    })
+}
+
+fn next_mapping_version(current: Option<&str>) -> AppResult<String> {
+    let number = match current {
+        None => 1_u64,
+        Some(version) => version
+            .strip_prefix('v')
+            .and_then(|value| value.parse::<u64>().ok())
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| AppError::internal(format!("MAPPING_VERSION_CORRUPT: {version}")))?,
+    };
+    Ok(format!("v{number}"))
+}
+
+fn mapping_payload(
+    mapping_id: &str,
+    version: &str,
+    checksum: &str,
+    template: &ValidatedMappingTemplate,
+) -> serde_json::Value {
+    let columns: Vec<serde_json::Value> = template
+        .columns
+        .iter()
+        .map(|(source, target)| {
+            json!({
+                "sourcePattern": source.as_str(),
+                "semanticTarget": target.as_str(),
+            })
+        })
+        .collect();
+    json!({
+        "mappingId": mapping_id,
+        "name": template.name.as_str(),
+        "version": version,
+        "checksum": checksum,
+        "columns": columns,
+        "signConvention": template.sign_convention.as_str(),
+        "normalization": {
+            "accountCode": template.account_normalization.as_str(),
+            "dimensionValues": template.dimension_normalization.as_str(),
+            "period": template.period_normalization.as_str(),
+        },
+    })
+}
+
+fn mapping_checksum(template: &ValidatedMappingTemplate) -> String {
+    // Columns are already source-sorted, and object key order below is fixed, so the same
+    // semantic mapping always hashes to the same SHA-256 on every platform.
+    let material = mapping_payload("", "", "", template).to_string();
+    sha256_hex(material.as_bytes())
 }
 
 /// Resolve `mapping_id` for a Company: the bundled canonical template, or a saved
 /// `mapping_templates` row with its `mapping_columns` (DATABASE-SCHEMA §7).
 fn resolve_mapping(conn: &Connection, company_id: &str, mapping_id: &str) -> AppResult<Mapping> {
     let trimmed = mapping_id.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(CANONICAL_MAPPING_ID) {
+    if trimmed.is_empty() {
+        return Err(AppError::invalid("MAPPING_ID_REQUIRED"));
+    }
+    if trimmed == CANONICAL_MAPPING_ID {
         return Ok(canonical_mapping());
     }
-    let (id, version): (String, String) = conn
+    let (id, name, version, checksum): (String, String, String, String) = conn
         .query_row(
-            "SELECT id, version FROM mapping_templates WHERE id = ?1 AND company_id = ?2",
+            "SELECT id, name, version, checksum FROM mapping_templates
+              WHERE id = ?1 AND company_id = ?2",
             rusqlite::params![trimmed, company_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()
         .map_err(AppError::from)?
         .ok_or_else(|| AppError::invalid(format!("MAPPING_TEMPLATE_NOT_FOUND: {trimmed}")))?;
 
-    let mut columns = HashMap::new();
-    let mut credit_positive = false;
+    let mut persisted_columns = Vec::new();
+    let mut sign_convention = "debit_positive".to_string();
+    let mut account_normalization = DEFAULT_ACCOUNT_NORMALIZATION.to_string();
+    let mut dimension_normalization = DEFAULT_DIMENSION_NORMALIZATION.to_string();
+    let mut period_normalization = DEFAULT_PERIOD_NORMALIZATION.to_string();
     let mut stmt = conn
-        .prepare("SELECT source_pattern, semantic_target FROM mapping_columns WHERE template_id = ?1")
+        .prepare(
+            "SELECT source_pattern, semantic_target FROM mapping_columns WHERE template_id = ?1",
+        )
         .map_err(AppError::from)?;
     let rows = stmt
         .query_map([&id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(AppError::from)?;
     for row in rows {
         let (pattern, target) = row.map_err(AppError::from)?;
-        // `sign_convention` is the mapping's explicit toggle, stored in the same table so no
-        // schema change is needed: `credit_positive` | `debit_positive` (never auto-detected).
-        if pattern.trim().eq_ignore_ascii_case("sign_convention") {
-            credit_positive = target.trim().eq_ignore_ascii_case("credit_positive");
-            continue;
+        match pattern.as_str() {
+            RULE_SIGN_CONVENTION => sign_convention = target,
+            RULE_ACCOUNT_CODE => account_normalization = target,
+            RULE_DIMENSION_VALUES => dimension_normalization = target,
+            RULE_PERIOD => period_normalization = target,
+            _ => persisted_columns.push(MappingColumnInput {
+                source_pattern: pattern,
+                semantic_target: target,
+            }),
         }
-        columns.insert(pattern.trim().to_lowercase(), target.trim().to_lowercase());
     }
-    Ok(Mapping { id, version, columns, credit_positive })
+    let definition = validate_mapping_template(MappingTemplateInput {
+        name,
+        columns: persisted_columns,
+        sign_convention,
+        normalization: MappingNormalizationInput {
+            account_code: account_normalization,
+            dimension_values: dimension_normalization,
+            period: period_normalization,
+        },
+    })
+    .map_err(|_| AppError::file_corrupt())?;
+    if mapping_checksum(&definition) != checksum {
+        return Err(AppError::file_corrupt());
+    }
+    let audited_after: String = conn
+        .query_row(
+            "SELECT COALESCE(after_json, '') FROM audit_events
+              WHERE company_id = ?1 AND action = 'import.map.save_v1'
+                AND object_type = 'mapping_template' AND object_id = ?2
+              ORDER BY seq DESC LIMIT 1",
+            rusqlite::params![company_id, id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::file_corrupt)?;
+    let audited: serde_json::Value =
+        serde_json::from_str(&audited_after).map_err(|_| AppError::file_corrupt())?;
+    if audited != mapping_payload(&id, &version, &checksum, &definition) {
+        return Err(AppError::file_corrupt());
+    }
+
+    Ok(Mapping {
+        id,
+        version,
+        columns: definition.columns.into_iter().collect(),
+        credit_positive: definition.sign_convention == "credit_positive",
+        account_normalization: definition.account_normalization,
+        dimension_normalization: definition.dimension_normalization,
+        period_normalization: definition.period_normalization,
+    })
 }
 
 /// Column index per semantic target for one concrete file (first matching header wins, so
@@ -282,6 +519,65 @@ fn cell_at(row: &[String], idx: &HashMap<String, usize>, target: &str) -> Option
         .and_then(|i| row.get(*i))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_account_code(value: &str, rule: &str) -> String {
+    match rule {
+        "trim_collapse_whitespace" => collapse_whitespace(value),
+        "trim_collapse_whitespace_remove_hyphens" => {
+            collapse_whitespace(value).replace('-', "")
+        }
+        _ => value.trim().to_string(),
+    }
+}
+
+fn normalize_dimension_value(value: &str, rule: &str) -> String {
+    match rule {
+        "trim_collapse_whitespace" => collapse_whitespace(value),
+        _ => value.trim().to_string(),
+    }
+}
+
+fn normalize_period_value(value: &str, rule: &str) -> String {
+    let trimmed = value.trim();
+    if rule != "month_name_mmm_yy" {
+        return trimmed.to_string();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if !matches!(chars.len(), 5 | 7)
+        || !chars[..3].iter().all(|c| c.is_ascii_alphabetic())
+        || !chars[3..].iter().all(|c| c.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
+    let month_name: String = chars[..3].iter().collect::<String>().to_ascii_uppercase();
+    let month = match month_name.as_str() {
+        "JAN" => 1,
+        "FEB" => 2,
+        "MAR" => 3,
+        "APR" => 4,
+        "MAY" => 5,
+        "JUN" => 6,
+        "JUL" => 7,
+        "AUG" => 8,
+        "SEP" => 9,
+        "OCT" => 10,
+        "NOV" => 11,
+        "DEC" => 12,
+        _ => return trimmed.to_string(),
+    };
+    let year_text: String = chars[3..].iter().collect();
+    let Ok(mut year) = year_text.parse::<i32>() else {
+        return trimmed.to_string();
+    };
+    if year_text.len() == 2 {
+        year += 2000;
+    }
+    format!("{year:04}-{month:02}")
 }
 
 /* ── Text / number normalisation (the only place a source value becomes data) ── */
@@ -633,17 +929,28 @@ fn prepare_rows(session: &ParseSession, mapping: &Mapping) -> AppResult<Vec<Sour
         }
         rows.push(SourceRow {
             line_no: (i + 1) as i64, // physical row: the header is row 1
-            period: cell_at(cells, &idx, "period").unwrap_or_default(),
-            account_code: cell_at(cells, &idx, "account_code").unwrap_or_default(),
+            period: normalize_period_value(
+                &cell_at(cells, &idx, "period").unwrap_or_default(),
+                &mapping.period_normalization,
+            ),
+            account_code: normalize_account_code(
+                &cell_at(cells, &idx, "account_code").unwrap_or_default(),
+                &mapping.account_normalization,
+            ),
             account_name: cell_at(cells, &idx, "account_name").unwrap_or_default(),
             debit: cell_at(cells, &idx, "debit"),
             credit: cell_at(cells, &idx, "credit"),
             amount: cell_at(cells, &idx, "amount"),
-            cost_center: cell_at(cells, &idx, "cost_center"),
-            project: cell_at(cells, &idx, "project"),
-            product: cell_at(cells, &idx, "product"),
-            customer: cell_at(cells, &idx, "customer"),
-            business_unit: cell_at(cells, &idx, "business_unit"),
+            cost_center: cell_at(cells, &idx, "cost_center")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            project: cell_at(cells, &idx, "project")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            product: cell_at(cells, &idx, "product")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            customer: cell_at(cells, &idx, "customer")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            business_unit: cell_at(cells, &idx, "business_unit")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
             intercompany_tag: cell_at(cells, &idx, "intercompany_tag"),
             currency: cell_at(cells, &idx, "currency"),
             posting_ref: cell_at(cells, &idx, "posting_ref"),
@@ -1183,8 +1490,8 @@ fn build_lines(
                 dims.insert(key.to_string(), json!(v));
             }
         }
-        // Dimension *value ids* are resolved by the dimension-master import (M2-5); the
-        // canonical keys are stored verbatim so nothing is lost in the meantime.
+        // Dimension *value ids* are resolved by the dimension-master import (M2-5); canonical
+        // keys retain the explicitly normalized text so nothing is silently guessed.
         let dims_json = serde_json::Value::Object(dims).to_string();
 
         currencies.insert(currency.clone());
@@ -1444,6 +1751,161 @@ pub fn import_parse(
             "headers": headers,
         }
     }))
+}
+
+fn persist_mapping(
+    conn: &mut Connection,
+    company_id: &str,
+    key: &[u8],
+    template: &ValidatedMappingTemplate,
+) -> AppResult<(String, String)> {
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(AppError::from)?;
+    let existing: Option<(String, String, String)> = tx
+        .query_row(
+            "SELECT id, version, checksum FROM mapping_templates
+              WHERE company_id = ?1 AND name = ?2",
+            rusqlite::params![company_id, template.name.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if let Some((existing_id, _, _)) = existing.as_ref() {
+        // Never overwrite (and thereby launder) a materialized mapping that no longer matches
+        // its immutable audit definition. The IMMEDIATE transaction holds the write lock.
+        resolve_mapping(&tx, company_id, existing_id)?;
+    }
+    let mapping_id = existing
+        .as_ref()
+        .map(|(id, _, _)| id.clone())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let version = next_mapping_version(existing.as_ref().map(|(_, version, _)| version.as_str()))?;
+    let checksum = mapping_checksum(template);
+
+    let before_json = if let Some((id, old_version, old_checksum)) = existing.as_ref() {
+        let rows = {
+            let mut statement = tx
+                .prepare(
+                    "SELECT source_pattern, semantic_target FROM mapping_columns
+                      WHERE template_id = ?1 ORDER BY source_pattern",
+                )
+                .map_err(AppError::from)?;
+            let mapped = statement
+                .query_map([id], |row| {
+                    Ok(json!({
+                        "sourcePattern": row.get::<_, String>(0)?,
+                        "semanticTarget": row.get::<_, String>(1)?,
+                    }))
+                })
+                .map_err(AppError::from)?;
+            mapped.collect::<Result<Vec<_>, _>>().map_err(AppError::from)?
+        };
+        Some(
+            json!({
+                "mappingId": id,
+                "name": template.name.as_str(),
+                "version": old_version,
+                "checksum": old_checksum,
+                "persistedRows": rows,
+            })
+            .to_string(),
+        )
+    } else {
+        None
+    };
+
+    if existing.is_some() {
+        tx.execute(
+            "UPDATE mapping_templates SET version = ?1, checksum = ?2
+              WHERE id = ?3 AND company_id = ?4",
+            rusqlite::params![
+                version.as_str(),
+                checksum.as_str(),
+                mapping_id.as_str(),
+                company_id,
+            ],
+        )
+        .map_err(AppError::from)?;
+        tx.execute(
+            "DELETE FROM mapping_columns WHERE template_id = ?1",
+            [mapping_id.as_str()],
+        )
+        .map_err(AppError::from)?;
+    } else {
+        tx.execute(
+            "INSERT INTO mapping_templates (id, company_id, name, version, checksum)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                mapping_id.as_str(),
+                company_id,
+                template.name.as_str(),
+                version.as_str(),
+                checksum.as_str(),
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
+    let mut persisted = template.columns.clone();
+    persisted.extend([
+        (RULE_SIGN_CONVENTION.to_string(), template.sign_convention.clone()),
+        (RULE_ACCOUNT_CODE.to_string(), template.account_normalization.clone()),
+        (RULE_DIMENSION_VALUES.to_string(), template.dimension_normalization.clone()),
+        (RULE_PERIOD.to_string(), template.period_normalization.clone()),
+    ]);
+    for (source, target) in persisted {
+        tx.execute(
+            "INSERT INTO mapping_columns (id, template_id, source_pattern, semantic_target)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                Uuid::new_v4().to_string(),
+                mapping_id.as_str(),
+                source,
+                target,
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
+    let after_json = mapping_payload(&mapping_id, &version, &checksum, template).to_string();
+    let previous_hash = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(key, &previous_hash, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
+                                   before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'import.map.save_v1', 'mapping_template', ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            company_id,
+            mapping_id.as_str(),
+            before_json,
+            after_json,
+            previous_hash,
+            hash,
+            chrono::Utc::now().to_rfc3339(),
+        ],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+    Ok((mapping_id, version))
+}
+
+/// `import.map.save_v1` — save or version-bump a Company mapping. The current row is replaced,
+/// while the full before/after definitions are retained in the HMAC audit chain and committed
+/// atomically with the mapping rows (API-SPEC §11; B18-1).
+#[tauri::command(name = "import.map.save_v1", rename_all = "snake_case")]
+pub fn import_map_save_v1(
+    app: tauri::AppHandle,
+    template: MappingTemplateInput,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let template = validate_mapping_template(template)?;
+    let dir = app_data_dir(&app)?;
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let (mapping_id, version) = persist_mapping(&mut conn, &company_id, &key, &template)?;
+    Ok(json!({ "data": { "mapping_id": mapping_id, "version": version } }))
 }
 
 /// `import.validate` — {parse_id, mapping_id} → {hard[], warnings[], preview[]}.
@@ -1806,6 +2268,7 @@ pub fn import_rollback(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::audit::GENESIS_HASH;
 
     /* ── import.parse path resolution (demo asset fallback) ── */
 
@@ -2026,6 +2489,260 @@ mod tests {
             assert_eq!(ImportKind::parse(raw).unwrap().as_str(), raw);
         }
         assert_eq!(ImportKind::parse("connector_sync"), None, "connector batches are not parsed from a file");
+    }
+
+    #[test]
+    fn explicit_mapping_normalization_is_deterministic_and_never_numeric() {
+        assert_eq!(
+            normalize_account_code("  4100-00  ", "trim_collapse_whitespace_remove_hyphens"),
+            "410000"
+        );
+        assert_eq!(
+            normalize_account_code("  00  4100  ", "trim_collapse_whitespace"),
+            "00 4100",
+            "leading zeros remain text"
+        );
+        assert_eq!(
+            normalize_dimension_value(" Sales   -  North ", "trim_collapse_whitespace"),
+            "Sales - North"
+        );
+        assert_eq!(
+            normalize_period_value("AUG26", "month_name_mmm_yy"),
+            "2026-08"
+        );
+        assert_eq!(
+            normalize_period_value("aug2026", "month_name_mmm_yy"),
+            "2026-08"
+        );
+        assert_eq!(
+            normalize_period_value("2026-08", "month_name_mmm_yy"),
+            "2026-08",
+            "documented period shapes remain unchanged"
+        );
+    }
+
+    #[test]
+    fn mapping_contract_rejects_unknown_or_duplicate_targets_and_bumps_versions() {
+        let valid = MappingTemplateInput {
+            name: " Tally GL ".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Dr".into(),
+                    semantic_target: "debit".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Cr".into(),
+                    semantic_target: "credit".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim_collapse_whitespace_remove_hyphens".into(),
+                dimension_values: "trim_collapse_whitespace".into(),
+                period: "month_name_mmm_yy".into(),
+            },
+        };
+        let checked = validate_mapping_template(valid).unwrap();
+        assert_eq!(checked.name, "Tally GL");
+        assert_eq!(next_mapping_version(None).unwrap(), "v1");
+        assert_eq!(next_mapping_version(Some("v8")).unwrap(), "v9");
+        assert_eq!(mapping_checksum(&checked).len(), 64);
+
+        let duplicate = MappingTemplateInput {
+            name: "Bad".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Other ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim".into(),
+                dimension_values: "trim".into(),
+                period: "documented".into(),
+            },
+        };
+        let mut unknown = duplicate.clone();
+        unknown.columns[2].semantic_target = "unsupported_target".into();
+        assert_eq!(
+            validate_mapping_template(unknown).unwrap_err().body().code,
+            "MAP_TARGET_INVALID"
+        );
+        let mut reserved = duplicate.clone();
+        reserved.columns[0].source_pattern = "__onefpa_account_code".into();
+        assert_eq!(
+            validate_mapping_template(reserved).unwrap_err().body().code,
+            "MAP_TARGET_INVALID"
+        );
+
+        let error = validate_mapping_template(duplicate).unwrap_err().body();
+        assert_eq!(error.code, "MAP_TARGET_INVALID");
+        assert_eq!(
+            error.user_message,
+            "This column cannot map to that field. Choose a supported target."
+        );
+        assert!(!error.retryable);
+    }
+
+    #[test]
+    fn mapping_save_versions_audits_resolves_and_rolls_back_atomically() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE mapping_templates (
+                id TEXT PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                UNIQUE(company_id, name)
+             );
+             CREATE TABLE mapping_columns (
+                id TEXT PRIMARY KEY,
+                template_id TEXT NOT NULL,
+                source_pattern TEXT NOT NULL,
+                semantic_target TEXT NOT NULL
+             );
+             CREATE TABLE audit_events (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT,
+                prev_hash TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        let input = MappingTemplateInput {
+            name: "Tally GL".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Dr".into(),
+                    semantic_target: "debit".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Cr".into(),
+                    semantic_target: "credit".into(),
+                },
+            ],
+            sign_convention: "credit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim_collapse_whitespace_remove_hyphens".into(),
+                dimension_values: "trim_collapse_whitespace".into(),
+                period: "month_name_mmm_yy".into(),
+            },
+        };
+        let template = validate_mapping_template(input.clone()).unwrap();
+        let key = b"mapping-transaction-test-key";
+        let (first_id, first_version) =
+            persist_mapping(&mut conn, "company-a", key, &template).unwrap();
+        let (second_id, second_version) =
+            persist_mapping(&mut conn, "company-a", key, &template).unwrap();
+        assert_eq!(first_id, second_id, "same Company/name retains its mapping id");
+        assert_eq!((first_version.as_str(), second_version.as_str()), ("v1", "v2"));
+
+        let current: (String, i64) = conn
+            .query_row(
+                "SELECT version,
+                        (SELECT COUNT(*) FROM mapping_columns WHERE template_id = mapping_templates.id)
+                   FROM mapping_templates WHERE id = ?1",
+                [&first_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(current, ("v2".into(), 8), "four mappings plus four reserved rule rows");
+        let resolved = resolve_mapping(&conn, "company-a", &first_id).unwrap();
+        assert!(resolved.credit_positive);
+        assert_eq!(
+            resolved.account_normalization,
+            "trim_collapse_whitespace_remove_hyphens"
+        );
+        assert_eq!(resolved.period_normalization, "month_name_mmm_yy");
+
+        let events: Vec<(Option<String>, String, String, String)> = {
+            let mut statement = conn
+                .prepare(
+                    "SELECT before_json, after_json, prev_hash, hash
+                       FROM audit_events WHERE company_id = 'company-a' ORDER BY seq",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(events.len(), 2);
+        assert!(events[0].0.is_none());
+        assert!(events[1].0.as_deref().unwrap().contains("persistedRows"));
+        assert!(events[1].0.as_deref().unwrap().contains("v1"));
+        assert_eq!(events[0].2, GENESIS_HASH);
+        assert_eq!(events[0].3, next_hash(key, GENESIS_HASH, events[0].1.as_bytes()));
+        assert_eq!(events[1].2, events[0].3);
+        assert_eq!(events[1].3, next_hash(key, &events[0].3, events[1].1.as_bytes()));
+
+        conn.execute(
+            "UPDATE mapping_columns SET semantic_target = 'amount'
+              WHERE template_id = ?1 AND source_pattern = 'dr'",
+            [&first_id],
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_mapping(&conn, "company-a", &first_id).unwrap_err().body().code,
+            "STORAGE_FILE_CORRUPT",
+            "the checksum/audit definition detects materialized-row tampering"
+        );
+        assert_eq!(
+            persist_mapping(&mut conn, "company-a", key, &template)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_FILE_CORRUPT",
+            "a later save cannot legitimize a tampered current definition"
+        );
+
+        conn.execute_batch(
+            "CREATE TRIGGER reject_mapping_audit BEFORE INSERT ON audit_events
+             BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;",
+        )
+        .unwrap();
+        let mut rejected = input;
+        rejected.name = "Must roll back".into();
+        let rejected = validate_mapping_template(rejected).unwrap();
+        assert!(persist_mapping(&mut conn, "company-a", key, &rejected).is_err());
+        let template_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM mapping_templates", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(template_count, 1, "a failed audit insert rolls back the mapping write");
     }
 
     #[test]

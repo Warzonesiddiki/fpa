@@ -389,19 +389,51 @@ INSERT INTO assumption_values VALUES ('av-1','as-wage','fp-2027-p08','4.0');
 INSERT INTO import_batches VALUES ('ib-1','c-01','gl_dump','SAP_GL_Aug2026.xlsx','aa11…ff','v3','committed',47999,4128300000,4128300005,'excluded_rows_logged',NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z');
 ```
 
+`mapping_version` is the immutable label applied to that batch. The matching `import.commit` audit
+payload also records `mappingId`; historical definition recovery therefore follows the verified
+audit chain, not the current materialized mapping row.
+
 ### `mapping_templates` / `mapping_columns`
 | Column | Type | Constraints |
 |---|---|---|
-| templates.id | TEXT | PK |
+| templates.id | TEXT | PK (stable across same-name saves) |
+| templates.company_id | TEXT | NOT NULL FK→companies |
 | templates.name | TEXT | NOT NULL (`'SAP GL dump'`) UNIQUE(company_id,name) |
-| templates.version | TEXT | NOT NULL (`'v3'`) |
-| templates.checksum | TEXT | NOT NULL |
+| templates.version | TEXT | NOT NULL checked `vN` label (`'v3'`) |
+| templates.checksum | TEXT | NOT NULL deterministic SHA-256 of the normalized semantic definition |
 | columns | (mapping_columns: id, template_id, source_pattern, semantic_target) | UNIQUE(template_id, source_pattern) |
 
 ```sql
 INSERT INTO mapping_templates VALUES ('mt-1','c-01','SAP GL dump','v3','cc22…');
-INSERT INTO mapping_columns VALUES ('mc-1','mt-1','BKPF-KUNNR','account');
+INSERT INTO mapping_columns VALUES ('mc-1','mt-1','BKPF-KUNNR','account_code');
 ```
+
+The two tables are the **latest materialized mapping**, Company-scoped by
+`UNIQUE(company_id,name)`. `import.map.save_v1` keeps `templates.id`, advances `vN`, replaces all
+column rows, and inserts its HMAC audit event in the same immediate transaction. Before resolve or
+overwrite, the Rust core recomputes the materialized-body checksum and matches the complete
+normalized definition, id, checksum, and version to the latest verified mapping audit payload;
+mismatch is `STORAGE_FILE_CORRUPT`. It does not claim
+that old bodies remain mutable table rows: each audit event preserves the full new definition in
+`after_json`, and every update preserves the full prior persisted body in `before_json`.
+`import.commit` records `{mappingId,mappingVersion}` in its own audit payload while
+`import_batches.mapping_version` captures the applied label. There is no mapping-list/history
+command in the locked API catalog, so historical bodies are auditable but not loadable in S-031.
+
+Because the 56-table schema has no mapping-policy table, four **reserved implementation rows**
+live in `mapping_columns` beside ordinary source→canonical-target rows:
+
+| `source_pattern` | `semantic_target` value |
+|---|---|
+| `sign_convention` | `debit_positive` or `credit_positive` |
+| `__onefpa_account_code` | account-code normalization enum |
+| `__onefpa_dimension_values` | dimension-value normalization enum |
+| `__onefpa_period` | period normalization enum |
+
+User source patterns equal to `sign_convention` or beginning `__onefpa_` are rejected with
+`MAP_TARGET_INVALID`, preventing collisions. These policy values are not canonical GL targets;
+they are parsed only when their reserved source key matches. Ordinary `semantic_target` values are
+the exact 15 fields in API-SPEC §11 / GL-TEMPLATE-SPEC §7.
 
 ### `source_files` (Source File Vault)
 | Column | Type | Constraints |

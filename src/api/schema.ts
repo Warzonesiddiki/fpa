@@ -477,6 +477,121 @@ export const CANONICAL_MAPPING_ID = "canonical";
 
 export const ImportMappingRef = z.string().min(1, "MAPPING_ID_REQUIRED");
 
+export const MAP_TARGET_INVALID_MESSAGE =
+  "This column cannot map to that field. Choose a supported target.";
+
+/** Stage-0-locked `import.map.save_v1` contract (API-SPEC §11). The targets are exactly the
+ * Canonical GL fields; unknown targets must surface MAP_TARGET_INVALID rather than being stored. */
+export const IMPORT_MAPPING_TARGETS = [
+  "period",
+  "account_code",
+  "account_name",
+  "debit",
+  "credit",
+  "amount",
+  "cost_center",
+  "project",
+  "product",
+  "customer",
+  "business_unit",
+  "intercompany_tag",
+  "currency",
+  "posting_ref",
+  "doc_type",
+] as const;
+export const ImportMappingTarget = z.enum(IMPORT_MAPPING_TARGETS);
+export type ImportMappingTarget = z.infer<typeof ImportMappingTarget>;
+
+export const ImportSignConvention = z.enum(["debit_positive", "credit_positive"]);
+export type ImportSignConvention = z.infer<typeof ImportSignConvention>;
+
+export const AccountCodeNormalization = z.enum([
+  "trim",
+  "trim_collapse_whitespace",
+  "trim_collapse_whitespace_remove_hyphens",
+]);
+export type AccountCodeNormalization = z.infer<typeof AccountCodeNormalization>;
+
+export const DimensionValueNormalization = z.enum(["trim", "trim_collapse_whitespace"]);
+export type DimensionValueNormalization = z.infer<typeof DimensionValueNormalization>;
+
+export const PeriodNormalization = z.enum(["documented", "month_name_mmm_yy"]);
+export type PeriodNormalization = z.infer<typeof PeriodNormalization>;
+
+export const ImportMappingColumn = z
+  .object({
+    source_pattern: z
+      .string()
+      .trim()
+      .min(1, "MAPPING_SOURCE_REQUIRED")
+      .max(120, "MAPPING_SOURCE_TOO_LONG")
+      .refine((value) => !/\p{Cc}/u.test(value), "MAPPING_SOURCE_CONTROL")
+      .refine(
+        (value) =>
+          value.toLowerCase() !== "sign_convention" && !value.toLowerCase().startsWith("__onefpa_"),
+        "MAPPING_SOURCE_RESERVED",
+      ),
+    semantic_target: ImportMappingTarget,
+  })
+  .strict();
+export type ImportMappingColumn = z.infer<typeof ImportMappingColumn>;
+
+export const ImportMappingTemplate = z
+  .object({
+    name: z.string().trim().min(1, "MAPPING_NAME_REQUIRED").max(120, "MAPPING_NAME_TOO_LONG"),
+    columns: z.array(ImportMappingColumn).min(3, "MAPPING_COLUMNS_REQUIRED").max(15),
+    sign_convention: ImportSignConvention,
+    normalization: z
+      .object({
+        account_code: AccountCodeNormalization,
+        dimension_values: DimensionValueNormalization,
+        period: PeriodNormalization,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((template, context) => {
+    const sources = new Set<string>();
+    const targets = new Set<ImportMappingTarget>();
+    for (const [index, column] of template.columns.entries()) {
+      const source = column.source_pattern.toLowerCase();
+      if (sources.has(source)) {
+        context.addIssue({
+          code: "custom",
+          message: "MAPPING_SOURCE_DUPLICATE",
+          path: ["columns", index, "source_pattern"],
+        });
+      }
+      if (targets.has(column.semantic_target)) {
+        context.addIssue({
+          code: "custom",
+          message: "MAPPING_TARGET_DUPLICATE",
+          path: ["columns", index, "semantic_target"],
+        });
+      }
+      sources.add(source);
+      targets.add(column.semantic_target);
+    }
+    for (const required of ["period", "account_code"] as const) {
+      if (!targets.has(required)) {
+        context.addIssue({ code: "custom", message: "MAPPING_TARGET_REQUIRED", path: ["columns"] });
+      }
+    }
+    if (!targets.has("amount") && !(targets.has("debit") && targets.has("credit"))) {
+      context.addIssue({ code: "custom", message: "MAPPING_AMOUNT_REQUIRED", path: ["columns"] });
+    }
+  });
+export type ImportMappingTemplate = z.infer<typeof ImportMappingTemplate>;
+
+export const ImportMapSaveArgs = z.object({ template: ImportMappingTemplate }).strict();
+export const ImportMapSaveData = z
+  .object({
+    mapping_id: Uuid,
+    version: z.string().regex(/^v[1-9]\d*$/),
+  })
+  .strict();
+export type ImportMapSaveData = z.infer<typeof ImportMapSaveData>;
+
 export const ImportValidateArgs = z
   .object({
     parse_id: Uuid,
@@ -990,6 +1105,7 @@ export const CommandArgs = {
   "coa.merge_accounts": CoaMergeArgs,
   "pack.list": PackListArgs,
   "import.parse": ImportParseArgs,
+  "import.map.save_v1": ImportMapSaveArgs,
   "import.validate": ImportValidateArgs,
   "import.tieout": ImportTieoutArgs,
   "import.commit": ImportCommitArgs,

@@ -95,13 +95,18 @@ describe("S-003 Global Search Palette (⌘K)", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("indexes the S-030 Import Hub and S-075 Settings routes", async () => {
+  it("indexes the S-030/S-031 import routes and S-075 Settings", async () => {
     renderPalette();
     const user = userEvent.setup();
     const input = screen.getByRole("combobox", { name: "Search" });
     await user.type(input, "import");
     expect(await screen.findByRole("option", { name: /Import Hub/ })).toHaveTextContent(
       "/app/import",
+    );
+    await user.clear(input);
+    await user.type(input, "mapping");
+    expect(await screen.findByRole("option", { name: /Mapping Wizard/ })).toHaveTextContent(
+      "/app/import/map",
     );
     await user.clear(input);
     await user.type(input, "settings");
