@@ -4,7 +4,7 @@
     "key": "retail",
     "name": "Retail",
     "version": "2.1.0",
-    "description": "Retail Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Same-store sales, GMROI, conversion, inventory turns — merchandising and store operations.",
     "default_calendar": "454",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

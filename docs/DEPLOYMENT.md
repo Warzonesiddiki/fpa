@@ -30,7 +30,7 @@ npm run build            # vite → dist/
 cargo build --release --manifest-path src-tauri/Cargo.toml
 
 # 4. Package installers (per OS; run on the target OS runner)
-npm run tauri:build      # wrappers: cargo tauri build
+npm run tauri build      # wrapper → cargo tauri build
 # Windows → .msi + .exe (NSIS)   macOS → .dmg + .app (notarized)
 # Linux   → .deb + .rpm + .AppImage (x86_64; aarch64 for deb/AppImage)
 ```

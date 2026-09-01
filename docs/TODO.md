@@ -9,7 +9,7 @@
 
 - [ ] **M0-1** Stage 3 cross-document audit: FEATURE-TRACEABILITY-MATRIX.md, terminology scan, data-flow audit, orphan detection, contradiction scan (per DOCS-INDEX item) — depends: all phases approved
 - [ ] **M0-2** Stage 4 build-readiness test: answer 5 gates, fix docs, confirm YES
-- [ ] **M0-3** Generate `docs/examples/sample_gl_dump.xlsx` + Demo Company fixture (synthetic; per TEST-FIXTURES-SPEC)
+- [x] **M0-3** Generate `docs/examples/sample_gl_dump.xlsx` + Demo Company fixture (synthetic; per TEST-FIXTURES-SPEC) — DONE 2026-08-31: canonical 3-sheet xlsx (valid inline-string OOXML) + CSV + `.expected.json` oracle (480 rows, tie-out 937,976.64, SHA256) + `tests/fixtures/demo_company/` (clearly-marked, byte-identical GL dump, P&L rollup to the cent); evidence in TASKBOARD M0-3
 - [ ] **M0-4** Pack schema v1.0 (`packs/schema/pack.schema.json` per INDUSTRY-PACK-SPEC) + 12 packs seed content (per TEST-FIXTURES-SPEC §1 packs/)
 
 ## M1 — FOUNDATION (F-001…F-006)
@@ -71,7 +71,7 @@
 
 - [ ] **M6-1** Statement engine (P&L/BS/CF/SoCE) + tie-outs + rounding largest-remainder (S-060)
 - [ ] **M6-2** GAAP/IFRS presets + segment report (S-060/061)
-- [ ] **M6-3** Consolidation: rollup maps, IC tie/elimination, FX translation, NCI (S-021/S-061)
+- [ ] **M6-3** Consolidation: rollup maps, IC Tie-Out + Elimination, Balance Translation, NCI (S-021/S-061)
 - [ ] **M6-4** Report Builder + KPI Builder (S-062/063)
 - [ ] **M6-5** Dashboard + Board Pack + explainers (S-010/064)
 - [ ] **M6-6** Export suite: xlsx/typst PDF/model dump/data room + injection guard (S-031/D-003; EXPORT-FORMAT-SPEC)

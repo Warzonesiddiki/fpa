@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WizardPage } from "./index";
+import { renderWizard } from "@/test/wizard-harness";
 
 const callMock = vi.fn();
 vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
@@ -19,7 +19,7 @@ describe("S-002 wizard — typed IPC error surface (B12)", () => {
   });
 
   it("surfaces a typed IPC error via role=alert", async () => {
-    render(<WizardPage />);
+    renderWizard();
     fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Acme" } });
     for (let i = 0; i < 4; i += 1) {
       fireEvent.click(screen.getByRole("button", { name: "Next" }));

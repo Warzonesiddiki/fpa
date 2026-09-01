@@ -6,7 +6,7 @@ import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
 import type { CompanyMeta } from "@/api/schema";
-import { Building2, FolderOpen, Plus, Trash2 } from "lucide-react";
+import { Building2, Copy, FolderOpen, Plus, Trash2 } from "lucide-react";
 
 type ListPhase = "loading" | "ready" | "error";
 
@@ -32,6 +32,11 @@ export function CompaniesPage() {
   const [deletedName, setDeletedName] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openErrorId, setOpenErrorId] = useState<string | null>(null);
+  const [cloning, setCloning] = useState<CompanyMeta | null>(null);
+  const [cloneName, setCloneName] = useState("");
+  const [cloneError, setCloneError] = useState<BridgeError | null>(null);
+  const [cloneBusy, setCloneBusy] = useState(false);
+  const [clonedName, setClonedName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,6 +86,32 @@ export function CompaniesPage() {
       setDeleteError(err as BridgeError);
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  function openClone(company: CompanyMeta) {
+    setCloning(company);
+    setCloneName(`${company.name} (Sandbox)`);
+    setCloneError(null);
+  }
+
+  async function confirmClone() {
+    if (!cloning) return;
+    setCloneBusy(true);
+    setCloneError(null);
+    try {
+      await call("company.clone_sandbox", {
+        company_id: cloning.id,
+        name: cloneName.trim(),
+      });
+      setClonedName(cloneName.trim());
+      setCloning(null);
+      setCloneName("");
+      await load();
+    } catch (err) {
+      setCloneError(err as BridgeError);
+    } finally {
+      setCloneBusy(false);
     }
   }
 
@@ -146,6 +177,12 @@ export function CompaniesPage() {
         </p>
       )}
 
+      {clonedName && (
+        <p role="status" className="text-sm text-[var(--color-onefavorable)]">
+          {t("companies.clone.success", { name: clonedName })}
+        </p>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {companies.map((company) => {
           const opened = formatOpened(company.last_opened_at);
@@ -189,7 +226,7 @@ export function CompaniesPage() {
                 </p>
               )}
 
-              <div className="mt-auto flex items-center gap-2">
+              <div className="mt-auto flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="secondary"
@@ -198,6 +235,10 @@ export function CompaniesPage() {
                 >
                   <FolderOpen aria-hidden="true" className="h-3.5 w-3.5" />
                   {isOpening ? t("companies.opening") : t("companies.open")}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => openClone(company)}>
+                  <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("companies.clone")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setDeleting(company)}>
                   <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
@@ -260,6 +301,62 @@ export function CompaniesPage() {
                 onClick={() => void confirmDelete()}
               >
                 {t("companies.delete.confirm")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cloning && (
+        <div className="fixed inset-0 z-40">
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            tabIndex={-1}
+            className="absolute inset-0 bg-black/40"
+            onClick={() => {
+              if (!cloneBusy) setCloning(null);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("companies.clone.title", { name: cloning.name })}
+            className="absolute left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-6 shadow-xl"
+          >
+            <h2 className="text-sm font-semibold">
+              {t("companies.clone.title", { name: cloning.name })}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--color-onetextsecondary)]">
+              {t("companies.clone.body")}
+            </p>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-xs font-medium text-[var(--color-onetextsecondary)]">
+                {t("companies.clone.name")}
+              </span>
+              <input
+                type="text"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder={t("companies.clone.namePlaceholder")}
+                className="w-full rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-2 text-sm outline-none focus:border-[var(--color-oneprimary)]"
+              />
+            </label>
+            {cloneError && (
+              <p role="alert" className="mt-3 text-sm text-[var(--color-onerror)]">
+                {cloneError.userMessage}
+                <span className="mt-1 block font-mono text-xs opacity-70">{cloneError.code}</span>
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="secondary" disabled={cloneBusy} onClick={() => setCloning(null)}>
+                {t("companies.clone.cancel")}
+              </Button>
+              <Button
+                disabled={cloneBusy || cloneName.trim().length < 2}
+                onClick={() => void confirmClone()}
+              >
+                {t("companies.clone.action")}
               </Button>
             </div>
           </div>

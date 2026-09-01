@@ -4,7 +4,7 @@
     "key": "professional-services",
     "name": "Professional Services",
     "version": "2.1.0",
-    "description": "Professional Services Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Utilization, revenue per FTE, pipeline coverage, DSO — billable capacity and delivery.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

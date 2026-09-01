@@ -1,0 +1,9 @@
+{
+  "existing": [
+    { "code": "4000", "name": "Cash (old mapping)", "type": "asset", "section": "Balance Sheet" }
+  ],
+  "accounts": [
+    { "code": "4000", "name": "Revenue", "type": "revenue", "section": "Income Statement" },
+    { "code": "4100", "name": "Deferred Revenue", "type": "revenue", "section": "Income Statement" }
+  ]
+}

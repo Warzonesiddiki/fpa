@@ -124,4 +124,64 @@ describe("S-020 Company Manager (F-001)", () => {
     });
     expect(screen.queryByText("Meridian Holdings (Demo)")).not.toBeInTheDocument();
   });
+
+  it("clones a company as a sandbox via the 2-step dialog and calls company.clone_sandbox", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "company.clone_sandbox") {
+        return Promise.resolve({ company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000003" });
+      }
+      return Promise.resolve(COMPANIES);
+    });
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("Meridian Holdings (Demo)");
+    const cloneButtons = screen.getAllByRole("button", { name: /Clone/ });
+    await user.click(cloneButtons[0]);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    // Prefilled with a sensible sandbox name.
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveValue("Meridian Holdings (Demo) (Sandbox)");
+    await user.click(screen.getByRole("button", { name: "Create sandbox" }));
+    expect(
+      await screen.findByText("Meridian Holdings (Demo) (Sandbox) created as a sandbox"),
+    ).toBeInTheDocument();
+    expect(callMock).toHaveBeenCalledWith("company.clone_sandbox", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      name: "Meridian Holdings (Demo) (Sandbox)",
+    });
+  });
+
+  it("disables Create sandbox until the sandbox name is at least two characters", async () => {
+    callMock.mockResolvedValue(COMPANIES);
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("Meridian Holdings (Demo)");
+    await user.click(screen.getAllByRole("button", { name: /Clone/ })[0]);
+    const create = screen.getByRole("button", { name: "Create sandbox" });
+    expect(create).toBeEnabled(); // prefilled name is long enough
+    await user.clear(screen.getByRole("textbox"));
+    expect(create).toBeDisabled();
+  });
+
+  it("surfaces the API error inside the clone dialog when cloning fails", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "company.clone_sandbox") {
+        return Promise.reject({
+          code: "STORAGE_FILE_EXISTS",
+          userMessage: "A file already exists at that path.",
+        });
+      }
+      return Promise.resolve(COMPANIES);
+    });
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("Meridian Holdings (Demo)");
+    await user.click(screen.getAllByRole("button", { name: /Clone/ })[0]);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create sandbox" }));
+    const message = await screen.findByText("A file already exists at that path.");
+    expect(message.closest('[role="alert"]')).toBeInTheDocument();
+    expect(screen.getByText("STORAGE_FILE_EXISTS")).toBeInTheDocument();
+  });
 });

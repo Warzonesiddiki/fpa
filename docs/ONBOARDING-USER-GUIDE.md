@@ -53,7 +53,7 @@
 4. **S-052 What-If**: Sensitivity tornado + Goal Seek (reps for ₹300M revenue).
 5. **S-051 Compare**: Base vs Upside — cell diff → export.
 6. **S-055 FVA** (month 4+): score forecasts vs Actuals.
-7. Investor pack: **S-064** → PDF; every KPI has an explainer (no "what does NRR mean?" in the boardroom).
+7. Board Pack: **S-064** → PDF; every KPI has an explainer (no "what does NRR mean?" in the boardroom).
 
 ## 5. DAY-90 (attach Actuals without rebuilding)
 

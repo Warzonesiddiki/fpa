@@ -4,7 +4,7 @@
     "key": "saas",
     "name": "SaaS / Tech",
     "version": "2.1.0",
-    "description": "SaaS / Tech Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "ARR, net revenue retention, CAC payback, burn multiple — SaaS revenue and unit economics.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

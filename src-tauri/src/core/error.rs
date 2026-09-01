@@ -92,6 +92,24 @@ pub enum AppError {
     AssumptionInUseLocked { assumption_id: String },
     #[error("hardcoded assumption at {cell}")]
     HardcodedAssumption { cell: String },
+    // ── COA (F-002 / ERROR-HANDLING) ─────────────────────────────────────────────────────
+    /// Import hits an existing code with a DIFFERENT account type (same type updates, never
+    /// a silent type flip — LICENSE-free COA semantics, S-021).
+    #[error("account code {code} already exists with a different type")]
+    CoaDuplicateCode { code: String },
+    #[error("cannot merge: account types differ ({from_type} vs {to_type})")]
+    CoaTypeMismatch { from_type: String, to_type: String },
+    /// Import would touch an account already referenced by GL lines — history is never
+    /// rewritten (S-021: merge or remap instead).
+    #[error("account is used by {count} lines; merge or remap instead")]
+    CoaReferenced { count: i64 },
+    // ── License (F-035 / ERROR-HANDLING §H) ──────────────────────────────────────────────
+    /// Ed25519 signature verify failed, machine-fingerprint mismatch, or Company hash
+    /// mismatch — all surface as the single locked code (LICENSE-SPEC §Statuses).
+    #[error("license signature verification failed: {reason}")]
+    LicenseInvalidSignature { reason: String },
+    #[error("license is past expiry and beyond the 60-day grace window")]
+    LicenseExpired,
 }
 
 impl AppError {
@@ -133,6 +151,12 @@ impl AppError {
             AppError::DriverOutOfBounds { .. } => ("DRIVER_OUT_OF_BOUNDS", 422, false, None),
             AppError::AssumptionInUseLocked { .. } => ("ASSUMPTION_IN_USE_LOCKED", 422, false, None),
             AppError::HardcodedAssumption { .. } => ("HARDCODED_ASSUMPTION", 422, false, None),
+            // ERROR-HANDLING §H: both license codes are 403, not retryable.
+            AppError::LicenseInvalidSignature { .. } => ("LICENSE_INVALID_SIGNATURE", 403, false, None),
+            AppError::LicenseExpired { .. } => ("LICENSE_EXPIRED", 403, false, None),
+            AppError::CoaDuplicateCode { .. } => ("COA_DUPLICATE_CODE", 409, false, None),
+            AppError::CoaTypeMismatch { .. } => ("COA_TYPE_MISMATCH", 422, false, None),
+            AppError::CoaReferenced { .. } => ("COA_REFERENCED", 409, false, None),
         };
         let user_message = match self {
             AppError::PinInvalid => "Incorrect PIN. Please try again.",
@@ -169,6 +193,61 @@ impl AppError {
             }
             AppError::PeriodMappingConflict(_) => {
                 "Two BUs map the same Group period with different calendars — confirm the Transit Map."
+            }
+            AppError::LicenseInvalidSignature { reason } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "This license key is invalid. Contact your vendor.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "reason": reason }),
+                };
+            }
+            AppError::LicenseExpired => {
+                "License expired. The Company is read-only. Activate to continue."
+            }
+            AppError::CoaDuplicateCode { code } => {
+                // Exact documented template (ERROR-HANDLING.md) with the colliding code.
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!("Account code {code} already exists in this scope."),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "code": code }),
+                };
+            }
+            AppError::CoaTypeMismatch { from_type, to_type } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Cannot merge: account types differ ({} vs {}).",
+                        cap(from_type),
+                        cap(to_type)
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "fromType": from_type, "toType": to_type }),
+                };
+            }
+            AppError::CoaReferenced { count } => {
+                // Exact documented template (ERROR-HANDLING.md) with the live usage count.
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Account is used by {count} lines/batches. Merge or remap instead of deleting."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "count": count }),
+                };
             }
             AppError::AuditChainBreak { at_seq } => {
                 return ErrorBody {
@@ -479,6 +558,15 @@ impl AppError {
 
     pub fn hardcoded_assumption(cell: &str) -> Self {
         AppError::HardcodedAssumption { cell: cell.to_string() }
+    }
+}
+
+/// Capitalize the first char for documented user text ("revenue" → "Revenue").
+fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
     }
 }
 

@@ -256,7 +256,7 @@
 
 ### US-029 · F-028 Group Consolidation · P0 · (P)
 
-**Given** a Group with 5 BUs (different Packs/currencies/calendars), **When** Priority consolidation runs, **Then** Group Rollup Maps apply, IC Lines are eliminated (yes, with the IC Tie-Out Check), FX translation uses average/closing rates with OCI treatment, NCI is computed for the 80% BU, and Group BS ties; every group line drillable to BU → Account → GL Line.
+**Given** a Group with 5 BUs (different Packs/currencies/calendars), **When** Priority consolidation runs, **Then** Group Rollup Maps apply, IC Lines are eliminated (yes, with the IC Tie-Out Check), Balance Translation uses Average/Closing rates with OCI treatment, NCI is computed for the 80% BU, and Group BS ties; every group line drillable to BU → Account → GL Line.
 
 **Edge cases**
 - IC Line without a matching counterpart → HARD `IC_UNMATCHED`; consolidation blocked until resolved (pair or tag as external); no blind elimination.

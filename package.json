@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:coverage:critical": "vitest run --coverage --config vitest.critical.config.ts",
+    "bench": "vitest bench",
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix",
     "fmt": "prettier --write .",
@@ -28,7 +29,8 @@
     "security:scan": "node scripts/secret-scan.mjs && node scripts/telemetry-scan.mjs && node scripts/license-check.mjs",
     "fixtures:gen": "python3 scripts/gen-fixtures.py",
     "tauri": "tauri",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run security:scan"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run security:scan",
+    "fixtures:gen:license": "node scripts/gen-license-fixtures.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "3.14.10",

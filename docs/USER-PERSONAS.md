@@ -46,7 +46,7 @@
 
 **Goals**
 1. One Group model where each BU runs with its own Industry Pack, calendar (retail BU = 4-5-4), and currency.
-2. Monthly consolidation: intercompany eliminations that tie, FX translation with correct OCI treatment, NCI on the 80%-owned services BU.
+2. Monthly consolidation: intercompany eliminations that tie, Balance Translation with correct OCI treatment, NCI on the 80%-owned services BU.
 3. Segment report (BU × margin lines) for board; group statements that match statutory figures.
 4. See "what happens to group EBITDA if retail rolls to a 53-week year?" — calendar-aware comparison.
 5. Audit-ready: each group number drillable to BU → Account → GL Line.

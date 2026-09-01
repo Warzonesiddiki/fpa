@@ -1,0 +1,47 @@
+{
+  "fixture": "demo_company_gl_dump",
+  "synthetic": true,
+  "spec": "GL-TEMPLATE-SPEC.md (Canonical GL Template)",
+  "sheets": ["GL", "COA", "Dimensions"],
+  "gl_rows": 480,
+  "period": "2026-08",
+  "currency": "USD",
+  "tie_out": {
+    "sum_debit_minor": 93797664,
+    "sum_credit_minor": 93797664,
+    "sum_debit": "937976.64",
+    "sum_credit": "937976.64",
+    "balanced": true
+  },
+  "per_account_net_minor": {
+    "1200": 43800000,
+    "1300": -10950000,
+    "1700": 1459992,
+    "2000": 24447672,
+    "2100": 13140000,
+    "4000": -43800000,
+    "4100": -10950000,
+    "4200": -4380000,
+    "5000": -8760000,
+    "5100": -547488,
+    "5200": -1095000,
+    "5300": -729984,
+    "5400": -1459992,
+    "5500": -175200
+  },
+  "pl_rollup_minor": {
+    "revenue": 43800000,
+    "cogs": 15330000,
+    "gross_profit": 28470000,
+    "opex": 12767664,
+    "ebitda": 15702336,
+    "depreciation": 1459992,
+    "ebit": 14242344
+  },
+  "files": {
+    "csv": {
+      "path": "gl_dump.csv",
+      "sha256": "c675ef6d7ec8a532cab50615f2fce2366985d82b4fb72e351af04e132b9aa2f6"
+    }
+  }
+}

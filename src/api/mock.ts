@@ -96,19 +96,111 @@ function modelIdForCompany(companyId: string): string {
   return companyId;
 }
 
+/** Dev-only sample COA so S-021 merge/import are exercisable without a Company (B18-3). */
+const MOCK_ACCOUNTS = [
+  {
+    id: "00000000-0000-4000-8000-000000000001",
+    code: "4000",
+    name: "Revenue",
+    account_type: "revenue",
+    report_section: "Income Statement",
+    parent_id: null,
+    bu_id: null,
+    is_control: false,
+    active: true,
+    version: 1,
+    usage_count: 2,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000002",
+    code: "4100",
+    name: "Deferred Revenue",
+    account_type: "revenue",
+    report_section: "Income Statement",
+    parent_id: "00000000-0000-4000-8000-000000000001",
+    bu_id: null,
+    is_control: false,
+    active: true,
+    version: 1,
+    usage_count: 0,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000003",
+    code: "5000",
+    name: "Cost of Goods Sold",
+    account_type: "cogs",
+    report_section: "Income Statement",
+    parent_id: null,
+    bu_id: null,
+    is_control: false,
+    active: true,
+    version: 1,
+    usage_count: 1,
+  },
+];
+
+/** Mirrors the bundled pack.json `pack` objects (INDUSTRY-PACK-SPEC; dev-only, B18-3). */
 const PACKS = [
-  ["saas", "SaaS / Tech"],
-  ["manufacturing", "Manufacturing"],
-  ["retail", "Retail"],
-  ["healthcare", "Healthcare"],
-  ["construction", "Construction"],
-  ["professional-services", "Professional Services"],
-  ["nonprofit", "Nonprofit"],
-  ["government", "Government"],
-  ["energy", "Energy"],
-  ["financial-services", "Financial Services"],
-  ["logistics", "Logistics"],
-  ["real-estate", "Real Estate"],
+  [
+    "saas",
+    "SaaS / Tech",
+    "ARR, net revenue retention, CAC payback, burn multiple — SaaS revenue and unit economics.",
+  ],
+  [
+    "manufacturing",
+    "Manufacturing",
+    "Standard costing, production plan, capacity, WIP; OEE, inventory turns, standard cost variance.",
+  ],
+  [
+    "retail",
+    "Retail",
+    "Same-store sales, GMROI, conversion, inventory turns — merchandising and store operations.",
+  ],
+  [
+    "healthcare",
+    "Healthcare",
+    "Cost per patient, payer mix, denial rate, net days in AR — clinical and revenue-cycle operations.",
+  ],
+  [
+    "construction",
+    "Construction",
+    "Backlog, over/under billing, cost-to-cost % complete — project accounting and WIP.",
+  ],
+  [
+    "professional-services",
+    "Professional Services",
+    "Utilization, revenue per FTE, pipeline coverage, DSO — billable capacity and delivery.",
+  ],
+  [
+    "nonprofit",
+    "Nonprofit",
+    "Program ratio, donor retention, grant coverage, cost per dollar raised — funds and grant management.",
+  ],
+  [
+    "government",
+    "Government",
+    "Budget execution, encumbrance, program spend, timely close — appropriations and fund control.",
+  ],
+  [
+    "energy",
+    "Energy",
+    "Tariff recovery, plant availability, cost per MWh, hedge ratio — generation and trading.",
+  ],
+  [
+    "financial-services",
+    "Financial Services",
+    "Net interest margin, loss ratio, cost/income, medical loss ratio — balance sheet and underwriting.",
+  ],
+  [
+    "logistics",
+    "Logistics",
+    "Cost per mile, fleet utilization, on-time delivery, DSO — fleet and network operations.",
+  ],
+  [
+    "real-estate",
+    "Real Estate",
+    "Net operating income, cap rate, occupancy, rent roll — property operations and valuations.",
+  ],
 ] as const;
 
 /** Deterministic shape-valid preview (mock only — the Rust engine is the semantic owner). */
@@ -361,16 +453,31 @@ export async function mockInvoke<C extends CommandName>(
 ): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 120)); // simulate IPC latency so loading states render
   switch (command) {
-    case "session.status":
+    case "session.status": {
+      // Shape mirror only (B18-3): the Rust core derives this live from `licenses`
+      // (license_status_json) — the mock reflects the dev company's fixture state so
+      // S-073's populated/empty states are reachable in the browser.
+      const license =
+        session.unlocked && session.company_id
+          ? {
+              status: "active",
+              days_left: 365,
+              plan: "pro",
+              expires_at: "2099-12-31T23:59:59Z",
+              license_key_id: "LK-MOCK-DEV-0001",
+              machine_fingerprint: "fp-devbrowser00000000000000000000000000",
+            }
+          : null;
       return {
         data: {
           unlocked: session.unlocked,
           company_id: session.company_id,
           model_id: session.model_id,
           read_only: session.read_only,
-          license: null,
+          license,
         },
       };
+    }
     case "security.pin_setup":
       // Shape mirror only (B18-3): the Rust core owns policy + persistence.
       return { data: { ok: true } };
@@ -536,6 +643,49 @@ export async function mockInvoke<C extends CommandName>(
       session.read_only = false;
       return { data: { company_id: id, model_id } };
     }
+    case "company.clone_sandbox": {
+      const { company_id, name } = args as { company_id: string; name: string };
+      const trimmed = name.trim();
+      if (trimmed.length < 2) {
+        return mockError(
+          "VALUE_INVALID",
+          "sandbox name required",
+          "A sandbox name is required.",
+          422,
+        );
+      }
+      const src = companies.find((c) => c.id === company_id);
+      if (!src) {
+        return mockError(
+          "STORAGE_FILE_CORRUPT",
+          "unknown company",
+          "This Company file could not be verified. Restore from Backup?",
+          422,
+        );
+      }
+      if (companies.some((c) => c.name === trimmed)) {
+        return mockError(
+          "VALUE_INVALID",
+          `name '${trimmed}' already in use`,
+          `A Company named “${trimmed}” already exists.`,
+          422,
+        );
+      }
+      const dir = src.company_file_path.replace(/\/[^/]*$/, "");
+      const id = `3f9f2c9e-9f8b-4e2d-9a1c-${String(companies.length + 3).padStart(12, "0")}`;
+      modelIdForCompany(id);
+      companies.unshift({
+        id,
+        name: trimmed,
+        type: src.type,
+        default_currency_code: src.default_currency_code,
+        base_locale: src.base_locale,
+        last_opened_at: new Date().toISOString(),
+        company_file_path: `${dir}/${trimmed}.fpa`,
+        license_status: src.license_status,
+      });
+      return { data: { company_id: id } };
+    }
     case "calendar.preview": {
       const { preset, fy_start_month, from, year_count } = args as {
         preset: string;
@@ -548,14 +698,42 @@ export async function mockInvoke<C extends CommandName>(
     case "calendar.apply":
       return { data: { applied: true } };
     case "coa.list":
-      return { data: [] };
+      return { data: MOCK_ACCOUNTS };
+    case "coa.import": {
+      const { file_path, pack_key } = args as {
+        file_path?: string;
+        pack_key?: string;
+      };
+      if (Boolean(file_path) === Boolean(pack_key)) {
+        return mockError(
+          "VALUE_INVALID",
+          "exactly one of file_path / pack_key is required",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      return { data: { created: 12, updated: 2 } };
+    }
+    case "coa.merge_accounts": {
+      const { from_id, to_id } = args as { from_id: string; to_id: string };
+      if (from_id === to_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "from and to must differ",
+          "Choose two different accounts to merge.",
+          422,
+        );
+      }
+      return { data: { remapped: 3 } };
+    }
     case "pack.list":
       return {
-        data: PACKS.map(([key, name]) => ({
+        data: PACKS.map(([key, name, description]) => ({
           key,
           name,
           version: "2.1.0",
           schema_version: "1.0.0",
+          description,
           is_bundled: true,
         })),
       };
@@ -1050,6 +1228,73 @@ export async function mockInvoke<C extends CommandName>(
         );
       }
       return { data: { batch_id: nextImportId("400") } };
+    }
+    /* ── License (F-035) — shape mirror only (B18-3): the Rust core owns Ed25519 ─────
+     * Dev triggers so S-073's states are reachable in the browser: a payload JSON whose
+     * license_key_id contains "invalid" → LICENSE_INVALID_SIGNATURE; "expired" →
+     * LICENSE_EXPIRED; otherwise the payload's own expires_at drives active/grace.      */
+    case "license.verify":
+    case "license.apply_response": {
+      const raw = (
+        "license_payload" in args
+          ? (args as { license_payload: string }).license_payload
+          : (args as { response_path_or_payload: string }).response_path_or_payload
+      ).trim();
+      let payload: { license_key_id?: string; plan?: string; expires_at?: string };
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return mockError(
+          "LICENSE_INVALID_SIGNATURE",
+          "payload is not JSON",
+          "This license key is invalid. Contact your vendor.",
+          403,
+        );
+      }
+      if (!payload.license_key_id || !payload.expires_at) {
+        return mockError(
+          "LICENSE_INVALID_SIGNATURE",
+          "missing field in payload",
+          "This license key is invalid. Contact your vendor.",
+          403,
+        );
+      }
+      const keyId = payload.license_key_id.toLowerCase();
+      const msPerDay = 86_400_000;
+      const expires = Date.parse(payload.expires_at);
+      const now = Date.now();
+      if (keyId.includes("expired") || now >= expires + 60 * msPerDay) {
+        return mockError(
+          "LICENSE_EXPIRED",
+          "license past expiry and beyond the 60-day grace window",
+          "License expired. The Company is read-only. Activate to continue.",
+          403,
+        );
+      }
+      if (keyId.includes("invalid")) {
+        return mockError(
+          "LICENSE_INVALID_SIGNATURE",
+          "ed25519 signature does not verify",
+          "This license key is invalid. Contact your vendor.",
+          403,
+        );
+      }
+      const status = now < expires ? "active" : "grace";
+      const daysLeft = Math.max(0, Math.floor((expires - now) / msPerDay));
+      if (command === "license.verify") {
+        return { data: { status, days_left: daysLeft } };
+      }
+      return {
+        data: {
+          status,
+          plan: payload.plan === "enterprise" ? "enterprise" : "pro",
+          days_left: daysLeft,
+        },
+      };
+    }
+    case "license.request_file": {
+      const { company_path } = args as { company_path: string };
+      return { data: { file: `${company_path}.license-request.json` } };
     }
     default:
       return {

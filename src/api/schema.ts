@@ -133,6 +133,11 @@ export const SessionStatusData = z.object({
     .object({
       status: z.enum(["active", "grace", "expired", "invalid"]),
       days_left: z.number().int(),
+      // S-073 read side (LICENSE-SPEC): populated when a licenses row exists, else `license` is null.
+      plan: z.enum(["pro", "enterprise"]).optional(),
+      expires_at: z.string().nullable().optional(),
+      license_key_id: z.string().optional(),
+      machine_fingerprint: z.string().optional(),
     })
     .nullable(),
 });
@@ -230,6 +235,28 @@ export const CompanyCreateArgs = z
   .strict();
 export const CompanyCreateData = z.object({ company_id: Uuid, model_id: Uuid.optional() });
 
+// `company.clone_sandbox` (API-SPEC §2.1): copy a Company's structure (calendar + BUs + COA +
+// default Model) into a new Company with a freshly sealed `.fpa` file derived from the source
+// file's directory + the sandbox name. The GL lines / other Models are NOT copied (M1-5).
+export const CompanyCloneArgs = z
+  .object({
+    company_id: Uuid,
+    name: z.string().trim().min(2, "SANDBOX_NAME_REQUIRED").max(120),
+  })
+  .strict();
+export const CompanyCloneData = z.object({ company_id: Uuid });
+
+// `company.archive_year` (API-SPEC §2.1): detach a Fiscal Year once nothing references it.
+// Contract is locked by the catalog; the handler + archive schema + the fiscal-year list data
+// source land together (TASKBOARD M1-5) — `affected_periods` is the count of periods detached.
+export const CompanyArchiveYearArgs = z
+  .object({
+    company_id: Uuid,
+    fy_label: z.string().trim().min(1, "FY_LABEL_REQUIRED"),
+  })
+  .strict();
+export const CompanyArchiveYearData = z.object({ affected_periods: z.number().int().min(0) });
+
 /* ── calendar.preview ───────────────────────────────────────────── */
 
 export const CalendarPreviewArgs = z
@@ -321,6 +348,37 @@ export const CoaListArgs = z
   .strict();
 export const CoaListData = z.array(AccountNode).default([]);
 
+/* ── coa.import / coa.merge_accounts (F-002) ─────────────────── */
+
+export const CoaImportArgs = z
+  .object({
+    company_id: Uuid,
+    file_path: z.string().min(1).optional(),
+    pack_key: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine((a) => Boolean(a.file_path) !== Boolean(a.pack_key), {
+    message: "VALUE_INVALID: exactly one of file_path / pack_key is required",
+  });
+export type CoaImportArgs = z.infer<typeof CoaImportArgs>;
+export const CoaImportData = z.object({
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+});
+export type CoaImportData = z.infer<typeof CoaImportData>;
+
+export const CoaMergeArgs = z
+  .object({
+    from_id: Uuid,
+    to_id: Uuid,
+  })
+  .strict();
+export type CoaMergeArgs = z.infer<typeof CoaMergeArgs>;
+export const CoaMergeData = z.object({
+  remapped: z.number().int().nonnegative(),
+});
+export type CoaMergeData = z.infer<typeof CoaMergeData>;
+
 /* ── pack.* ─────────────────────────────────────────────────────── */
 
 export const PackMeta = z.object({
@@ -328,6 +386,8 @@ export const PackMeta = z.object({
   name: z.string(),
   version: z.string(),
   schema_version: z.string(),
+  /** Pack summary shown on wizard cards / Pack browser (packs.schema `pack.description`). */
+  description: z.string(),
   is_bundled: z.boolean(),
 });
 export type PackMeta = z.infer<typeof PackMeta>;
@@ -876,6 +936,36 @@ export const AssumptionFindUsagesData = z.object({
   cells: z.array(z.object({ line_id: z.string(), period_id: z.string(), formula: z.string() })),
 });
 
+/* ── License (F-035, LICENSE-SPEC) ────────────────────────────────────────────
+ * Offline Ed25519 activation (PRD F-035; DECISIONS.md: grace 60d, activation file
+ * exchange). The payload's `licensed_company_hash` field holds the licensed Company's
+ * UUID directly — the locked contract of `company.list` (see LICENSE-SPEC §Binding).
+ */
+export const LicenseVerifyArgs = z
+  .object({ license_payload: z.string().min(1, "LICENSE_PAYLOAD_REQUIRED") })
+  .strict();
+export const LicenseVerifyData = z.object({
+  status: z.enum(["active", "grace"]),
+  days_left: z.number().int().nonnegative(),
+});
+export type LicenseVerifyData = z.infer<typeof LicenseVerifyData>;
+
+export const LicenseRequestFileArgs = z
+  .object({ company_path: z.string().min(1, "COMPANY_PATH_REQUIRED") })
+  .strict();
+export const LicenseRequestFileData = z.object({ file: z.string().min(1) });
+export type LicenseRequestFileData = z.infer<typeof LicenseRequestFileData>;
+
+export const LicenseApplyResponseArgs = z
+  .object({ response_path_or_payload: z.string().min(1, "LICENSE_PAYLOAD_REQUIRED") })
+  .strict();
+export const LicenseApplyResponseData = z.object({
+  status: z.enum(["active", "grace"]),
+  plan: z.enum(["pro", "enterprise"]),
+  days_left: z.number().int().nonnegative(),
+});
+export type LicenseApplyResponseData = z.infer<typeof LicenseApplyResponseData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -883,13 +973,20 @@ export const CommandArgs = {
   "session.unlock": SessionUnlockArgs,
   "session.lock": SessionLockArgs,
   "security.pin_setup": SecurityPinSetupArgs,
+  "license.verify": LicenseVerifyArgs,
+  "license.request_file": LicenseRequestFileArgs,
+  "license.apply_response": LicenseApplyResponseArgs,
   "company.list": CompanyListArgs,
   "company.create": CompanyCreateArgs,
   "company.open": CompanyOpenArgs,
+  "company.clone_sandbox": CompanyCloneArgs,
+  "company.archive_year": CompanyArchiveYearArgs,
   "company.delete": CompanyDeleteArgs,
   "calendar.preview": CalendarPreviewArgs,
   "calendar.apply": CalendarApplyArgs,
   "coa.list": CoaListArgs,
+  "coa.import": CoaImportArgs,
+  "coa.merge_accounts": CoaMergeArgs,
   "pack.list": PackListArgs,
   "import.parse": ImportParseArgs,
   "import.validate": ImportValidateArgs,

@@ -62,6 +62,7 @@
 | 52 | `ONBOARDING-USER-GUIDE.md` | Persona task guides: first 10 min, monthly close, consolidation, startup | 4, 7, 36 |
 | 53 | `RELEASE-CHECKLIST.md` | Pre-release sign-off checklist + stop conditions + release-day incident | 28, 29, 37 |
 | 54 | `ZERO-COMPROMISE-RULES.md` | Canonical B1–B20 / B18-x product rules + CI enforcement map + QA Q1–Q8 namespace note | 4, 9, 23, 37 |
+| 55 | `LICENSE-SPEC.md` | Offline Ed25519 licensing: request/response exchange, canonical payload, 60d grace, key custody, fixtures | 3, 9, 23, 40 |
 
 ## DEPENDENCY MAP (subset — build order)
 

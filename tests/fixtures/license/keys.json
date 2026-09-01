@@ -1,0 +1,7 @@
+{
+  "test_only": "FIXTURE KEYPAIR — test-only, committed deliberately (CI regenerability). NOT the production key.",
+  "test_public_spki_der_hex": "302a300506032b6570032100fcca410c2f75e692b15e3d03abe21775baa748810c15136b6b9d6145e162688c",
+  "test_private_pkcs8_der_hex": "302e020100300506032b6570042204206f6e656670612d746573742d6c6963656e73652d6b65792d736565642d303030",
+  "production_public_spki_der_hex": "302a300506032b65700321000148ccc201eddb0462baa07a7d1a067837bb28dcfdf2d47ace79496824dc4546",
+  "production_public_key_hex_raw32": "0148ccc201eddb0462baa07a7d1a067837bb28dcfdf2d47ace79496824dc4546"
+}

@@ -1,0 +1,69 @@
+{
+  "fixture": "calendar/nrf-454-2024-2028",
+  "synthetic": true,
+  "source": "core/calendar.rs `nrf_oracle_2024_2028` — the published/derived NRF 4-5-4 schedule (TEST-FIXTURES-SPEC §2 oracle source)",
+  "preset": "454",
+  "fy_start_anchor": "2024-02-01",
+  "week_start": "sunday",
+  "year_end_rule": "nrf4day",
+  "years": [
+    {
+      "fy_label": "FY2024",
+      "start_date": "2024-02-04",
+      "end_date": "2025-02-01",
+      "week_count": 52,
+      "period_count": 12,
+      "fifty_third_period": null
+    },
+    {
+      "fy_label": "FY2025",
+      "start_date": "2025-02-02",
+      "end_date": "2026-01-31",
+      "week_count": 52,
+      "period_count": 12,
+      "fifty_third_period": null
+    },
+    {
+      "fy_label": "FY2026",
+      "start_date": "2026-02-01",
+      "end_date": "2027-01-30",
+      "week_count": 52,
+      "period_count": 12,
+      "fifty_third_period": null
+    },
+    {
+      "fy_label": "FY2027",
+      "start_date": "2027-01-31",
+      "end_date": "2028-01-29",
+      "week_count": 52,
+      "period_count": 12,
+      "fifty_third_period": null
+    },
+    {
+      "fy_label": "FY2028",
+      "start_date": "2028-01-30",
+      "end_date": "2029-02-03",
+      "week_count": 53,
+      "period_count": 12,
+      "fifty_third_period": {
+        "period_no": 12,
+        "code": "P12",
+        "note": "NRF 4-day rule absorbs the 53rd week into Q4 (4-5-5); no standalone W53 code"
+      }
+    }
+  ],
+  "full_week_variant_2028": {
+    "year_end_rule": "fullweek",
+    "fy_start_anchor": "2028-02-01",
+    "week_count": 53,
+    "period_count": 13,
+    "w53": {
+      "code": "W53",
+      "start_date": "2029-01-28",
+      "end_date": "2029-02-03"
+    }
+  },
+  "retail_2026_spot_checks": [
+    { "period_no": 6, "code": "P06", "start_date": "2026-07-05", "end_date": "2026-08-01" }
+  ]
+}

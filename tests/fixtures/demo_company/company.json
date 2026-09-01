@@ -1,0 +1,26 @@
+{
+  "fixture": "demo_company",
+  "synthetic": true,
+  "marked": "DEMO COMPANY \u2014 synthetic sample Company for learning the app; never reachable from production data paths (B18-3)",
+  "company": {
+    "name": "Acme Manufacturing",
+    "type": "single",
+    "pack_key": "manufacturing",
+    "calendar": {
+      "preset": "12month",
+      "fy_start_month": 4
+    },
+    "currency": "USD",
+    "locale": "en-US",
+    "business_units": [
+      {
+        "key": "bu-manu",
+        "name": "Manufacturing BU"
+      }
+    ],
+    "horizon": "1y",
+    "plan_only": false
+  },
+  "gl_dump": "gl_dump.csv (byte-identical to docs/examples/sample_gl_dump.csv)",
+  "actuals_period": "2026-08"
+}

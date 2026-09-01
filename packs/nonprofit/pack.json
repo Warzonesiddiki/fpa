@@ -4,7 +4,7 @@
     "key": "nonprofit",
     "name": "Nonprofit",
     "version": "2.1.0",
-    "description": "Nonprofit Industry Pack — COA, KPIs, Drivers, Layouts. Data only (B15).",
+    "description": "Program ratio, donor retention, grant coverage, cost per dollar raised — funds and grant management.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

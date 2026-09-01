@@ -46,10 +46,18 @@ fn init(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-const MIGRATIONS: &[M] = &[M {
-    up: include_str!("../../migrations/001_initial.sql"),
-    down: "", // additive v1; destructive changes require a new migration + Snapshot policy (§11.3)
-}];
+const MIGRATIONS: &[M] = &[
+    M {
+        up: include_str!("../../migrations/001_initial.sql"),
+        down: "", // additive v1; destructive changes require a new migration + Snapshot policy (§11.3)
+    },
+    M {
+        up: include_str!("../../migrations/002_packs_description.sql"),
+        // SQLite >= 3.35 supports DROP COLUMN (the bundled engine is far newer); the column
+        // is data-only (wizard display text), so dropping it loses no Company data.
+        down: "ALTER TABLE packs DROP COLUMN description;",
+    },
+];
 
 fn migrate(conn: &Connection) -> AppResult<()> {
     let migrations = Migrations::new(MIGRATIONS);

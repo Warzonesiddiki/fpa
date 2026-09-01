@@ -38,6 +38,7 @@ argon2 = "0.5"
 aes-gcm = "0.10.4"
 rand = "0.8"
 base64 = "0.22"
+ed25519-dalek = "2.1.5"
 keyring = "3"
 
 [dev-dependencies]

@@ -187,6 +187,9 @@ export function PacksPage() {
           <p className="mt-1 text-xs text-[var(--color-onetextmuted)]">
             {selected.key} · {t("packs.version", { version: selected.version })}
           </p>
+          <p className="mt-2 text-xs text-[var(--color-onetextsecondary)]">
+            {selected.description}
+          </p>
           <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[var(--color-onetextmuted)]">
             {t("packs.components")}
           </h3>

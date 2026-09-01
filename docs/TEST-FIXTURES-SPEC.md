@@ -8,6 +8,9 @@
 
 ```
 tests/fixtures/
+├── demo_company/             # Demo Company (clearly-marked synthetic, GLOSSARY/B18-3):
+│                             #   company.json + gl_dump.csv (byte-identical to
+│                             #   docs/examples/sample_gl_dump.csv) + .expected.json
 ├── gl/                       # GL dump fixtures
 │   ├── sap_style/*.xlsx      # 3-sheet debit/credit, 48k rows, period codes FY26-P08
 │   ├── tally_style/*.csv     # long signed amount, EU locale (1.234,56), utf-16
@@ -53,7 +56,7 @@ Also: 12-month Apr-start 2026 (P01 = Apr 1), 3-3-3-4 (13 periods), 52-53 full-we
 | `statements/pl_basic` | Revenue 6,350,000.00 · COGS 3,970,000.00 · Gross Profit 2,380,000.00 · OpEx 1,240,000.00 · EBITDA 1,140,000.00 · Depr 250,000.00 · EBIT 890,000.00 · Tax 22% → Net 694,200.00 |
 | `statements/bs_basic` | Cash 1,320,000.00 · AR 2,100,000.00 · Inv 1,150,000.00 · Fixed 4,200,000.00 · AP 1,950,000.00 · Debt 5,000,000.00 · Equity 1,820,000.00 → Assets 8,770,000.00 = Liab 6,950,000.00 + Equity 1,820,000.00 |
 | `statements/cf_basic` | OCF 1,480,000.00 · ICF −640,000.00 · FCF 840,000.00 · Financing −520,000.00 → Net change 320,000.00 = BS cash delta |
-| `consolidation/2bu` | Group Revenue 12,400,000.00 (BU1 6,900,000 + BU2 6,100,000 − IC 600,000) · IC eliminated 600,000.00 (net row = 0 in eliminations column) · NCI 120,000.00 on 80% BU · FX translation gain 12,300.00 → OCI |
+| `consolidation/2bu` | Group Revenue 12,400,000.00 (BU1 6,900,000 + BU2 6,100,000 − IC 600,000) · IC eliminated 600,000.00 (net row = 0 in eliminations column) · NCI 120,000.00 on 80% BU · Translation Adjustment gain 12,300.00 → OCI |
 
 **CI rule:** any change to these values requires a PR update of the `.expected.json` + a note in DECISIONS.md (engine behavior change).
 
