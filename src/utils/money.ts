@@ -102,6 +102,32 @@ export function formatDecimalString(
   return formatDecimal(value, iso, { ...opts, scale: opts.scale ?? currencyScale(iso) });
 }
 
+interface LocalePattern {
+  group: string;
+  decimal: string;
+  indian: boolean;
+}
+
+const DEFAULT_LOCALE_PATTERN: LocalePattern = { group: ",", decimal: ".", indian: false };
+const LOCALE_PATTERNS: Record<string, LocalePattern> = {
+  "en-US": DEFAULT_LOCALE_PATTERN,
+  "en-IN": { group: ",", decimal: ".", indian: true },
+  "de-DE": { group: ".", decimal: ",", indian: false },
+  "fr-FR": { group: "\u202f", decimal: ",", indian: false },
+  "es-ES": { group: ".", decimal: ",", indian: false },
+  "pt-BR": { group: ".", decimal: ",", indian: false },
+  "nl-NL": { group: ".", decimal: ",", indian: false },
+  "it-IT": { group: ".", decimal: ",", indian: false },
+  "sv-SE": { group: ".", decimal: ",", indian: false },
+  "ja-JP": DEFAULT_LOCALE_PATTERN,
+  "zh-CN": DEFAULT_LOCALE_PATTERN,
+  "ar-SA": { group: "٬", decimal: "٫", indian: false },
+};
+
+function localePattern(locale: string): LocalePattern {
+  return LOCALE_PATTERNS[locale] ?? DEFAULT_LOCALE_PATTERN;
+}
+
 function formatDecimal(value: Decimal, iso: string, opts: MoneyFormatOptions): string {
   const displayDecimals = opts.displayDecimals ?? (opts.showInThousands ? 0 : opts.scale);
   const negative = value.isNegative();
@@ -110,10 +136,10 @@ function formatDecimal(value: Decimal, iso: string, opts: MoneyFormatOptions): s
   let display = abs;
   if (opts.showInThousands) display = display.div(1000);
 
+  const locale = localePattern(opts.locale ?? "en-US");
   const [intPart, decPart] = display.toFixed(displayDecimals).split(".");
-  const intGrouped =
-    opts.grouping === false ? intPart : groupDigits(intPart, opts.locale ?? "en-US");
-  const numberText = decPart ? `${intGrouped}.${decPart}` : intGrouped;
+  const intGrouped = opts.grouping === false ? intPart : groupDigits(intPart, locale);
+  const numberText = decPart ? `${intGrouped}${locale.decimal}${decPart}` : intGrouped;
 
   const negStyle = opts.negativeStyle ?? "paren";
   const body = `${opts.symbol ?? iso} ${numberText}`;
@@ -121,14 +147,14 @@ function formatDecimal(value: Decimal, iso: string, opts: MoneyFormatOptions): s
   return negStyle === "paren" && negative ? `(${body})` : negativeBody;
 }
 
-/** Indian-style grouping for en-IN, western 3-digit grouping otherwise (LOCALIZATION-SPEC §2). */
-function groupDigits(raw: string, locale: string): string {
+/** Exact string grouping; money never enters `Intl.NumberFormat` as a JS number. */
+function groupDigits(raw: string, locale: LocalePattern): string {
   const digits = raw.replace(/^0+(?=\d{1,3}$)/, "");
-  if (locale === "en-IN") {
+  if (locale.indian) {
     if (digits.length <= 3) return digits;
     const last3 = digits.slice(-3);
     const rest = digits.slice(0, -3);
-    return `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",")},${last3}`;
+    return `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, locale.group)}${locale.group}${last3}`;
   }
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, locale.group);
 }

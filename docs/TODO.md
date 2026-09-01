@@ -27,7 +27,7 @@
 
 ## M2 — INGESTION (F-007…F-011)
 
-- [ ] **M2-1** Import hub + parser (calamine: xlsx/xls/csv/tsv/zip, encodings, locale numbers) (S-030)
+- [ ] **M2-1** Import hub + parser (calamine: xlsx/xls/csv/tsv/zip, encodings, locale numbers) (S-030) — in progress: S-030 real-IPC parse entry, Company-scoped store, native picker/drop, exact parser states/errors, and XLSX/XLS/ODS/CSV/TSV/TXT core paths are built; ZIP, progress/cancel/streaming, history/mapping hand-off, 500k benchmark, and cargo gates remain.
 - [ ] **M2-2** Mapping wizard + template versioning + normalization rules (S-031, F-011)
 - [ ] **M2-3** Validation + preview + HARD/WARNING engine (S-031)
 - [ ] **M2-4** Tie-Out gate + commit as Import Batch + rollback + vault (S-032, F-007/010)

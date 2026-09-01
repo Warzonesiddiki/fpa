@@ -442,6 +442,7 @@ export const ImportParseData = z.object({
   size_bytes: z.number().int().nonnegative(),
   headers: z.array(z.string()),
 });
+export type ImportParseData = z.infer<typeof ImportParseData>;
 
 /** A row-level (or batch-level — `line_no: null`) finding. `code` is always one of the 97 locked
  *  ERROR-HANDLING codes; the specific reason rides in `message` / `details` (B20). */

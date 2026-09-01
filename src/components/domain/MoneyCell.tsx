@@ -1,5 +1,6 @@
-import { formatMinor, formatDecimalString } from "@/utils/money";
+import { formatMinor, formatDecimalString, type NegativeStyle } from "@/utils/money";
 import type { ScreenState } from "@/components/ui/StatePanel";
+import { DISPLAY_DECIMAL_VALUES, useSettingsStore } from "@/stores/settings";
 
 export interface MoneyCellProps {
   /** Amount in minor units (i64 across IPC — B18-2). */
@@ -8,7 +9,11 @@ export interface MoneyCellProps {
   decimal?: string | null;
   currency: string;
   scale?: number;
+  /** Explicit values override S-075 defaults for surfaces with their own format controls. */
   showInThousands?: boolean;
+  displayDecimals?: number;
+  negativeStyle?: NegativeStyle;
+  locale?: string;
   state?: ScreenState;
 }
 
@@ -21,9 +26,25 @@ export function MoneyCell({
   decimal,
   currency,
   scale,
-  showInThousands = false,
+  showInThousands,
+  displayDecimals,
+  negativeStyle,
+  locale,
   state = "populated",
 }: MoneyCellProps) {
+  const formatting = useSettingsStore((settings) => settings.preferences);
+  const options = {
+    scale,
+    showInThousands: showInThousands ?? formatting.displayThousands,
+    displayDecimals:
+      displayDecimals ??
+      (showInThousands === undefined
+        ? DISPLAY_DECIMAL_VALUES[formatting.displayDecimals]
+        : undefined),
+    negativeStyle: negativeStyle ?? formatting.negativeStyle,
+    locale: locale ?? formatting.locale,
+  };
+
   let body: string;
   if (state === "loading") body = "…";
   else if (state === "empty") body = "—";
@@ -31,9 +52,9 @@ export function MoneyCell({
   else if (state === "success") body = "✓";
   else {
     if (minor === null || minor === undefined) {
-      body = decimal ? formatDecimalString(decimal, currency, { scale, showInThousands }) : "—";
+      body = decimal ? formatDecimalString(decimal, currency, options) : "—";
     } else {
-      body = formatMinor(minor, currency, { scale, showInThousands });
+      body = formatMinor(minor, currency, options);
     }
   }
   return (

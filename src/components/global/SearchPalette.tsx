@@ -27,10 +27,12 @@ const DEBOUNCE_MS = 150;
 const SCREEN_INDEX: { id: string; path: string }[] = [
   { id: "dashboard", path: "/app/dashboard" },
   { id: "companies", path: "/app/companies" },
+  { id: "import", path: "/app/import" },
   { id: "grid", path: "/app/model/grid" },
   { id: "coa", path: "/app/model/coa" },
   { id: "calendar", path: "/app/model/calendar" },
   { id: "packs", path: "/app/model/packs" },
+  { id: "settings", path: "/app/settings" },
   { id: "wizard", path: "/wizard" },
 ];
 

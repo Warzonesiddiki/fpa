@@ -71,4 +71,16 @@ describe("formatDecimalString — remaining critical paths", () => {
   it("shows minus style over paren style when requested", () => {
     expect(formatDecimalString("-0.5", "USD", { negativeStyle: "minus" })).toBe("-USD 0.50");
   });
+
+  it("uses exact locale separators without converting money to a JS number", () => {
+    expect(formatDecimalString("1234567.89", "EUR", { locale: "de-DE" })).toBe("EUR 1.234.567,89");
+    expect(formatDecimalString("1234567.89", "EUR", { locale: "fr-FR" })).toBe("EUR 1 234 567,89");
+    expect(formatDecimalString("1234567.89", "SAR", { locale: "ar-SA", scale: 2 })).toBe(
+      "SAR 1٬234٬567٫89",
+    );
+  });
+
+  it("falls back to the en-US separator pattern for an unknown locale", () => {
+    expect(formatDecimalString("1234.5", "USD", { locale: "xx-XX" })).toBe("USD 1,234.50");
+  });
 });

@@ -20,7 +20,7 @@ import { useSessionStore } from "@/stores/session";
 const NAV = [
   { to: "dashboard", key: "dashboard", icon: LayoutDashboard },
   { to: "companies", key: "companies", icon: Building2 },
-  { to: "data", key: "data", icon: Database },
+  { to: "import", key: "data", icon: Database },
   { to: "model", key: "model", icon: Grid3x3 },
   { to: "plan", key: "plan", icon: CalendarClock },
   { to: "analyze", key: "analyze", icon: BarChart3 },

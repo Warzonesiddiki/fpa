@@ -95,12 +95,14 @@
 
 ### S-030 Import Hub | `/import`
 **Purpose:** entry to all ingestion — F-007/008/009/010/011.
-**Elements:** source tabs (GL Dump / Excel/CSV / Connectors), drop zone, recent mappings, Import Batch history table (date, type, rows, status, hash, rollback), Source Reconciliation link, Source Vault link, Connector health cards.
-- **Loading:** batch list skeleton; connector health spinners.
-- **Empty:** no batches — onboarding hint "Start with a GL Dump".
-- **Error:** batch row error states (`IMPORT_BATCH_HASH_EXISTS`, `REVOKED_SOURCE`).
-- **Success:** hub renders; successful batch highlighted; toast.
-- **Populated:** history + health chips + vault usage.
+**Elements:** source tabs (GL Dump / Excel/CSV / Connectors), native file picker + desktop/browser-development drop zone, current parse working set, canonical mapping card, recent mappings, Import Batch history table (date, type, rows, status, hash, rollback), Source Reconciliation link, Source Vault link, Connector health cards.
+- **Loading:** local parser spinner with the selected path; no fabricated percentage while `import:progress` is absent.
+- **Empty:** no source selected — onboarding drop zone; without an active Company, the Company-scoping requirement is shown instead.
+- **Error:** locked parser text/code for `IMPORT_FILE_UNREADABLE`, `IMPORT_FILE_LOCKED`, or retryable `ENCODING_UNSUPPORTED`; batch-row errors (`IMPORT_BATCH_HASH_EXISTS`, `REVOKED_SOURCE`) require history/commit integration.
+- **Success:** typed parse response shows source name, byte size, full SHA-256, sheets/row counts, and encoding detection while explicitly stating that nothing was committed.
+- **Populated:** selected local source + type with Parse enabled; a Company/type/source change invalidates stale parse responses.
+
+**M2-1 availability:** `/app/import`, shell Data navigation, and global search are wired. Production file selection uses the registered Tauri dialog plugin and desktop drag events; browser file input is limited to the explicit development mock path. The real registered `import.parse` handler supports XLSX/XLSM/XLSB/XLS/ODS/CSV/TSV/TXT, UTF-8 BOM and visible Latin-1 detection, delimiter detection, exact locale-number normalization, SHA-256, and Company-scoped ephemeral parse IDs. ZIP remains explicitly rejected by the current Rust handler despite the GL template contract; background streaming/progress/cancel and the 500k-row benchmark remain open. `import.history`, saved-mapping listing/S-031 hand-off, `connector.*`, `reconcile.run`, and Source Vault persistence lack complete typed/registered runtime paths, so those S-030 panels remain visibly unavailable rather than using browser-only substitutes.
 
 ### S-031 Mapping Wizard | `/import/map`
 **Purpose:** F-011 column/field mapping (saved templates).
@@ -386,12 +388,14 @@
 
 ### S-075 Settings | `/settings`
 **Purpose:** app/account/UI preferences (F-038, F-001).
-**Elements:** Appearance (theme), Language (v1.0.0: English UI; locale-aware formats), Currency defaults, formatting (parentheses, 000s, decimals), keyboard shortcuts, Auto-update channel, Local Diagnostics export, storage location.
-- **Loading:** skeleton.
-- **Empty:** n/a.
-- **Error:** `SETTINGS_SAVE_FAILED`.
-- **Success:** rendered.
-- **Populated:** values.
+**Elements:** Appearance (system/light/dark theme + comfortable/compact grid density), Language (v1.0.0: English UI; locale-aware formats), Currency defaults, formatting (parentheses/minus, 000s, decimals), keyboard shortcuts, Auto-update channel, Local Diagnostics export, storage location.
+- **Loading:** settings-card skeleton while the versioned preference document is validated.
+- **Empty:** n/a as a blocking state; when no saved document exists, safe defaults render with a first-use status.
+- **Error:** `SETTINGS_SAVE_FAILED` — the exact retryable message is shown and the unsaved draft remains editable.
+- **Success:** saved confirmation; the root theme/density updates without reload.
+- **Populated:** validated persisted values, locale-safe money preview, and all preference controls.
+
+**M1 native availability:** Auto-update channel preference is usable, but update checks require the signed desktop updater + `update.check` handler. Local Diagnostics export requires the redacting `app.diagnostics.export` handler + native save-path picker. Storage relocation requires a Stage-0 command contract + native folder picker. These controls remain visibly unavailable; the UI never reports a fake export or relocation.
 
 ### S-076 Help & Explainers | `/help/:topic` (+ F1 overlays)
 **Purpose:** F-038 in-app help; KPI/driver explainers; keyboard shortcuts; glossary (mirror GLOSSARY.md).

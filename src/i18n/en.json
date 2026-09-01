@@ -136,6 +136,89 @@
     "license": "License",
     "version": "v"
   },
+  "importHub": {
+    "title": "Import Hub",
+    "subtitle": "Bring actuals and source data into the active Company through the local import pipeline.",
+    "unavailable": "Unavailable",
+    "noCompany": "Open a Company before importing data.",
+    "noCompanyHint": "Parse sessions are scoped to the active Company and never cross Company files.",
+    "source": {
+      "title": "Source",
+      "aria": "Import source type",
+      "gl": "GL Dump",
+      "files": "Excel / CSV",
+      "connectors": "Connectors",
+      "connectorsGate": "Connector tabs remain unavailable: connector.health and connector.connect are catalogued but have no typed bridge schemas or registered Rust handlers."
+    },
+    "workingSet": "Current import",
+    "drop": {
+      "title": "Drop a workbook or delimited file here",
+      "body": "The file stays on this device. You can also choose it with the native file picker.",
+      "unavailable": "Desktop drag-and-drop could not be registered. Use Choose file instead."
+    },
+    "picker": {
+      "filterName": "Financial data files",
+      "desktopOnly": "File selection is available in the desktop app. The browser fallback is enabled only by the development server."
+    },
+    "browserFile": "Choose an import file",
+    "chooseFile": "Choose file",
+    "changeFile": "Change file",
+    "chooseAnother": "Choose another file",
+    "selected": "Source selected",
+    "zipGate": "Supported now: XLSX/XLSM/XLSB/XLS/ODS/CSV/TSV/TXT. ZIP remains gated because the registered Rust parser explicitly rejects ZIP transport wrappers.",
+    "parse": "Parse locally",
+    "loading": "Reading and fingerprinting the source file…",
+    "error": {
+      "fallback": "An unexpected error occurred. Please try again."
+    },
+    "success": {
+      "aria": "Success: source parsed",
+      "title": "Source parsed",
+      "notCommitted": "This is an ephemeral working set. No Import Batch or Company data has been written.",
+      "latin1": "Latin-1 was auto-detected. Review and explicitly confirm the decoded preview in Mapping before validation."
+    },
+    "summary": {
+      "file": "Source file",
+      "size": "File size",
+      "bytes": "bytes",
+      "hash": "SHA-256",
+      "sheets": "Parsed workbook sheets",
+      "sheet": "Sheet",
+      "kind": "Detected kind",
+      "rows": "Rows",
+      "encoding": "Encoding detection",
+      "bom": "BOM",
+      "detected": "auto-detected"
+    },
+    "parseAnother": "Parse another file",
+    "continueMapping": "Continue to Mapping",
+    "mappingUnavailable": "Mapping hand-off remains unavailable: import.map.save_v1 is catalogued, but S-031 and its typed/runtime handler are not registered.",
+    "mappings": {
+      "title": "Recent mappings",
+      "canonical": "OneFP&A Canonical GL",
+      "canonicalHint": "Built-in canonical-v1 mapping; files with canonical headers need no guessed column mapping.",
+      "savedGate": "Saved mappings are not listed because no mapping-list command is defined. M2-2 must establish that read contract before this panel can claim persisted templates."
+    },
+    "history": {
+      "title": "Import Batch history",
+      "unavailable": "Batch history is unavailable in this build.",
+      "gate": "import.history is catalogued, but its typed result schema and registered Rust invoke handler are absent. The UI does not substitute browser-only history."
+    },
+    "connectors": {
+      "title": "Connector health",
+      "gate": "Connector health is not simulated. QuickBooks, Xero, NetSuite, and Sage require their documented adapters, keychain flow, rate limiting, and registered connector handlers."
+    },
+    "tools": {
+      "title": "Source controls",
+      "vault": "Source Vault",
+      "vaultGate": "Source-file persistence and retention are not implemented; import.parse keeps only an in-memory working set.",
+      "reconciliation": "Source Reconciliation",
+      "reconciliationGate": "reconcile.run is catalogued but has no typed bridge schema or registered Rust handler.",
+      "progress": "Large-file progress and cancellation",
+      "progressGate": "The current import.parse command emits no typed import:progress event and exposes no cancel command; no percentage or Cancel action is fabricated."
+    },
+    "localOnly": "Manual parsing uses the local Rust core in the desktop build. Browser development uses the explicitly dev-only mock; production never routes this workflow through the mock."
+  },
   "companies": {
     "title": "Companies",
     "subtitle": "Open, create, or delete Company files.",
@@ -291,11 +374,108 @@
     "error.index": "The search index is unavailable. Screens are still searchable.",
     "screens.dashboard": "Dashboard",
     "screens.companies": "Companies",
+    "screens.import": "Import Hub",
     "screens.grid": "Model Grid",
     "screens.coa": "Chart of Accounts",
     "screens.calendar": "Fiscal Calendar",
     "screens.packs": "Pack Studio",
+    "screens.settings": "Settings",
     "screens.wizard": "First-Run Wizard"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Choose app appearance, regional formats, and local platform preferences.",
+    "loading": "Loading settings…",
+    "formLabel": "Application settings",
+    "saved": "Settings saved on this device.",
+    "firstUse": "No saved preferences yet. OneFP&A defaults are active.",
+    "restore": {
+      "invalid": "Saved preferences are invalid. Safe defaults are shown; save to replace the stored value.",
+      "unavailable": "Saved preferences could not be read. Safe defaults are shown for this session."
+    },
+    "reset": "Reset to defaults",
+    "saving": "Saving…",
+    "appearance": {
+      "title": "Appearance",
+      "theme": "Theme",
+      "themes": {
+        "system": "Use system setting",
+        "light": "Light",
+        "dark": "Dark"
+      },
+      "density": "Grid density",
+      "densities": {
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      }
+    },
+    "language": {
+      "title": "Language & regional formats",
+      "ui": "Interface language",
+      "english": "English",
+      "v1Note": "OneFP&A v1.0.0 has an English interface; number and money formats remain locale-aware.",
+      "numberLocale": "Number format locale",
+      "locales": {
+        "en-US": "English (United States) — en-US",
+        "en-IN": "English (India) — en-IN",
+        "de-DE": "German (Germany) — de-DE",
+        "fr-FR": "French (France) — fr-FR",
+        "es-ES": "Spanish (Spain) — es-ES",
+        "pt-BR": "Portuguese (Brazil) — pt-BR",
+        "nl-NL": "Dutch (Netherlands) — nl-NL",
+        "it-IT": "Italian (Italy) — it-IT",
+        "sv-SE": "Swedish (Sweden) — sv-SE",
+        "ja-JP": "Japanese (Japan) — ja-JP",
+        "zh-CN": "Chinese (China) — zh-CN",
+        "ar-SA": "Arabic (Saudi Arabia) — ar-SA"
+      }
+    },
+    "formatting": {
+      "title": "Currency & formatting defaults",
+      "currency": "Default currency",
+      "negatives": "Negative amounts",
+      "parentheses": "Parentheses — (1,234)",
+      "minus": "Minus sign — -1,234",
+      "thousands": "Display money in 000s by default",
+      "decimals": "Display decimals",
+      "preview": "Format preview (display only)"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "caption": "Available global search keyboard shortcuts",
+      "actions": {
+        "search": "Open Global Search",
+        "close": "Close Global Search",
+        "navigate": "Move through search results",
+        "activate": "Open selected result"
+      },
+      "keys": {
+        "search": "Ctrl/⌘ + K",
+        "close": "Esc",
+        "navigate": "↑ / ↓",
+        "activate": "Enter"
+      }
+    },
+    "updates": {
+      "title": "Auto-update",
+      "channel": "Update channel",
+      "stable": "Stable",
+      "beta": "Beta",
+      "nativeGate": "Native gate pending: signed desktop updater and handler"
+    },
+    "diagnostics": {
+      "title": "Local Diagnostics",
+      "description": "Export an opt-in, redacted support bundle. Financial values and removable username paths are excluded.",
+      "export": "Export Local Diagnostics",
+      "nativeGate": "Native gate pending: desktop save-path picker and handler"
+    },
+    "storage": {
+      "title": "Storage location",
+      "current": "Current location",
+      "appData": "OneFP&A application-data directory (managed by the operating system)",
+      "change": "Change storage location",
+      "nativeGate": "Native gate pending: a storage-relocation command contract and desktop folder picker."
+    }
   },
   "modelNav": {
     "label": "Model",
