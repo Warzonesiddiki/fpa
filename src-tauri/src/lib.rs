@@ -12,6 +12,7 @@ use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
     company_clone_sandbox, company_create, company_delete, company_list, company_open,
 };
+use commands::driver::{driver_set_value, driver_upsert};
 use commands::import::{
     import_commit, import_history, import_map_save_v1, import_parse, import_rollback, import_tieout,
     import_validate, ParseRegistry,
@@ -74,6 +75,8 @@ pub fn run() {
             settings_set,
             model_cell_set_v1,
             model_recalc,
+            driver_upsert,
+            driver_set_value,
             assumption_upsert,
             assumption_list,
             assumption_find_usages,

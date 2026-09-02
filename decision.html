@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OneFP&A — Decision Log</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --card2: #243247;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #2196f3;
+        --green: #22c55e;
+        --yellow: #f59e0b;
+        --red: #ef4444;
+        --code: #7dd3fc;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        line-height: 1.55;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.8rem;
+      }
+      h2 {
+        margin: 48px 0 12px;
+        font-size: 1.35rem;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 6px;
+      }
+      h3 {
+        color: var(--code);
+        margin: 20px 0 8px;
+      }
+      a {
+        color: var(--code);
+      }
+      code,
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        color: var(--code);
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px 18px;
+        margin: 14px 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+      }
+      .stat {
+        background: var(--card2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .stat b {
+        display: block;
+        font-size: 1.3rem;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+      .badge.act {
+        background: rgba(34, 197, 94, 0.18);
+        color: var(--green);
+        border: 1px solid var(--green);
+      }
+      .badge.rev {
+        background: rgba(245, 158, 11, 0.18);
+        color: var(--yellow);
+        border: 1px solid var(--yellow);
+      }
+      .badge.dep {
+        background: rgba(239, 68, 68, 0.18);
+        color: var(--red);
+        border: 1px solid var(--red);
+      }
+      .cat {
+        background: rgba(33, 150, 243, 0.15);
+        color: var(--code);
+        border: 1px solid var(--code);
+      }
+      .field {
+        margin: 8px 0;
+      }
+      .field b {
+        color: var(--muted);
+      }
+      details {
+        margin: 12px 0;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--code);
+      }
+      pre {
+        background: #0b1120;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        overflow-x: auto;
+      }
+      .toc a {
+        display: block;
+        margin: 4px 0;
+      }
+      .sess {
+        border-left: 5px solid var(--accent);
+      }
+      .sess.other {
+        border-left: 5px solid var(--border);
+      }
+      kbd {
+        background: var(--card2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-family: monospace;
+      }
+      .backtop {
+        position: sticky;
+        bottom: 16px;
+        margin-left: auto;
+        width: max-content;
+        background: var(--accent);
+        color: #fff;
+        padding: 6px 12px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      .status.ok {
+        color: var(--green);
+      }
+      .status.warn {
+        color: var(--yellow);
+      }
+      .status.bad {
+        color: var(--red);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>OneFP&A — Decision Log</h1>
+      <a class="backtop" href="#top">Back to Top</a>
+      <p class="mono">
+        File: <code>decision.html</code> · Maintained per the mandatory artifact directive.
+      </p>
+
+      <div id="top"></div>
+
+      <h2>Table of Contents</h2>
+      <div class="toc card">
+        <a href="#A">A. Session Dashboard</a>
+        <a href="#B">B. Decision Log</a>
+        <a href="#C">C. Execution Flow Map</a>
+        <a href="#D">D. Session Changelog</a>
+        <a href="#E">E. Open Questions &amp; TODOs</a>
+      </div>
+
+      <h2 id="A">A. Session Dashboard</h2>
+      <div class="card">
+        <div class="field">
+          <b>Current Session ID:</b> <code>arena-01a0600b-fpa</code> (branch) — 2026-09-02
+        </div>
+        <div class="field">
+          <b>Session Goal:</b> Ship the settings persistence slice (done, M1-10), then close the
+          M3-3 driver gap by adding the catalogued <code>driver.upsert</code> /
+          <code>driver.set_value</code> Rust handlers and registering them; continue M2-5
+          driver/dimension destination pipelines once a Stage-0 contract exists.
+        </div>
+        <div class="field"><b>Status:</b> <span class="status ok">🟢 On Track</span></div>
+        <div class="grid" style="margin-top: 12px">
+          <div class="stat"><b>3</b>files created</div>
+          <div class="stat"><b>16</b>files modified</div>
+          <div class="stat"><b>6</b>decisions made</div>
+          <div class="stat"><b>+3</b>functions changed</div>
+        </div>
+      </div>
+
+      <h2 id="B">B. Decision Log</h2>
+      <p>
+        Newest first. Entries are append-only; reversals create a new entry and mark the old one
+        <span class="badge rev">REVISITED</span>/<span class="badge dep">OVERRIDDEN</span>.
+      </p>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-006 · <b>Category:</b>
+          <span class="badge cat">Architecture</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> M3-3 driver.<code>*</code> Rust handlers are validation + audited echo
+          (no <code>driver_values</code> rows yet)
+        </div>
+        <div class="field">
+          <b>✅ What:</b> Authored <code>src-tauri/src/commands/driver.rs</code> with
+          <code>driver.upsert</code> (upsert <code>drivers</code>, name/type/source/bounds
+          validation, model scope, duplicate-name guard) and
+          <code>driver.set_value</code> (exact-decimal bounds check, scenario/period model scope,
+          HMAC-chained audit), both in one transaction, and registered them in <code>lib.rs</code>.
+          <code>driver.set_value</code> validates the requested value/bounds but does not persist a
+          <code>driver_values</code> row because the S-043 working set uses example scenario ids
+          until S-050; writing those would fail the FK, so the return is an audited echo (same class
+          as M3-1 <code>model.cell.set.v1</code>).
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> Keep the locked 97-command catalog and API-SPEC contract without inventing
+          a Stage-0 destination contract. The JS slice already had schema/mock/store/page green;
+          adding the Rust entry points closes the IPC gap while keeping persistence honest.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Writing example scenario/period ids into <code>driver_values</code>
+          (would break FK and violate "no placeholders"), and inventing a new
+          <code>driver.commit</code> command (not in the 97).
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>src-tauri/src/commands/driver.rs</code> (new, 4 Rust unit tests),
+          <code>commands/mod.rs</code>, <code>lib.rs</code> (handlers registered). Cargo
+          test/clippy/rustfmt are CI-only (no Rust toolchain in sandbox).
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-004, D-005, TASKBOARD §11/§14/§15</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-005 · <b>Category:</b> <span class="badge cat">Config</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> Ship <code>decision.html</code> as a first-class project artifact
+        </div>
+        <div class="field">
+          <b>✅ What:</b> Created the self-contained <code>decision.html</code> tracker with
+          Sections A–E at the repo root, inline CSS only, and an execution flow map that stays
+          current with the app.
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> A mandatory directive requires the artifact; it also gives the autonomous
+          build an auditable, browsable record of architecture decisions, sessions, and blockers.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Logging only in <code>TASKBOARD.md</code> — it is the Ops ledger, not
+          a per-decision trace with status/rejection/impact fields.
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> New root file only; no runtime code affected. Must be updated on
+          decisions, file changes, bug fixes, dependency changes, and session start/end.
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-001..D-004</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-004 · <b>Category:</b> <span class="badge cat">Security</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> Settings write must be HMAC-audited in the same transaction
+        </div>
+        <div class="field">
+          <b>✅ What:</b> <code>settings.set</code> upserts the app-scope <code>settings</code> row
+          and then appends a <code>settings.set</code> event to the active Company's HMAC chain in
+          the same SQLite transaction, using the keychain-held audit key.
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> Every mutation must be tamper-evident (AUTH-SPEC §2.5). A settings change
+          is a write even though it is app-scoped, and chaining it means a broken chain surfaces as
+          read-only rather than silently accepted.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Writing settings without an audit event (breaks the invariant);
+          reusing the app-scope <code>settings</code> marker pattern from
+          <code>security.pin_setup</code> (that marker is only pre-Company and would not chain to
+          the active Company).
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>src-tauri/src/commands/settings.rs::settings_set</code>,
+          <code>audited_hash</code>, <code>next_hash</code>. Behavior: every Save also creates one
+          audit row for the active Company.
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-002, D-003</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-003 · <b>Category:</b> <span class="badge cat">Debugging</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> Fix audit_events insert using a non-existent <code>id</code> column
+        </div>
+        <div class="field">
+          <b>✅ What:</b> Removed the <code>id</code> column from the
+          <code>settings.set</code> audit insert; <code>audit_events</code> uses
+          <code>seq INTEGER PRIMARY KEY AUTOINCREMENT</code>, not <code>id TEXT</code>.
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> Manual column-list review against <code>001_initial.sql</code> found the
+          mismatch (the migration has no <code>id</code> column on audit events). Cargo is
+          unavailable in the sandbox, so this had to be caught by hand.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Adding an <code>id</code> column to the migration — that would change
+          the locked 56-table schema and break the schema-equality gate.
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>src-tauri/src/commands/settings.rs</code>; guards against a
+          compile error and keeps the schema drift gate green.
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-004</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-002 · <b>Category:</b>
+          <span class="badge cat">Architecture</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> App DB is authoritative for settings; localStorage is a
+          pre-unlock/offline mirror
+        </div>
+        <div class="field">
+          <b>✅ What:</b> Preferences persist to the app DB <code>settings</code> row via the
+          catalogued <code>settings.get</code>/<code>settings.set</code> commands
+          (<code>scope='app'</code>, key <code>onefpa.preferences.v1</code>).
+          <code>localStorage["onefpa.settings.v1"]</code> remains only as a pre-unlock/offline cache
+          and is reconciled on page mount.
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> The handover claimed localStorage-only, but the locked catalog and
+          migration actually contain <code>settings.*</code> and a <code>settings</code> table.
+          Persisting only in localStorage would lose preferences across app-data cleanups and bypass
+          the audit requirement.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Pure localStorage (handover claim, no DB write/audit); deferring the
+          whole unit (DB row already exists, so it is implementable now).
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>src/stores/settings.ts</code> (<code>save</code>,
+          <code>syncRemote</code>), <code>src/pages/s075-settings/index.tsx</code> (mount
+          reconcile), <code>src/api/schema.ts</code>, <code>src/api/mock.ts</code>.
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-004, D-005</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-001 · <b>Category:</b> <span class="badge cat">Dependency</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> Deps installed with <code>npm install</code>, not pnpm
+        </div>
+        <div class="field">
+          <b>✅ What:</b> After checkout, <code>node_modules</code> was absent; ran
+          <code>npm install</code> against the committed <code>package-lock.json</code>. No new
+          runtime dependency was added (438 packages added, 0 vulnerabilities).
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> The repo uses an npm lockfile; pnpm is not used. The lockfile and the
+          repo's tooling expect npm.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> pnpm install (inconsistent with the repo), hand-installing selective
+          packages (risk of lockfile drift).
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>node_modules/</code> only (ignored); no source changes.
+        </div>
+        <div class="field"><b>🔗 Related:</b> —</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
+
+      <h2 id="C">C. Execution Flow Map</h2>
+
+      <h3>C1. Entry Points</h3>
+      <div class="card">
+        <ul>
+          <li><span class="mono">src/main.tsx → ReactDOM.createRoot → App</span> (webview UI)</li>
+          <li>
+            <span class="mono">src-tauri/src/main.rs → tauri::Builder → lib.rs::run</span> (desktop
+            runtime)
+          </li>
+        </ul>
+      </div>
+
+      <h3>C2. Call Chain — primary happy path</h3>
+      <div class="card">
+        <pre class="mono">
+src/main.tsx::(root render)
+  → src/App.tsx::App
+    → src/router.tsx::router
+      → src/pages/s001-unlock (or /welcome, /wizard)
+      → src/pages/s004-shell::ShellPage (/app/*)
+        → src/pages/s075-settings::SettingsPage
+          → src/stores/settings.ts::syncRemote
+            → src/api/bridge.ts::call("settings.get")
+              → Tauri invoke | src/api/mock.ts::mockInvoke("settings.get")
+          → SettingsForm::save
+            → useSettingsStore::save
+              → localStorage.setItem (mirror)
+              → src/api/bridge.ts::call("settings.set", {key, value_json})
+                → src-tauri/src/commands/settings.rs::settings_set
+                  → require_session_write
+                  → settings upsert (app scope)
+                  → audited_hash → next_hash → INSERT audit_events
+                  → tx.commit
+        → src/pages/s043-drivers::DriverPage
+          → src/stores/drivers.ts::upsertDriver/setValue
+            → src/api/bridge.ts::call("driver.upsert" | "driver.set_value")
+              → Tauri invoke | src/api/mock.ts::mockInvoke
+              → src-tauri/src/commands/driver.rs::driver_upsert/driver_set_value
+                  → model/scope validation → exact-decimal bounds check
+                  → upsert drivers (or audited echo for set_value until S-050)
+                  → audited_hash → next_hash → INSERT audit_events → tx.commit
+</pre
+        >
+      </div>
+
+      <h3>C3. Module Dependency Graph</h3>
+      <div class="card">
+        <ul class="mono">
+          <li>App → router → pages (settings, grid, import, …)</li>
+          <li>pages → stores (settings, model, import, session)</li>
+          <li>stores → src/api/bridge → schema (Zod) → mock | Tauri invoke</li>
+          <li>stores/model → src/workers/modelEngineClient → modelEngine (HyperFormula)</li>
+          <li>
+            Rust: lib.rs → commands/* → core/{error,audit,money,calendar} →
+            storage/{db,container,keys,keystore}
+          </li>
+        </ul>
+      </div>
+
+      <h3>C4. Data Flow — Save settings / driver</h3>
+      <div class="card">
+        <span class="mono"
+          >Settings: Form draft → store.save → schema validate → localStorage mirror → settings.set
+          IPC → Rust validate JSON → INSERT/UPDATE settings (app) → HMAC hash → INSERT audit_events
+          → commit → root theme/density applied. Driver: <code>driver.upsert</code> validates
+          model/name/bounds and upserts <code>drivers</code>;
+          <code>driver.set_value</code> validates exact-decimal bounds and returns an HMAC-audited
+          echo until the S-050 working-scenario data source exists.</span
+        >
+      </div>
+
+      <h3>C5. State &amp; Side Effects</h3>
+      <div class="card">
+        <ul>
+          <li>
+            DB writes (app DB): <code>settings</code>, <code>audit_events</code>, plus
+            Company/GL/import/model writes per their handlers.
+          </li>
+          <li>
+            File I/O: <code>.fpa</code> container seal/open, keychain fallback file
+            <code>audit.key</code>.
+          </li>
+          <li>
+            Browser: <code>localStorage</code> (settings mirror, wizard draft, search history), root
+            <code>dataset.theme/density</code>, AG Grid row height CSS variable.
+          </li>
+          <li>
+            In-memory: SessionState, KeyVault, ParseRegistry, ModelRegistry, HyperFormula engine.
+          </li>
+        </ul>
+      </div>
+
+      <h2 id="D">D. Session Changelog</h2>
+      <div class="card sess">
+        <h3>Session: arena-01a0600b-fpa · 2026-09-02 (current)</h3>
+        <div class="field">
+          <b>🆕 Created:</b> <code>src-tauri/src/commands/settings.rs</code> (settings.get/set
+          handlers + Rust unit tests); <code>src-tauri/src/commands/driver.rs</code>
+          (driver.upsert/driver.set_value handlers + 4 Rust unit tests);
+          <code>decision.html</code>.
+        </div>
+        <div class="field">
+          <b>✏️ Modified:</b> <code>src-tauri/src/core/error.rs</code> (Add
+          <code>SettingsSaveFailed</code> → <code>SETTINGS_SAVE_FAILED</code>);
+          <code>src-tauri/src/lib.rs</code> (register settings_get/settings_set, driver_upsert,
+          driver_set_value, fix <code>license_verify</code> import);
+          <code>src-tauri/src/commands/mod.rs</code> (add <code>pub mod driver;</code>);
+          <code>src/api/schema.ts</code> (+Settings and Driver schemas/CommandArgs);
+          <code>src/api/mock.ts</code> (+settings + driver mock mirror/reset);
+          <code>src/stores/settings.ts</code> (+syncRemote, IPC save, remoteSynced);
+          <code>src/pages/s075-settings/index.tsx</code> (mount reconcile); tests for
+          schema/mock/store; <code>docs/SCREENS-SPEC.md</code>; <code>TASKBOARD.md</code>.
+        </div>
+        <div class="field">
+          <b>🐛 Fixed:</b> audit_events insert used non-existent <code>id</code> column → switched
+          to the migration's <code>seq</code>-based column list. Missing
+          <code>license_verify</code> import in lib.rs → corrected.
+        </div>
+        <div class="field">
+          <b>⚠️ Known Issues:</b> Rust handlers are hand-verified only (no cargo/rustc in sandbox);
+          <code>driver.set_value</code> returns an audited echo until the S-050 working-scenario
+          data source exists; native IPC/updater/diagnostics/storage-relocation gates remain for
+          future desktop work.
+        </div>
+      </div>
+
+      <h2 id="E">E. Open Questions &amp; TODOs</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <b>M2-5 driver/dimension imports:</b> blocked on a Stage-0 contract. Locked API-SPEC §4
+            says those destination pipelines do not exist; <code>import.commit</code> is a GL
+            tie-out shape. Need an explicit row/per-period contract before persisting.
+          </li>
+          <li>
+            <b>M3-9 Excel-parity grid UX:</b> is the next JS-verifiable candidate
+            (undo/redo/fill/paste/keys on S-041). Needs the model store to keep an in-memory edit
+            history and a way to restore prior cell values without feedback loops.
+          </li>
+          <li>
+            <b>Native gates:</b> <code>cargo test</code>/clippy/rustfmt, tauri-specta bindings,
+            desktop IPC E2E, Playwright — all require CI or a Rust-equipped machine.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>
