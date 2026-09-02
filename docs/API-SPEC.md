@@ -413,7 +413,11 @@ The finding code is restricted to the existing locked subset `VALUE_INVALID`, `P
 code is malformed. Current HARD checks cover required/parseable period and amount fields, Company
 calendar resolution, Company/BU-scoped account resolution, supported currency, Group BU presence,
 intercompany tag/BU resolution, mixed-currency batch input, weekly driver data against a monthly
-calendar, and duplicate opening balances. The currently implemented WARNING is a duplicate
+calendar, and duplicate opening balances. An `opening_balances` parse adds three kind-specific
+gates (M2-5): a batch is one period (row-scope `OPENING_ALREADY_SET`, `OPENING_PERIOD_MIXED`), an
+account carries at most one opening balance in that period (row-scope `OPENING_ALREADY_SET`,
+`OPENING_ACCOUNT_DUPLICATE`), and a Company that already has a committed or validated opening batch
+rejects a second one (batch-scope `OPENING_ALREADY_SET`). The currently implemented WARNING is a duplicate
 non-empty posting reference on another valid row. Missing account names are not currently a
 WARNING and are not fabricated by the mock or S-031.
 
@@ -431,6 +435,16 @@ S-031 must not invoke Retry against the same expired id. Mapping/company mismatc
 `SESSION_LOCKED`; unexpected transport/storage failures use the existing `INTERNAL` envelope.
 
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, FEATURE-TRACEABILITY-MATRIX.md, GL-TEMPLATE-SPEC.md, SCREENS-SPEC.md, USER-FLOWS.md.*
+
+### Commit destinations by import kind (M2-5)
+
+`import.commit` writes double-entry Actuals into `gl_lines` (and `ic_lines`). Only the kinds whose
+rows *are* Actuals of a Period may therefore use it: `gl_dump`, `excel_csv`, and
+`opening_balances`. `driver_data` belongs in `driver_values` and `dimension_master` in
+`dimension_values` (DATABASE-SCHEMA §6/§3); neither destination pipeline exists, so `import.commit`
+refuses those kinds with `VALUE_INVALID`
+(`IMPORT_KIND_DESTINATION_UNAVAILABLE`) rather than persisting non-GL data as GL facts. `import.parse`
+still accepts all five file-borne kinds — accepting the kind enum is not a destination.
 
 ## 13. DETAILED SPEC — `import.tieout` / `import.history` / `import.rollback` (M2-4)
 

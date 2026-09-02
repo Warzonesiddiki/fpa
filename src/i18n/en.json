@@ -148,8 +148,17 @@
       "aria": "Import source type",
       "gl": "GL Dump",
       "files": "Excel / CSV",
+      "opening": "Opening Balances",
+      "drivers": "Driver data",
+      "dimensions": "Dimension master",
       "connectors": "Connectors",
-      "connectorsGate": "Connector tabs remain unavailable: connector.health and connector.connect are catalogued but have no typed bridge schemas or registered Rust handlers."
+      "connectorsGate": "Connector tabs remain unavailable: connector.health and connector.connect are catalogued but have no typed bridge schemas or registered Rust handlers.",
+      "hint": {
+        "gl": "A GL Dump workbook needs a sheet named GL. Rows commit as Actuals of a Period.",
+        "files": "Delimited or workbook Actuals in any layout you map to the canonical GL targets.",
+        "opening": "Prior-year closing balances committed as the first Actuals of a Period. One period per batch, one opening balance per account, and once per Company."
+      },
+      "destinationGate": "Driver data and dimension master lists remain unavailable: they do not post to the general ledger, and the driver_values and dimension_values destination pipelines are not implemented. import.commit refuses those kinds rather than writing them as GL facts."
     },
     "workingSet": "Current import",
     "drop": {

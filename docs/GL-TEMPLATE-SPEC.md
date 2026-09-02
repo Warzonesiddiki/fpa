@@ -93,7 +93,7 @@ period,account_code,account_name,debit,credit,cost_center,business_unit,currency
 |---|---|---|
 | `COA` | code, name, type, section, parent_code | pre-creates Accounts (COA import); missing vs existing → diff prompt |
 | `Dimensions` | dimension_key, code, name, parent_code | pre-creates Dimension Values; auto-create flag with confirm |
-| `Opening Balances` | period, account_code, debit, credit | imports as Opening Balances batch (guarded once — `OPENING_ALREADY_SET`) |
+| `Opening Balances` | period, account_code, debit, credit | imports as Opening Balances batch (M2-5: one period per batch, one opening balance per account/period, and once per Company — all `OPENING_ALREADY_SET`; no override/merge/replace action exists) |
 | `Mapping Notes` | free text | human notes; ignored by parser |
 
 ## 6. PERFORMANCE & ERROR HANDLING

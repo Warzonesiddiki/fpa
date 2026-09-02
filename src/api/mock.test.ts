@@ -444,6 +444,79 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(commit.error.code).toBe("IMPORT_PARSE_EXPIRED");
   });
 
+  it("refuses to commit a driver or dimension source into the general ledger (M2-5 destination honesty)", async () => {
+    await mockInvoke("company.open", { path: "/Users/demo/Meridian Holdings.fpa" });
+    for (const kind of ["driver_data", "dimension_master"] as const) {
+      const parsed = (await mockInvoke("import.parse", {
+        file_path: `/Users/demo/${kind}.xlsx`,
+        kind,
+      })) as { data: { parse_id: string } };
+      const commit = (await mockInvoke("import.commit", {
+        parse_id: parsed.data.parse_id,
+        mapping_id: "canonical",
+        name: `${kind} batch`,
+        exclusions: [],
+      })) as { error: { code: string; message: string; httpStatus: number } };
+      expect(commit.error.code).toBe("VALUE_INVALID");
+      expect(commit.error.httpStatus).toBe(422);
+      expect(commit.error.message).toContain("IMPORT_KIND_DESTINATION_UNAVAILABLE");
+      expect(commit.error.message).toContain(kind);
+    }
+  });
+
+  it("guards a second opening-balance batch per Company with a batch-scope OPENING_ALREADY_SET", async () => {
+    const created = (await mockInvoke("company.create", {
+      name: "Opening Guard Company",
+      path: "/Users/demo/Opening Guard Company.fpa",
+      pack_key: "manufacturing",
+      calendar: {
+        preset: "12month",
+        fy_start_month: 4,
+        week_start_day: 0,
+        anchor_rule: null,
+        year_end_rule: null,
+      },
+      plan_only: true,
+      horizon: "1y",
+    })) as { data: { company_id: string } };
+    expect(created.data.company_id).toBeTruthy();
+
+    const firstParse = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/OpeningBalances.xlsx",
+      kind: "opening_balances",
+    })) as { data: { parse_id: string } };
+    // Before any opening batch exists the same command validates cleanly and commits.
+    const clean = (await mockInvoke("import.validate", {
+      parse_id: firstParse.data.parse_id,
+      mapping_id: "canonical",
+    })) as { data: { hard: unknown[]; rows: number } };
+    expect(clean.data.hard).toEqual([]);
+    expect(clean.data.rows).toBeGreaterThan(0);
+    const committed = (await mockInvoke("import.commit", {
+      parse_id: firstParse.data.parse_id,
+      mapping_id: "canonical",
+      name: "Opening balances FY26",
+      exclusions: [],
+    })) as { data: { batch_id: string } };
+    expect(committed.data.batch_id).toBeTruthy();
+
+    const secondParse = (await mockInvoke("import.parse", {
+      file_path: "/Users/demo/OpeningBalances-again.xlsx",
+      kind: "opening_balances",
+    })) as { data: { parse_id: string } };
+    const guarded = (await mockInvoke("import.validate", {
+      parse_id: secondParse.data.parse_id,
+      mapping_id: "canonical",
+    })) as { data: unknown };
+    const parsedGuard = ImportValidateData.parse(guarded.data);
+    expect(parsedGuard.hard).toHaveLength(1);
+    expect(parsedGuard.hard[0].code).toBe("OPENING_ALREADY_SET");
+    // Batch scope: an existing Company opening set blames no single source row.
+    expect(parsedGuard.hard[0].line_no).toBeNull();
+    expect(parsedGuard.rows).toBe(0);
+    expect(parsedGuard.preview).toEqual([]);
+  });
+
   it("import.history persists committed batches and rollback targets only an older committed batch", async () => {
     const created = (await mockInvoke("company.create", {
       name: "History Test Company",

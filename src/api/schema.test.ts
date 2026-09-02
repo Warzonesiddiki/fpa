@@ -18,6 +18,8 @@ import {
   ImportRollbackData,
   ImportTieoutData,
   ImportValidateData,
+  LEDGER_IMPORT_KINDS,
+  isLedgerImportKind,
   FormulaText,
   ModelCellSetArgs,
   ModelCellSetData,
@@ -423,6 +425,17 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       CommandArgs["import.parse"].safeParse({ file_path: "/tmp/GL.xlsx", kind: "connector_sync" })
         .success,
     ).toBe(false); // "connector batches are not parsed from a file"
+  });
+
+  it("names only the ledger-destination import kinds as commit-capable (M2-5)", () => {
+    // `import.commit` writes gl_lines/ic_lines; driver and dimension sources have no such
+    // destination pipeline, so they must never be classified as ledger kinds.
+    expect([...LEDGER_IMPORT_KINDS]).toEqual(["gl_dump", "excel_csv", "opening_balances"]);
+    for (const kind of LEDGER_IMPORT_KINDS) {
+      expect(isLedgerImportKind(kind)).toBe(true);
+    }
+    expect(isLedgerImportKind("driver_data")).toBe(false);
+    expect(isLedgerImportKind("dimension_master")).toBe(false);
     expect(CommandArgs["import.parse"].safeParse({ file_path: "/tmp/GL.xlsx" }).success).toBe(
       false,
     );

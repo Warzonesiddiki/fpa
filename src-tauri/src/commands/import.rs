@@ -17,6 +17,7 @@
 //!  * **Attribution honesty**: a tie-out difference is only ever attributed to rows that carry
 //!    a posting reference; without one the totals are reported and nothing is guessed.
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1585,6 +1586,54 @@ fn build_lines(
         ));
     }
     if kind == ImportKind::OpeningBalances {
+        // Opening Balances are a single-period snapshot of prior closing balances
+        // (GLOSSARY "Opening Balances"; GL-TEMPLATE-SPEC §5 `Opening Balances` sheet). Two
+        // documented row-scope constraints therefore apply inside the batch itself, in addition
+        // to the Company-scope once-guard below. Both are evaluated over the mapped lines that
+        // already passed every row check, so a period/account is always resolved here.
+        let mut first_period: Option<&str> = None;
+        let mut seen: HashMap<(&str, &str), i64> = HashMap::new();
+        for line in &lines {
+            match first_period {
+                None => first_period = Some(line.period_id.as_str()),
+                Some(period) if period == line.period_id => {}
+                Some(period) => {
+                    hard.push(RowIssue::row(
+                        "OPENING_ALREADY_SET",
+                        format!(
+                            "OPENING_PERIOD_MIXED: opening balances are one period per batch; row {} is '{}' but the batch opened on '{}'",
+                            line.line_no, line.period_id, period
+                        ),
+                        line.line_no,
+                        json!({
+                            "periodId": line.period_id.clone(),
+                            "batchPeriodId": period,
+                        }),
+                    ));
+                }
+            }
+            match seen.entry((line.account_id.as_str(), line.period_id.as_str())) {
+                Entry::Vacant(slot) => {
+                    slot.insert(line.line_no);
+                }
+                Entry::Occupied(slot) => {
+                    hard.push(RowIssue::row(
+                        "OPENING_ALREADY_SET",
+                        format!(
+                            "OPENING_ACCOUNT_DUPLICATE: account/period already carries an opening balance on row {}",
+                            slot.get()
+                        ),
+                        line.line_no,
+                        json!({
+                            "accountId": line.account_id.clone(),
+                            "periodId": line.period_id.clone(),
+                            "firstLineNo": slot.get(),
+                        }),
+                    ));
+                }
+            }
+        }
+
         let existing: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM import_batches WHERE company_id = ?1
@@ -2091,6 +2140,17 @@ pub fn import_commit(
     let parsed = registry.get(&parse_id)?;
     if parsed.company_id != company_id {
         return Err(AppError::invalid("PARSE_COMPANY_MISMATCH: re-parse the file in this Company"));
+    }
+    // Destination honesty (M2-5): this commit path writes double-entry Actuals into `gl_lines`
+    // (+ `ic_lines`). GL Dump, Excel/CSV Actuals and Opening Balances are all Actuals of a
+    // Period, so they belong here. Driver data belongs in `driver_values` and a dimension master
+    // list in `dimension_values` (DATABASE-SCHEMA §6/§3); neither destination pipeline exists
+    // yet, so those kinds are refused outright rather than silently persisted as GL facts.
+    if matches!(parsed.kind, ImportKind::DriverData | ImportKind::DimensionMaster) {
+        return Err(AppError::invalid(format!(
+            "IMPORT_KIND_DESTINATION_UNAVAILABLE: '{}' does not post to the general ledger and its destination pipeline is not implemented",
+            parsed.kind.as_str()
+        )));
     }
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -2917,6 +2977,126 @@ mod tests {
             let line_no = row["line_no"].as_i64();
             line_no != Some(2) && line_no != Some(3)
         }));
+    }
+
+    #[test]
+    fn opening_balances_reject_a_second_period_in_the_same_batch() {
+        // An Opening Balance batch is a single-period snapshot: a second period is a row-scope
+        // OPENING_ALREADY_SET naming the offending source row, never a silent split.
+        let conn = validation_connection();
+        conn.execute_batch(
+            "INSERT INTO fiscal_periods VALUES ('fp-2026-p09','fy-1',9,'P09','2026-09-01','2026-09-30');
+             INSERT INTO accounts VALUES ('account-4100','company-1',NULL,'4100',1,1);",
+        )
+        .unwrap();
+        let rows = vec![
+            validation_source_row(2, "2026-08", "4000", None),
+            validation_source_row(3, "2026-09", "4100", None),
+        ];
+
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::OpeningBalances,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.hard.len(), 1);
+        assert_eq!(built.hard[0].code, "OPENING_ALREADY_SET");
+        assert_eq!(built.hard[0].line_no, Some(3));
+        assert!(built.hard[0].message.starts_with("OPENING_PERIOD_MIXED:"));
+        // The same rows are clean for an ordinary GL Dump — the rule is kind-specific.
+        let gl = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::GlDump,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+        assert!(gl.hard.is_empty());
+    }
+
+    #[test]
+    fn opening_balances_reject_a_repeated_account_and_pass_a_clean_snapshot() {
+        let conn = validation_connection();
+        conn.execute_batch(
+            "INSERT INTO accounts VALUES ('account-4100','company-1',NULL,'4100',1,1);",
+        )
+        .unwrap();
+        let duplicated = vec![
+            validation_source_row(2, "2026-08", "4000", None),
+            validation_source_row(3, "2026-08", "4100", None),
+            validation_source_row(4, "2026-08", "4000", None),
+        ];
+
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &duplicated,
+            ImportKind::OpeningBalances,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.hard.len(), 1);
+        assert_eq!(built.hard[0].code, "OPENING_ALREADY_SET");
+        assert_eq!(built.hard[0].line_no, Some(4), "the later duplicate is blamed");
+        assert!(built.hard[0].message.starts_with("OPENING_ACCOUNT_DUPLICATE:"));
+        assert_eq!(built.hard[0].details["firstLineNo"], 2);
+
+        let clean = build_lines(
+            &conn,
+            &validation_company(),
+            &duplicated[..2],
+            ImportKind::OpeningBalances,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+        assert!(clean.hard.is_empty());
+        assert_eq!(clean.lines.len(), 2);
+    }
+
+    #[test]
+    fn opening_balances_are_once_guarded_per_company() {
+        let conn = validation_connection();
+        conn.execute(
+            "INSERT INTO import_batches VALUES ('ib-open','company-1','opening_balances','committed')",
+            [],
+        )
+        .unwrap();
+        // A committed opening batch in ANOTHER Company must not guard this one.
+        conn.execute(
+            "INSERT INTO import_batches VALUES ('ib-other','company-2','opening_balances','committed')",
+            [],
+        )
+        .unwrap();
+
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &[validation_source_row(2, "2026-08", "4000", None)],
+            ImportKind::OpeningBalances,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.hard.len(), 1);
+        assert_eq!(built.hard[0].code, "OPENING_ALREADY_SET");
+        assert_eq!(built.hard[0].line_no, None, "an existing Company opening set is batch scope");
+        assert_eq!(built.hard[0].details["existingBatches"], 1);
+        assert_eq!(
+            issue_to_error(&built.hard[0]).body().code,
+            "OPENING_ALREADY_SET",
+            "the locked 409 code is surfaced, not a generic VALUE_INVALID"
+        );
     }
 
     #[test]

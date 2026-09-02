@@ -408,6 +408,22 @@ export const ImportKind = z.enum([
 ]);
 export type ImportKind = z.infer<typeof ImportKind>;
 
+/** The import kinds whose committed rows are Actuals of a Period and therefore post through the
+ *  `import.commit` general-ledger destination (`gl_lines` / `ic_lines`, DATABASE-SCHEMA §7).
+ *  `driver_data` belongs in `driver_values` and `dimension_master` in `dimension_values`; those
+ *  destination pipelines do not exist, so the core refuses their commit rather than writing GL
+ *  facts, and S-030 must not offer them as commit-capable source tabs. */
+export const LEDGER_IMPORT_KINDS = [
+  "gl_dump",
+  "excel_csv",
+  "opening_balances",
+] as const satisfies readonly ImportKind[];
+
+/** True when `import.commit` has a real destination for this kind (see LEDGER_IMPORT_KINDS). */
+export function isLedgerImportKind(kind: ImportKind): boolean {
+  return (LEDGER_IMPORT_KINDS as readonly ImportKind[]).includes(kind);
+}
+
 export const ImportParseArgs = z
   .object({
     file_path: z.string().min(1, "FILE_PATH_REQUIRED"),
