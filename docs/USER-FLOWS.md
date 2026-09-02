@@ -27,21 +27,63 @@
 
 ## UF-002 · GL Dump Import (flagship — manufacturing manufacturing monthly close) · P0
 
-1. **S-030 Import Hub** → "GL Dump" tab → drop `SAP_GL_Aug2026.xlsx`.
-2. **S-031 Mapping Wizard** Parse: 3 sheets, 48k rows, encoding UTF-8, delimiter auto.
+1. **S-030 Import Hub** → "GL Dump" tab → drop `SAP_GL_Aug2026.xlsx` and run the real
+   Company-scoped `import.parse` command.
+2. S-030 reports parsed sheets/row counts, encoding, source hash, size, and headers, then hands the
+   same ephemeral `parse_id` working set to **S-031 Mapping Wizard** at `/app/import/map`.
+   `import.parse` does not return a delimiter value or raw source samples, so S-031 does not invent
+   either.
    - *Branch:* unreadable file → `IMPORT_FILE_UNREADABLE` → instructions; never partial parse.
-   - *Branch:* zip contains multiple files → file picker with warning.
-3. Normalize: period codes `FY26-P08` → P08 confirmed; account `4100-00` → `410000` (normalization rule shown).
-   - *Branch:* ambiguous period `2026-08` (calendar vs fiscal) → WARNING requires explicit choice.
-4. Map: columns → Account/Period/Debit/Credit/Dimension. Load saved template "SAP GL dump v3" → auto-fills.
-5. Validate: 2 HARD (unmapped account `99999`, duplicate invoice # row), 12 WARNING (missing names).
-   - *Branch HARD:* unresolved → commit blocked; fix mapping or exclude-with-log (never silent).
-6. Preview: first 50 rows + counts; user scroll-checks.
-7. **S-032 Tie-Out:** debits ₹41,283,000.00 vs credits ₹41,283,000.05.
-   - *Branch:* diff ₹0.05 → exact row highlighted (one credit line rounding) → user selects "Exclude row (logged)" → tie passes; excluded row retained in batch metadata + Audit Trail.
-8. Commit: batch `2026-08-30_001`, SHA-256 shown, mapping version v3, 47,999 rows.
-9. Post-verify: **S-054 Variance** for P08 — Actuals appear; **S-060 P&L** ties; Health Check green; **S-070 Audit** shows batch.
-10. **Success:** monthly actuals loaded < 5 min.
+   - *Branch:* `.zip` → currently rejected by the registered parser and excluded from the picker;
+     one-workbook ZIP support is explicitly gated rather than simulated.
+3. Normalize: user explicitly chooses the versioned rules. `FY26-P08` stays on the documented
+   parser; optional `MMMYY` maps `AUG26` → `2026-08`; account `4100-00` → `410000` only when the
+   remove-hyphens rule is selected. Codes remain text and keep leading zeroes.
+4. Map: source headers → Period/Account code/Debit/Credit (or Amount) and optional Dimensions.
+   Canonical headers may select bundled `canonical-v1` with no write. A custom same-name save uses
+   audited `import.map.save_v1`, keeps the Company-scoped mapping id, and advances `vN`.
+   Saved-template loading/history is unavailable because the locked command catalog has no mapping
+   list/load command; S-031 visibly gates it rather than claiming to load "SAP GL dump v3".
+5. Validate through the registered `import.validate {parse_id,mapping_id}` path. S-031 reports the
+   exact mapping version and valid mapped row count, then separates HARD from WARNING and row scope
+   from batch scope. An unmapped account such as `99999` is HARD; a repeated non-empty posting
+   reference on another valid row is the currently implemented WARNING. Missing names are not
+   fabricated as findings.
+   - *Branch HARD:* the later Tie-Out/Commit path is blocked. S-031 offers only Edit mapping or
+     Return to Import Hub to correct/re-select and re-parse the source; there is no fake account
+     creation, row-remap, exclusion, or acknowledgement action.
+   - *Branch expired parse:* `IMPORT_PARSE_EXPIRED` shows “This parse session expired. Re-run the
+     import.” and returns to S-030; it never retries the expired id.
+6. Preview: at most the first 50 **valid mapped** rows plus counts, formatted from integer minor
+   units. Invalid raw rows are represented by HARD findings and are not reconstructed in the UI.
+7. **S-032 Tie-Out:** the registered Rust command reports exact integer-minor-unit debit/credit/
+   difference totals, valid rows, currency, mapping version, source hash, and only source rows it
+   can actually attribute by posting reference.
+   - *Branch balanced:* a valid batch name enables authoritative Commit.
+   - *Branch unbalanced:* Commit remains engine-blocked. The user may select only an attributed row
+     and must enter a reason. Because `import.tieout` accepts no exclusions, the browser does not
+     invent adjusted totals; `import.commit` reapplies the exclusions and reruns validation and
+     Tie-Out before it can write anything.
+8. Commit batch `2026-08-30_001`: one immediate transaction persists retained GL/IC rows and an
+   HMAC audit event containing SHA-256, mapping id/version, exact totals/currency, batch name, and
+   every excluded line/reason. A duplicate hash hard-fails with `IMPORT_BATCH_HASH_EXISTS`; the
+   locked catalog has no override action.
+9. Return to **S-030**: registered, Company-scoped history shows exact persisted terminal metadata
+   in 25-row pages. A currently committed row may be rolled back with a required reason; Rust
+   deletes only that batch's facts, preserves its terminal history row, and links to the strictly
+   older committed batch of the same kind. Audit-degraded sessions can inspect but cannot mutate.
+10. Post-verify in **S-054/S-060/S-070** remains a later milestone. M2-4 does not fabricate a
+    Variance route from Commit success. **Success target:** monthly actuals loaded < 5 min.
+
+**Current implementation boundary (M2-4):** steps 1–9 are reachable through typed production IPC,
+with stale Company/source/mapping/Tie-Out/history/rollback responses invalidated. Validation and
+Tie-Out are read-only; Commit and rollback are transactionally audited and blocked by a broken
+audit chain. Warning acknowledgement, duplicate override, post-exclusion preview, and Variance
+navigation are not catalogued and are not simulated. The current parser remains synchronous and
+in-memory, with no progress/cancel command, ZIP support, or 500k benchmark evidence. Source Vault
+persistence is also gated: `source_files` is metadata-only and there is no compressed payload
+mutation plus authenticated Company-container reseal path, so no plaintext or sidecar copy is
+written.
 
 **Fallback path (always available):** any connector failure → Manual Import; any file failure → "Download GL dump from your ERP following the GL Template" (help link).
 

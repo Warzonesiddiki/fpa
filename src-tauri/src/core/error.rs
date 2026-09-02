@@ -68,6 +68,8 @@ pub enum AppError {
     ImportBatchHashExists { existing_batch: String },
     #[error("account code {} resolves to {} accounts", code, accounts.len())]
     MapAccountAmbiguous { code: String, accounts: Vec<String> },
+    #[error("mapping target invalid: {0}")]
+    MapTargetInvalid(String),
     #[error("driver/period granularity mismatch: {0}")]
     UnitPeriodMismatch(String),
     #[error("opening balances already set: {0}")]
@@ -140,6 +142,7 @@ impl AppError {
             AppError::ImportTieOutFailed { .. } => ("IMPORT_TIE_OUT_FAILED", 422, false, None),
             AppError::ImportBatchHashExists { .. } => ("IMPORT_BATCH_HASH_EXISTS", 409, false, None),
             AppError::MapAccountAmbiguous { .. } => ("MAP_ACCOUNT_AMBIGUOUS", 422, false, None),
+            AppError::MapTargetInvalid(_) => ("MAP_TARGET_INVALID", 422, false, None),
             AppError::UnitPeriodMismatch(_) => ("UNIT_PERIOD_MISMATCH", 422, false, None),
             AppError::OpeningAlreadySet(_) => ("OPENING_ALREADY_SET", 409, false, None),
             AppError::BatchAlreadyRolledBack => ("BATCH_ALREADY_ROLLED_BACK", 409, false, None),
@@ -321,6 +324,9 @@ impl AppError {
                     retry_after_ms,
                     details: serde_json::json!({ "accountCode": account_code, "list": accounts }),
                 };
+            }
+            AppError::MapTargetInvalid(_) => {
+                "This column cannot map to that field. Choose a supported target."
             }
             AppError::UnitPeriodMismatch(_) => {
                 "Driver data is weekly but the calendar is monthly. Aggregate (sum) or reject?"
@@ -510,6 +516,10 @@ impl AppError {
 
     pub fn map_account_ambiguous(code: &str, accounts: Vec<String>) -> Self {
         AppError::MapAccountAmbiguous { code: code.to_string(), accounts }
+    }
+
+    pub fn map_target_invalid(reason: impl Into<String>) -> Self {
+        AppError::MapTargetInvalid(reason.into())
     }
 
     pub fn unit_period_mismatch(msg: impl Into<String>) -> Self {

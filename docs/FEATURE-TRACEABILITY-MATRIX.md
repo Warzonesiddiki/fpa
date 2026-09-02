@@ -17,11 +17,11 @@
 | F-004 First-Run Wizard | US-005 | S-002, D-005 | company.create, model.create, import.* (demo flow) | companies, models, import_batches | ✅ 15/15 wizard vitests (2026-08-31: demo toggle + Open Demo Company via normal import pipeline w/ `DEMO —` batch, resume-safe draft, S-010 navigate) · E2E UF-001 planned (CI) | folder picker (S-002 element) |
 | F-005 Packs & Pack Builder | US-006 | S-023, S-002 | pack.list/validate/install/builder.save_v1/builder.apply_diff | packs, pack_components | ✅ schema tests + fixture packs; **2026-08-31: flat/nested pack.json seed bug fixed** (nested reads + `description` column migration 002 + Rust test); CI verification pending | — |
 | F-006 Horizons/Sizing | US-007 | S-040 | model.create (horizon) | models.horizon | ✅ bench (PERF §1) | — |
-| F-007 GL Dump Import | US-008 | S-030–S-032 | import.parse/validate/tieout/commit/rollback/history | import_batches, source_files, gl_lines | ✅ unit+E2E UF-002 | — |
-| F-008 Excel/CSV + Driver Data | US-009 | S-030/031 | driver.import, import.* (kind) | driver_values, import_batches | ✅ unit | — |
-| F-009 Connectors | US-010 | S-033 | connector.* | connectors, connector_credentials, connector_sync_runs | ✅ contract tests per provider | ⚠️ E2E auth runs on CI runners (ENV-BOUND) |
-| F-010 Vault & Reconciliation | US-011 | S-034, S-030 | reconcile.run, import.history | source_files | ✅ unit+integration | — |
-| F-011 Mapping Management | US-012 | S-031 | import.map.save_v1, validate | mapping_templates, mapping_columns | ✅ unit | — |
+| F-007 GL Dump Import | US-008 | S-030–S-032 | import.parse/map.save_v1/validate/tieout/commit/rollback/history | import_batches, mapping_templates, mapping_columns, gl_lines, ic_lines, audit_events (`source_files` target gated) | ✅ Strict schema/mock/import+history-store suites; S-030 parse/history/rollback and S-031/S-032 state/interaction/axe suites; Rust mapping/validation/Tie-Out/checked-money/commit-exclusion/duplicate-serialization/history-pagination/rollback-lineage/audit tests authored (native execution CI-only here) | ⚠️ M2-4 reaches Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit and persistent history/rollback over registered production IPC. Exact money/metadata, only attributable exclusions with reasons, authoritative transaction gate, read-only and stale responses are covered. ZIP/progress/cancel/500k benchmark, native toolchain/IPC execution, and compliant Source Vault payload persistence remain explicit gates |
+| F-008 Excel/CSV + Driver Data | US-009 | S-030/031 | driver.import, import.* (kind) | driver_values, import_batches | ✅ S-030 Excel/CSV parse-kind hand-off + S-031 finite text/period/sign rules, batch-vs-row validation surface, strict response/mock/store tests, and authored native `UNIT_PERIOD_MISMATCH`/opening gates | ⚠️ driver/opening/dimension source tabs and full same-pipeline UI remain M2-5; S-031 does not invent aggregate/reject actions |
+| F-009 Connectors | US-010 | S-033 | connector.* | connectors, connector_credentials, connector_sync_runs | ✅ planned contract tests per provider | ⚠️ no typed/registered connector handlers or adapters; E2E auth requires CI runners (ENV-BOUND) |
+| F-010 Vault & Reconciliation | US-011 | S-034, S-030 | import.history; reconcile.run (pending) | import_batches, audit_events; source_files (gated target) | ✅ `import.history` strict schema/mock/native path, Company-scoped stale-safe store, persistent pagination/history UI and rollback-lineage tests | ⚠️ `reconcile.run`/S-034 remain M2-10. Vault payload persistence is not claimed: metadata-only `source_files` plus the current app/container lifecycle cannot provide compressed bytes inside an atomically resealed authenticated Company File, so S-030 names the blocker and writes no sidecar |
+| F-011 Mapping Management | US-012 | S-031 | import.map.save_v1, validate | mapping_templates, mapping_columns, audit_events | ✅ strict mapping/validation schemas + mock parity + Company-scoped stale-response store tests; 14 S-031 state/remediation/a11y tests; Rust validation/normalization/version/audit-rollback/wire tests authored | ✅ M2-3: route/search/S-030 hand-off, audited mapping, real validation, scoped findings, and valid-row preview are implemented. Latest map body is materialized; immutable definitions ride audit before/after. ⚠️ no catalogued mapping-list/load/history command; native gates blocked locally because `cargo`, `rustc`, `rustfmt`, and `clippy-driver` are unavailable |
 | F-012 Formulas & Multi-Sheet | US-013 | S-040–S-042 | model.cell.set.v1, inspect, recalc | model_sheets, model_lines, model_values | ✅ unit+property (cycles) | — |
 | F-013 Driver Modeling | US-014 | S-043 | driver.upsert/set_value/import | drivers, driver_values | ✅ unit+integration | — |
 | F-014 Assumption Register | US-015 | S-044 | assumption.* (`list`/`upsert`/`find_usages`) | assumptions, assumption_values, audit_events | ⚠️ unit + Rust integration pending toolchain | hardcode scan/convert/waive remains |
@@ -48,9 +48,9 @@
 | F-035 Licensing | US-036 | S-073, D-006 | license.verify/request_file/apply_response + session.status.license | licenses | ✅ unit (5 fixture payloads + 8 core tests CI + 10 S-073 vitests local; E2E UF CI) | — |
 | F-036 Auto-update | US-037 | D-009, S-075 | update.check | — (binary) | ✅ integration (bad-sig fixture) | — |
 | F-037 Backup/Restore | US-038 | S-074 | backup.create/restore | backups, snapshots | ✅ integration+E2E UF-010 | — |
-| F-038 Help/Search/A11y | US-039 | S-003, S-076, F1 overlays | app.diagnostics.export, settings.* | settings | ✅ unit+axe sweep | — |
+| F-038 Help/Search/A11y | US-039 | S-003, S-075, S-076, F1 overlays | app.diagnostics.export, settings.* | settings | ✅ unit+axe (S-075 local layer); native integration/E2E pending | ⚠️ M1-10: Stage-0 resolve localStorage vs catalog/DB persistence + audit; native diagnostics/update/storage gates tracked in TASKBOARD |
 
-**Result: 38/38 features have story + screens + commands + tables + tests. 5 ⚠️ intentional schedule notes (M1-7, M1-9, M4-4, M6-3, ENV-BOUND) — all with explicit TODO tasks. 0 ❌ gaps.**
+**Result: 38/38 features have story + screens + commands + tables + tests. 6 ⚠️ intentional schedule notes (M1-7, M1-9, M1-10, M4-4, M6-3, ENV-BOUND) — all with explicit TODO tasks. 0 ❌ gaps.**
 
 ---
 
@@ -72,7 +72,10 @@
 | Command | Request fields ↔ DB | Response ↔ Screens | Auth ↔ AUTH-SPEC |
 |---|---|---|---|
 | `model.cell.set.v1` | ✅ line/scenario/period exist in model_values | ✅ recalc.changed_cells → S-041 grid | ✅ ScenarioState gate |
-| `import.commit` | ✅ import_batches + gl_lines + exclusions | ✅ S-032 totals → S-030 history | ✅ session only |
+| `import.tieout` | ✅ ephemeral parse + audited mapping; no write | ✅ exact S-032 totals/attributable rows | ✅ unlocked session; read-only allowed |
+| `import.commit` | ✅ retained import_batches + GL/IC rows + full exclusion audit metadata in one immediate transaction | ✅ strict S-032 summary → persistent S-030 history | ✅ writable session; audit-chain gate |
+| `import.history` | ✅ terminal import_batches + latest commit audit metadata; fixed 25-row pages | ✅ S-030 exact history/empty/error pagination | ✅ unlocked session; read-only allowed |
+| `import.rollback` | ✅ scoped batch/GL/IC deletion + terminal lineage + reason audit in one immediate transaction | ✅ S-030 rollback success/error/read-only | ✅ writable session; audit-chain gate |
 | `consolidation.run` | ✅ BUs, ic_lines, fx_rates, group_rollup_maps | ✅ S-061 segment + S-060 group | ✅ session; HARD gates |
 | `statement.get.v1` | ✅ accounts + model_values/gl_lines | ✅ S-060 rows/totals/tieout | ✅ session |
 | `license.verify` | ✅ licenses + signature payload | ✅ S-073 status/days_left | ✅ none (pre-unlock) |

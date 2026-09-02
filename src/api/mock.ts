@@ -13,6 +13,8 @@ import {
   findUnsupportedFunction,
   type CommandInput,
   type CommandName,
+  type ImportKind,
+  type ImportMappingTemplate,
   type DriverDef,
   type AssumptionDef,
   type AssumptionListRow,
@@ -319,6 +321,8 @@ const GL_TEMPLATE_HEADERS = [
 ];
 
 const MOCK_SOURCE_HASH = "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900";
+const MOCK_UNBALANCED_SOURCE_HASH =
+  "bb11cc22dd33ee44ff556677889900aabb11cc22dd33ee44ff556677889900aa";
 const MOCK_REVENUE_MINOR = 635_000_000; // credit 6,350,000.00 USD (GL-TEMPLATE-SPEC §4 example)
 const MOCK_MATERIALS_MINOR = 182_500_000; // debit 1,825,000.00 USD
 const MOCK_OPEX_MINOR = 452_500_000; // debit 4,525,000.00 USD — balances the journal entry
@@ -326,14 +330,63 @@ const MOCK_IMBALANCE_MINOR = 5; // the tie-out difference of the "unbalanced" de
 const MOCK_PARSE_ROWS = 3;
 
 interface MockParse {
-  kind: string;
+  kind: ImportKind;
   rows: number;
   balanced: boolean;
+  validationFindings: boolean;
+  companyId: string | null;
+  sourceName: string;
+  sourceHash: string;
+}
+
+interface MockMapping {
+  mappingId: string;
+  version: string;
+  template: ImportMappingTemplate;
+}
+
+interface MockImportBatch {
+  batch_id: string;
+  name: string;
+  company_id: string;
+  kind: ImportKind;
+  source_name: string;
+  source_hash: string;
+  mapping_version: string;
+  status: "committed" | "rolled_back";
+  rows: number;
+  currency: string;
+  debits_minor: number;
+  credits_minor: number;
+  tie_out_status: "pass" | "excluded_rows_logged";
+  rollback_to_batch_id: string | null;
+  committed_at: string;
+  created_at: string;
 }
 
 const parses = new Map<string, MockParse>();
-const rolledBackBatches = new Set<string>();
+const mappingsByName = new Map<string, MockMapping>();
+const importBatches = new Map<string, MockImportBatch>();
 let importSeq = 0;
+
+function mockMappingVersion(mappingId: string): string | null {
+  if (mappingId === CANONICAL_MAPPING_ID) return "canonical-v1";
+  const companyPrefix = `${session.company_id ?? "preview-no-company"}\u0000`;
+  return (
+    [...mappingsByName.entries()].find(
+      ([key, mapping]) => key.startsWith(companyPrefix) && mapping.mappingId === mappingId,
+    )?.[1].version ?? null
+  );
+}
+
+function mappingNotFound(mappingId: string) {
+  return mockError(
+    "VALUE_INVALID",
+    `MAPPING_TEMPLATE_NOT_FOUND: ${mappingId}`,
+    "Invalid arguments.",
+    422,
+  );
+}
 
 /* ── Model grid (B14: shape mirror only; the Rust core owns formula/money semantics) ── */
 
@@ -398,10 +451,23 @@ function parseExpired() {
   );
 }
 
-/** The preview table (SCREENS-SPEC S-031 shows the first 50 rows). */
-function mockPreviewRows(balanced: boolean) {
-  const opex = balanced ? MOCK_OPEX_MINOR : MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR;
-  return [
+function mockCompanyCurrency(companyId: string | null): string {
+  return companies.find((company) => company.id === companyId)?.default_currency_code ?? "USD";
+}
+
+function parseCompanyMismatch() {
+  return mockError(
+    "VALUE_INVALID",
+    "PARSE_COMPANY_MISMATCH: re-parse the file in this Company",
+    "Invalid arguments.",
+    422,
+  );
+}
+
+/** The preview table (SCREENS-SPEC S-031 shows the first 50 rows). The unbalanced fixture adds
+ * one attributable five-cent row; excluding that exact row honestly restores the balanced base. */
+function mockPreviewRows(balanced: boolean, currency: string) {
+  const rows = [
     {
       line_no: 2,
       period_id: "fp-2026-p08",
@@ -411,7 +477,7 @@ function mockPreviewRows(balanced: boolean) {
       amount_minor: -MOCK_REVENUE_MINOR,
       debit_minor: null,
       credit_minor: MOCK_REVENUE_MINOR,
-      currency: "USD",
+      currency,
       posting_ref: "INV-2001",
       doc_type: "INVOICE",
       is_ic: false,
@@ -425,7 +491,7 @@ function mockPreviewRows(balanced: boolean) {
       amount_minor: MOCK_MATERIALS_MINOR,
       debit_minor: MOCK_MATERIALS_MINOR,
       credit_minor: null,
-      currency: "USD",
+      currency,
       posting_ref: "PO-8811",
       doc_type: "PURCHASE",
       is_ic: false,
@@ -436,15 +502,32 @@ function mockPreviewRows(balanced: boolean) {
       account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000003",
       account_code: "5000",
       business_unit_id: null,
-      amount_minor: opex,
-      debit_minor: opex,
+      amount_minor: MOCK_OPEX_MINOR,
+      debit_minor: MOCK_OPEX_MINOR,
       credit_minor: null,
-      currency: "USD",
+      currency,
       posting_ref: "PO-8812",
       doc_type: "PURCHASE",
       is_ic: false,
     },
   ];
+  if (!balanced) {
+    rows.push({
+      line_no: 5,
+      period_id: "fp-2026-p08",
+      account_id: "3f9f2c9e-9f8b-4e2d-9a1c-200000000004",
+      account_code: "5999",
+      business_unit_id: null,
+      amount_minor: MOCK_IMBALANCE_MINOR,
+      debit_minor: MOCK_IMBALANCE_MINOR,
+      credit_minor: null,
+      currency,
+      posting_ref: "ROUNDING-5",
+      doc_type: "ADJUSTMENT",
+      is_ic: false,
+    });
+  }
+  return rows;
 }
 
 export async function mockInvoke<C extends CommandName>(
@@ -738,7 +821,7 @@ export async function mockInvoke<C extends CommandName>(
         })),
       };
     case "import.parse": {
-      const { file_path, kind } = args as { file_path: string; kind: string };
+      const { file_path, kind } = args as { file_path: string; kind: ImportKind };
       if (file_path.includes("locked")) {
         return mockError(
           "IMPORT_FILE_LOCKED",
@@ -757,81 +840,209 @@ export async function mockInvoke<C extends CommandName>(
       }
       const parseId = nextImportId("100");
       const balanced = !file_path.includes(MOCK_UNBALANCED_FILE);
-      parses.set(parseId, { kind, rows: MOCK_PARSE_ROWS, balanced });
+      const rows = balanced ? MOCK_PARSE_ROWS : MOCK_PARSE_ROWS + 1;
+      const sourceName = file_path.split(/[\\/]/).pop() || file_path;
+      const sourceHash = balanced ? MOCK_SOURCE_HASH : MOCK_UNBALANCED_SOURCE_HASH;
+      parses.set(parseId, {
+        kind,
+        rows,
+        balanced,
+        validationFindings: file_path.toLowerCase().includes("validation-findings"),
+        companyId: session.company_id,
+        sourceName,
+        sourceHash,
+      });
       return {
         data: {
           parse_id: parseId,
           sheets: [
-            { name: "GL", kind: "gl", row_count: MOCK_PARSE_ROWS },
+            { name: "GL", kind: "gl", row_count: rows },
             { name: "COA", kind: "coa", row_count: 12 },
           ],
           encodings: [{ scope: "GL", encoding: "utf-8", bom: true, auto_detected: false }],
-          row_counts: { GL: MOCK_PARSE_ROWS, COA: 12 },
-          source_name: file_path.split(/[\\/]/).pop() || file_path,
-          source_hash: MOCK_SOURCE_HASH,
+          row_counts: { GL: rows, COA: 12 },
+          source_name: sourceName,
+          source_hash: sourceHash,
           size_bytes: 4_821_136,
           headers: GL_TEMPLATE_HEADERS,
         },
       };
     }
+    case "import.map.save_v1": {
+      const { template } = args as { template: ImportMappingTemplate };
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "mapping write blocked in degraded session",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      const companyScopedName = `${session.company_id ?? "preview-no-company"}\u0000${template.name}`;
+      const existing = mappingsByName.get(companyScopedName);
+      const nextVersion = existing ? BigInt(existing.version.slice(1)) + 1n : 1n;
+      const mapping: MockMapping = {
+        mappingId: existing?.mappingId ?? nextImportId("500"),
+        version: `v${String(nextVersion)}`,
+        template,
+      };
+      mappingsByName.set(companyScopedName, mapping);
+      return { data: { mapping_id: mapping.mappingId, version: mapping.version } };
+    }
     case "import.validate": {
       const { parse_id, mapping_id } = args as { parse_id: string; mapping_id: string };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
+      const mappingVersion = mockMappingVersion(mapping_id);
+      if (!mappingVersion) return mappingNotFound(mapping_id);
+      const currency = mockCompanyCurrency(parse.companyId);
+      const preview = mockPreviewRows(parse.balanced, currency);
+      if (parse.validationFindings) {
+        return {
+          data: {
+            hard: [
+              {
+                code: "MAP_ACCOUNT_AMBIGUOUS",
+                message:
+                  "ACCOUNT_MISSING: '99999' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+                line_no: 3,
+                details: { accountCode: "99999", list: [] },
+              },
+            ],
+            warnings: [
+              {
+                code: "VALUE_INVALID",
+                message: "POSTING_REF_DUPLICATE: 'INV-2001' first seen on row 2",
+                line_no: 4,
+                details: { postingRef: "INV-2001", firstLineNo: 2 },
+              },
+            ],
+            preview: [preview[0], { ...preview[2], posting_ref: "INV-2001" }],
+            rows: 2,
+            mapping_version: mappingVersion,
+          },
+        };
+      }
       return {
         data: {
           hard: [],
           warnings: [],
-          preview: mockPreviewRows(parse.balanced),
+          preview,
           rows: parse.rows,
-          mapping_version: mapping_id === CANONICAL_MAPPING_ID ? "canonical-v1" : "v3",
+          mapping_version: mappingVersion,
         },
       };
     }
     case "import.tieout": {
-      const { parse_id } = args as { parse_id: string };
+      const { parse_id, mapping_id } = args as { parse_id: string; mapping_id: string };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
+      if (!mockMappingVersion(mapping_id)) return mappingNotFound(mapping_id);
+      if (parse.validationFindings) {
+        return mockError(
+          "MAP_ACCOUNT_AMBIGUOUS",
+          "ACCOUNT_MISSING: '99999' is not in this Company's COA",
+          "Account code maps to multiple Accounts (). Confirm the intended Account.",
+          422,
+        );
+      }
+      const currency = mockCompanyCurrency(parse.companyId);
       const debits = parse.balanced
         ? MOCK_REVENUE_MINOR
         : MOCK_REVENUE_MINOR + MOCK_IMBALANCE_MINOR;
-      const opex = parse.balanced ? MOCK_OPEX_MINOR : MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR;
       return {
         data: {
           debits_minor: debits,
           credits_minor: MOCK_REVENUE_MINOR,
-          // Attribution honesty: only the row carrying a posting_ref is named (M5).
+          // Attribution honesty: only the five-cent source row is named (M5).
           diff_rows: parse.balanced
             ? []
             : [
                 {
-                  line_no: 4,
-                  posting_ref: "PO-8812",
-                  debit_minor: opex,
+                  line_no: 5,
+                  posting_ref: "ROUNDING-5",
+                  debit_minor: MOCK_IMBALANCE_MINOR,
                   credit_minor: null,
-                  amount_minor: opex,
+                  amount_minor: MOCK_IMBALANCE_MINOR,
                   residual_minor: MOCK_IMBALANCE_MINOR,
                 },
               ],
           balanced: parse.balanced,
           rows: parse.rows,
-          currency: "USD",
+          currency,
         },
       };
     }
     case "import.commit": {
-      const { parse_id, name, exclusions } = args as {
+      const { parse_id, mapping_id, name, exclusions } = args as {
         parse_id: string;
+        mapping_id: string;
         name: string;
         exclusions: { line_no: number; reason: string }[];
       };
       const parse = parses.get(parse_id);
       if (!parse) return parseExpired();
-      if (!name.trim()) {
-        return mockError("VALUE_INVALID", "BATCH_NAME_REQUIRED", "Invalid arguments.", 422);
+      if (parse.companyId !== session.company_id) return parseCompanyMismatch();
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "Import Batch write blocked in degraded session",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
       }
-      // The Tie-Out gate: blocked until the difference is explained by an exclusion.
-      if (!parse.balanced && exclusions.length === 0) {
+      if (!name.trim() || [...name.trim()].length > 120) {
+        return mockError(
+          "VALUE_INVALID",
+          !name.trim() ? "BATCH_NAME_REQUIRED" : "BATCH_NAME_TOO_LONG",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const mappingVersion = mockMappingVersion(mapping_id);
+      if (!mappingVersion) return mappingNotFound(mapping_id);
+      if (parse.validationFindings) {
+        return mockError(
+          "MAP_ACCOUNT_AMBIGUOUS",
+          "ACCOUNT_MISSING: '99999' is not in this Company's COA",
+          "Account code maps to multiple Accounts (). Confirm the intended Account.",
+          422,
+        );
+      }
+      const currency = mockCompanyCurrency(parse.companyId);
+      const excluded = new Set(exclusions.map((exclusion) => exclusion.line_no));
+      const knownLines = new Set(
+        mockPreviewRows(parse.balanced, currency).map((row) => row.line_no),
+      );
+      if (
+        excluded.size !== exclusions.length ||
+        exclusions.some(
+          (exclusion) =>
+            !knownLines.has(exclusion.line_no) ||
+            !exclusion.reason.trim() ||
+            [...exclusion.reason.trim()].length > 500,
+        )
+      ) {
+        return mockError("VALUE_INVALID", "EXCLUSION_INVALID", "Invalid arguments.", 422);
+      }
+      const attributableLines = new Set(parse.balanced ? [] : [5]);
+      const unattributed = exclusions.find(
+        (exclusion) => !attributableLines.has(exclusion.line_no),
+      );
+      if (unattributed) {
+        return mockError(
+          "VALUE_INVALID",
+          `EXCLUSION_LINE_NOT_ATTRIBUTABLE: row ${unattributed.line_no} was not named by the authoritative Tie-Out`,
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const exclusionRestoresTie =
+        (!parse.balanced && excluded.has(5) && excluded.size === 1) ||
+        (parse.balanced && excluded.size === 0);
+      if (!exclusionRestoresTie) {
         return mockError(
           "IMPORT_TIE_OUT_FAILED",
           "import tie-out failed: debits 635000005 != credits 635000000",
@@ -842,44 +1053,95 @@ export async function mockInvoke<C extends CommandName>(
           {
             debitsMinor: MOCK_REVENUE_MINOR + MOCK_IMBALANCE_MINOR,
             creditsMinor: MOCK_REVENUE_MINOR,
-            currency: "USD",
+            currency,
             diffRows: [
               {
-                lineNo: 4,
-                postingRef: "PO-8812",
-                debitMinor: MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR,
+                lineNo: 5,
+                postingRef: "ROUNDING-5",
+                debitMinor: MOCK_IMBALANCE_MINOR,
                 creditMinor: null,
-                amountMinor: MOCK_OPEX_MINOR + MOCK_IMBALANCE_MINOR,
+                amountMinor: MOCK_IMBALANCE_MINOR,
                 residualMinor: MOCK_IMBALANCE_MINOR,
               },
             ],
           },
         );
       }
+      const existing = [...importBatches.values()].find(
+        (batch) => batch.company_id === parse.companyId && batch.source_hash === parse.sourceHash,
+      );
+      if (existing) {
+        return mockError(
+          "IMPORT_BATCH_HASH_EXISTS",
+          `duplicate source hash already belongs to ${existing.batch_id}`,
+          `This exact file was already imported (batch ${existing.batch_id}). Re-import? This will create a new batch — confirm: duplicate rows are excluded automatically.`,
+          409,
+          false,
+          { existingBatch: existing.batch_id },
+        );
+      }
+      const batchId = nextImportId("300");
+      const timestamp = `2026-09-02T00:00:${String(importSeq % 60).padStart(2, "0")}Z`;
+      const batch: MockImportBatch = {
+        batch_id: batchId,
+        name: name.trim(),
+        company_id: parse.companyId ?? "preview-no-company",
+        kind: parse.kind,
+        source_name: parse.sourceName,
+        source_hash: parse.sourceHash,
+        mapping_version: mappingVersion,
+        status: "committed",
+        rows: parse.rows - excluded.size,
+        currency,
+        debits_minor: MOCK_REVENUE_MINOR,
+        credits_minor: MOCK_REVENUE_MINOR,
+        tie_out_status: excluded.size > 0 ? "excluded_rows_logged" : "pass",
+        rollback_to_batch_id: null,
+        committed_at: timestamp,
+        created_at: timestamp,
+      };
+      importBatches.set(batchId, batch);
       return {
         data: {
-          batch_id: nextImportId("300"),
-          rows: parse.rows,
-          debits_minor: MOCK_REVENUE_MINOR,
-          credits_minor: MOCK_REVENUE_MINOR,
-          tie_out_status: exclusions.length > 0 ? "excluded_rows_logged" : "pass",
-          audit_id: 99,
-          excluded_rows: exclusions.length,
-          source_hash: MOCK_SOURCE_HASH,
+          batch_id: batchId,
+          rows: batch.rows,
+          debits_minor: batch.debits_minor,
+          credits_minor: batch.credits_minor,
+          tie_out_status: batch.tie_out_status,
+          audit_id: importSeq,
+          excluded_rows: excluded.size,
+          source_hash: batch.source_hash,
         },
       };
     }
     case "import.rollback": {
       const { batch_id, reason } = args as { batch_id: string; reason: string };
-      if (!reason.trim()) {
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "Import Batch rollback blocked in degraded session",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      if (!reason.trim() || [...reason.trim()].length > 500) {
         return mockError(
           "VALUE_INVALID",
-          "ROLLBACK_REASON_REQUIRED",
-          "A reason is required to roll back a batch.",
+          !reason.trim() ? "ROLLBACK_REASON_REQUIRED" : "ROLLBACK_REASON_TOO_LONG",
+          !reason.trim() ? "A reason is required to roll back a batch." : "Invalid arguments.",
           422,
         );
       }
-      if (rolledBackBatches.has(batch_id)) {
+      const batch = importBatches.get(batch_id);
+      if (!batch || batch.company_id !== session.company_id) {
+        return mockError(
+          "VALUE_INVALID",
+          `BATCH_NOT_FOUND: ${batch_id}`,
+          "Invalid arguments.",
+          422,
+        );
+      }
+      if (batch.status === "rolled_back") {
         return mockError(
           "BATCH_ALREADY_ROLLED_BACK",
           "batch already rolled back",
@@ -887,8 +1149,66 @@ export async function mockInvoke<C extends CommandName>(
           409,
         );
       }
-      rolledBackBatches.add(batch_id);
-      return { data: { rolled_back_to: null } };
+      const previous = [...importBatches.values()]
+        .filter(
+          (candidate) =>
+            candidate.company_id === batch.company_id &&
+            candidate.kind === batch.kind &&
+            candidate.status === "committed" &&
+            candidate.committed_at < batch.committed_at,
+        )
+        .sort((left, right) => right.committed_at.localeCompare(left.committed_at))[0];
+      batch.status = "rolled_back";
+      batch.rollback_to_batch_id = previous?.batch_id ?? null;
+      return { data: { rolled_back_to: batch.rollback_to_batch_id } };
+    }
+    case "import.history": {
+      const { company_id, page } = args as { company_id: string; page: number };
+      if (company_id !== session.company_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "HISTORY_COMPANY_MISMATCH: open the requested Company first",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const all = [...importBatches.values()]
+        .filter((batch) => batch.company_id === company_id)
+        .sort(
+          (left, right) =>
+            right.committed_at.localeCompare(left.committed_at) ||
+            right.batch_id.localeCompare(left.batch_id),
+        );
+      const pageSize = 25;
+      const start = (page - 1) * pageSize;
+      const rows = all.slice(start, start + pageSize).map((batch) => ({
+        batch_id: batch.batch_id,
+        name: batch.name,
+        kind: batch.kind,
+        source_name: batch.source_name,
+        source_hash: batch.source_hash,
+        mapping_version: batch.mapping_version,
+        status: batch.status,
+        rows: batch.rows,
+        currency: batch.currency,
+        debits_minor: batch.debits_minor,
+        credits_minor: batch.credits_minor,
+        tie_out_status: batch.tie_out_status,
+        rollback_to_batch_id: batch.rollback_to_batch_id,
+        committed_at: batch.committed_at,
+        created_at: batch.created_at,
+      }));
+      return {
+        data: {
+          rows,
+          meta: {
+            page,
+            page_size: pageSize,
+            total: all.length,
+            total_pages: all.length === 0 ? 0 : Math.ceil(all.length / pageSize),
+          },
+        },
+      };
     }
     case "model.cell.set.v1": {
       const { line_id, scenario_id, period_id, value, formula, manual_override } = args as {

@@ -1,5 +1,5 @@
-//! `import.parse` / `import.validate` / `import.tieout` / `import.commit` / `import.rollback`
-//! — the GL-Dump-first ingestion pipeline (B19 · PRD F-007/F-010 · GL-TEMPLATE-SPEC ·
+//! `import.parse` / `import.validate` / `import.tieout` / `import.commit` / `import.history` /
+//! `import.rollback` — the GL-Dump-first ingestion pipeline (B19 · PRD F-007/F-010 · GL-TEMPLATE-SPEC ·
 //! DATABASE-SCHEMA §7).
 //!
 //! Rules this file must never break:
@@ -25,7 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use calamine::{open_workbook_auto, Data, Reader};
 use chrono::NaiveDate;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use rust_decimal::Decimal;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -47,6 +47,9 @@ pub const PARSE_TTL_MS: i64 = 30 * 60 * 1000;
 
 /// Rows the preview table shows (SCREENS-SPEC S-031: "preview table (first 50 rows)").
 const PREVIEW_ROWS: usize = 50;
+
+/// Stable Import Batch history page size (API-SPEC §13 / S-030).
+const HISTORY_PAGE_SIZE: i64 = 25;
 
 /// OLE2 (Compound File) magic — an `.xlsx` that is really an OLE2 container is an ECMA-376
 /// encrypted workbook; Excel writes exactly this for password-protected files.
@@ -74,6 +77,51 @@ const CANONICAL_TARGETS: [&str; 15] = [
 /// The pre-installed "OneFP&A Canonical GL" mapping (GL-TEMPLATE-SPEC §7): a file that already
 /// follows the template needs zero mapping steps — its headers ARE the semantic targets.
 pub const CANONICAL_MAPPING_ID: &str = "canonical";
+
+// `mapping_columns` is the locked two-column persistence surface. These reserved source patterns
+// keep the explicit, versioned normalization/sign policy beside the column map without adding an
+// undocumented table or silently changing the 56-table schema (API-SPEC §11).
+const RULE_ACCOUNT_CODE: &str = "__onefpa_account_code";
+const RULE_DIMENSION_VALUES: &str = "__onefpa_dimension_values";
+const RULE_PERIOD: &str = "__onefpa_period";
+const RULE_SIGN_CONVENTION: &str = "sign_convention";
+const DEFAULT_ACCOUNT_NORMALIZATION: &str = "trim";
+const DEFAULT_DIMENSION_NORMALIZATION: &str = "trim";
+const DEFAULT_PERIOD_NORMALIZATION: &str = "documented";
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingColumnInput {
+    pub source_pattern: String,
+    pub semantic_target: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingNormalizationInput {
+    pub account_code: String,
+    pub dimension_values: String,
+    pub period: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingTemplateInput {
+    pub name: String,
+    pub columns: Vec<MappingColumnInput>,
+    pub sign_convention: String,
+    pub normalization: MappingNormalizationInput,
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedMappingTemplate {
+    name: String,
+    columns: Vec<(String, String)>,
+    sign_convention: String,
+    account_normalization: String,
+    dimension_normalization: String,
+    period_normalization: String,
+}
 
 /* ── Parse sessions ──────────────────────────────────────────────── */
 
@@ -164,7 +212,8 @@ pub struct ParseSession {
     pub encodings: Vec<ParseEncoding>,
     pub headers: Vec<String>,
     /// The whole grid including the header row — re-mapped per `mapping_id`, so the user can
-    /// change the mapping without re-reading the file (streaming persistence is M2-2).
+    /// change the mapping without re-reading the file. It remains ephemeral and in-memory;
+    /// streaming/checkpoint persistence is not implemented.
     pub grid: Vec<Vec<String>>,
     pub created_ms: i64,
 }
@@ -215,6 +264,9 @@ struct Mapping {
     /// Signed-amount sources that store credits positive. An explicit mapping toggle only —
     /// the parser never auto-detects a sign convention (GL-TEMPLATE-SPEC §3).
     credit_positive: bool,
+    account_normalization: String,
+    dimension_normalization: String,
+    period_normalization: String,
 }
 
 fn canonical_mapping() -> Mapping {
@@ -223,45 +275,234 @@ fn canonical_mapping() -> Mapping {
         version: "canonical-v1".to_string(),
         columns: CANONICAL_TARGETS.iter().map(|t| (t.to_string(), t.to_string())).collect(),
         credit_positive: false,
+        account_normalization: DEFAULT_ACCOUNT_NORMALIZATION.to_string(),
+        dimension_normalization: DEFAULT_DIMENSION_NORMALIZATION.to_string(),
+        period_normalization: DEFAULT_PERIOD_NORMALIZATION.to_string(),
     }
+}
+
+fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<ValidatedMappingTemplate> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() || name.chars().count() > 120 {
+        return Err(AppError::map_target_invalid("MAPPING_NAME: expected 1..120 characters"));
+    }
+    if !(3..=15).contains(&input.columns.len()) {
+        return Err(AppError::map_target_invalid("MAPPING_COLUMNS: expected 3..15 columns"));
+    }
+
+    let mut sources = BTreeSet::new();
+    let mut targets = BTreeSet::new();
+    let mut columns = Vec::with_capacity(input.columns.len());
+    for column in input.columns {
+        let source = column.source_pattern.trim().to_lowercase();
+        let target = column.semantic_target;
+        if source.is_empty()
+            || source.chars().count() > 120
+            || source.chars().any(|c| c.is_control())
+            || source == RULE_SIGN_CONVENTION
+            || source.starts_with("__onefpa_")
+        {
+            return Err(AppError::map_target_invalid(format!(
+                "MAPPING_SOURCE_INVALID: {}",
+                column.source_pattern
+            )));
+        }
+        if !CANONICAL_TARGETS.contains(&target.as_str()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_UNKNOWN: {target}")));
+        }
+        if !sources.insert(source.clone()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_SOURCE_DUPLICATE: {source}")));
+        }
+        if !targets.insert(target.clone()) {
+            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_DUPLICATE: {target}")));
+        }
+        columns.push((source, target));
+    }
+    if !targets.contains("period") || !targets.contains("account_code") {
+        return Err(AppError::map_target_invalid(
+            "MAPPING_TARGET_REQUIRED: period and account_code",
+        ));
+    }
+    if !targets.contains("amount")
+        && !(targets.contains("debit") && targets.contains("credit"))
+    {
+        return Err(AppError::map_target_invalid(
+            "MAPPING_AMOUNT_REQUIRED: amount or debit+credit",
+        ));
+    }
+
+    let sign_convention = input.sign_convention;
+    if !["debit_positive", "credit_positive"].contains(&sign_convention.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_SIGN_CONVENTION"));
+    }
+    let account_normalization = input.normalization.account_code;
+    if ![
+        "trim",
+        "trim_collapse_whitespace",
+        "trim_collapse_whitespace_remove_hyphens",
+    ]
+    .contains(&account_normalization.as_str())
+    {
+        return Err(AppError::map_target_invalid("MAPPING_ACCOUNT_NORMALIZATION"));
+    }
+    let dimension_normalization = input.normalization.dimension_values;
+    if !["trim", "trim_collapse_whitespace"].contains(&dimension_normalization.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_DIMENSION_NORMALIZATION"));
+    }
+    let period_normalization = input.normalization.period;
+    if !["documented", "month_name_mmm_yy"].contains(&period_normalization.as_str()) {
+        return Err(AppError::map_target_invalid("MAPPING_PERIOD_NORMALIZATION"));
+    }
+
+    columns.sort();
+    Ok(ValidatedMappingTemplate {
+        name,
+        columns,
+        sign_convention,
+        account_normalization,
+        dimension_normalization,
+        period_normalization,
+    })
+}
+
+fn next_mapping_version(current: Option<&str>) -> AppResult<String> {
+    let number = match current {
+        None => 1_u64,
+        Some(version) => version
+            .strip_prefix('v')
+            .and_then(|value| value.parse::<u64>().ok())
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| AppError::internal(format!("MAPPING_VERSION_CORRUPT: {version}")))?,
+    };
+    Ok(format!("v{number}"))
+}
+
+fn mapping_payload(
+    mapping_id: &str,
+    version: &str,
+    checksum: &str,
+    template: &ValidatedMappingTemplate,
+) -> serde_json::Value {
+    let columns: Vec<serde_json::Value> = template
+        .columns
+        .iter()
+        .map(|(source, target)| {
+            json!({
+                "sourcePattern": source.as_str(),
+                "semanticTarget": target.as_str(),
+            })
+        })
+        .collect();
+    json!({
+        "mappingId": mapping_id,
+        "name": template.name.as_str(),
+        "version": version,
+        "checksum": checksum,
+        "columns": columns,
+        "signConvention": template.sign_convention.as_str(),
+        "normalization": {
+            "accountCode": template.account_normalization.as_str(),
+            "dimensionValues": template.dimension_normalization.as_str(),
+            "period": template.period_normalization.as_str(),
+        },
+    })
+}
+
+fn mapping_checksum(template: &ValidatedMappingTemplate) -> String {
+    // Columns are already source-sorted, and object key order below is fixed, so the same
+    // semantic mapping always hashes to the same SHA-256 on every platform.
+    let material = mapping_payload("", "", "", template).to_string();
+    sha256_hex(material.as_bytes())
 }
 
 /// Resolve `mapping_id` for a Company: the bundled canonical template, or a saved
 /// `mapping_templates` row with its `mapping_columns` (DATABASE-SCHEMA §7).
 fn resolve_mapping(conn: &Connection, company_id: &str, mapping_id: &str) -> AppResult<Mapping> {
     let trimmed = mapping_id.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(CANONICAL_MAPPING_ID) {
+    if trimmed.is_empty() {
+        return Err(AppError::invalid("MAPPING_ID_REQUIRED"));
+    }
+    if trimmed == CANONICAL_MAPPING_ID {
         return Ok(canonical_mapping());
     }
-    let (id, version): (String, String) = conn
+    let (id, name, version, checksum): (String, String, String, String) = conn
         .query_row(
-            "SELECT id, version FROM mapping_templates WHERE id = ?1 AND company_id = ?2",
+            "SELECT id, name, version, checksum FROM mapping_templates
+              WHERE id = ?1 AND company_id = ?2",
             rusqlite::params![trimmed, company_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()
         .map_err(AppError::from)?
         .ok_or_else(|| AppError::invalid(format!("MAPPING_TEMPLATE_NOT_FOUND: {trimmed}")))?;
 
-    let mut columns = HashMap::new();
-    let mut credit_positive = false;
+    let mut persisted_columns = Vec::new();
+    let mut sign_convention = "debit_positive".to_string();
+    let mut account_normalization = DEFAULT_ACCOUNT_NORMALIZATION.to_string();
+    let mut dimension_normalization = DEFAULT_DIMENSION_NORMALIZATION.to_string();
+    let mut period_normalization = DEFAULT_PERIOD_NORMALIZATION.to_string();
     let mut stmt = conn
-        .prepare("SELECT source_pattern, semantic_target FROM mapping_columns WHERE template_id = ?1")
+        .prepare(
+            "SELECT source_pattern, semantic_target FROM mapping_columns WHERE template_id = ?1",
+        )
         .map_err(AppError::from)?;
     let rows = stmt
         .query_map([&id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(AppError::from)?;
     for row in rows {
         let (pattern, target) = row.map_err(AppError::from)?;
-        // `sign_convention` is the mapping's explicit toggle, stored in the same table so no
-        // schema change is needed: `credit_positive` | `debit_positive` (never auto-detected).
-        if pattern.trim().eq_ignore_ascii_case("sign_convention") {
-            credit_positive = target.trim().eq_ignore_ascii_case("credit_positive");
-            continue;
+        match pattern.as_str() {
+            RULE_SIGN_CONVENTION => sign_convention = target,
+            RULE_ACCOUNT_CODE => account_normalization = target,
+            RULE_DIMENSION_VALUES => dimension_normalization = target,
+            RULE_PERIOD => period_normalization = target,
+            _ => persisted_columns.push(MappingColumnInput {
+                source_pattern: pattern,
+                semantic_target: target,
+            }),
         }
-        columns.insert(pattern.trim().to_lowercase(), target.trim().to_lowercase());
     }
-    Ok(Mapping { id, version, columns, credit_positive })
+    let definition = validate_mapping_template(MappingTemplateInput {
+        name,
+        columns: persisted_columns,
+        sign_convention,
+        normalization: MappingNormalizationInput {
+            account_code: account_normalization,
+            dimension_values: dimension_normalization,
+            period: period_normalization,
+        },
+    })
+    .map_err(|_| AppError::file_corrupt())?;
+    if mapping_checksum(&definition) != checksum {
+        return Err(AppError::file_corrupt());
+    }
+    let audited_after: String = conn
+        .query_row(
+            "SELECT COALESCE(after_json, '') FROM audit_events
+              WHERE company_id = ?1 AND action = 'import.map.save_v1'
+                AND object_type = 'mapping_template' AND object_id = ?2
+              ORDER BY seq DESC LIMIT 1",
+            rusqlite::params![company_id, id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::file_corrupt)?;
+    let audited: serde_json::Value =
+        serde_json::from_str(&audited_after).map_err(|_| AppError::file_corrupt())?;
+    if audited != mapping_payload(&id, &version, &checksum, &definition) {
+        return Err(AppError::file_corrupt());
+    }
+
+    Ok(Mapping {
+        id,
+        version,
+        columns: definition.columns.into_iter().collect(),
+        credit_positive: definition.sign_convention == "credit_positive",
+        account_normalization: definition.account_normalization,
+        dimension_normalization: definition.dimension_normalization,
+        period_normalization: definition.period_normalization,
+    })
 }
 
 /// Column index per semantic target for one concrete file (first matching header wins, so
@@ -282,6 +523,65 @@ fn cell_at(row: &[String], idx: &HashMap<String, usize>, target: &str) -> Option
         .and_then(|i| row.get(*i))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_account_code(value: &str, rule: &str) -> String {
+    match rule {
+        "trim_collapse_whitespace" => collapse_whitespace(value),
+        "trim_collapse_whitespace_remove_hyphens" => {
+            collapse_whitespace(value).replace('-', "")
+        }
+        _ => value.trim().to_string(),
+    }
+}
+
+fn normalize_dimension_value(value: &str, rule: &str) -> String {
+    match rule {
+        "trim_collapse_whitespace" => collapse_whitespace(value),
+        _ => value.trim().to_string(),
+    }
+}
+
+fn normalize_period_value(value: &str, rule: &str) -> String {
+    let trimmed = value.trim();
+    if rule != "month_name_mmm_yy" {
+        return trimmed.to_string();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if !matches!(chars.len(), 5 | 7)
+        || !chars[..3].iter().all(|c| c.is_ascii_alphabetic())
+        || !chars[3..].iter().all(|c| c.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
+    let month_name: String = chars[..3].iter().collect::<String>().to_ascii_uppercase();
+    let month = match month_name.as_str() {
+        "JAN" => 1,
+        "FEB" => 2,
+        "MAR" => 3,
+        "APR" => 4,
+        "MAY" => 5,
+        "JUN" => 6,
+        "JUL" => 7,
+        "AUG" => 8,
+        "SEP" => 9,
+        "OCT" => 10,
+        "NOV" => 11,
+        "DEC" => 12,
+        _ => return trimmed.to_string(),
+    };
+    let year_text: String = chars[3..].iter().collect();
+    let Ok(mut year) = year_text.parse::<i32>() else {
+        return trimmed.to_string();
+    };
+    if year_text.len() == 2 {
+        year += 2000;
+    }
+    format!("{year:04}-{month:02}")
 }
 
 /* ── Text / number normalisation (the only place a source value becomes data) ── */
@@ -633,17 +933,28 @@ fn prepare_rows(session: &ParseSession, mapping: &Mapping) -> AppResult<Vec<Sour
         }
         rows.push(SourceRow {
             line_no: (i + 1) as i64, // physical row: the header is row 1
-            period: cell_at(cells, &idx, "period").unwrap_or_default(),
-            account_code: cell_at(cells, &idx, "account_code").unwrap_or_default(),
+            period: normalize_period_value(
+                &cell_at(cells, &idx, "period").unwrap_or_default(),
+                &mapping.period_normalization,
+            ),
+            account_code: normalize_account_code(
+                &cell_at(cells, &idx, "account_code").unwrap_or_default(),
+                &mapping.account_normalization,
+            ),
             account_name: cell_at(cells, &idx, "account_name").unwrap_or_default(),
             debit: cell_at(cells, &idx, "debit"),
             credit: cell_at(cells, &idx, "credit"),
             amount: cell_at(cells, &idx, "amount"),
-            cost_center: cell_at(cells, &idx, "cost_center"),
-            project: cell_at(cells, &idx, "project"),
-            product: cell_at(cells, &idx, "product"),
-            customer: cell_at(cells, &idx, "customer"),
-            business_unit: cell_at(cells, &idx, "business_unit"),
+            cost_center: cell_at(cells, &idx, "cost_center")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            project: cell_at(cells, &idx, "project")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            product: cell_at(cells, &idx, "product")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            customer: cell_at(cells, &idx, "customer")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
+            business_unit: cell_at(cells, &idx, "business_unit")
+                .map(|value| normalize_dimension_value(&value, &mapping.dimension_normalization)),
             intercompany_tag: cell_at(cells, &idx, "intercompany_tag"),
             currency: cell_at(cells, &idx, "currency"),
             posting_ref: cell_at(cells, &idx, "posting_ref"),
@@ -693,10 +1004,12 @@ impl RowIssue {
     }
 
     fn to_json(&self) -> serde_json::Value {
+        // IPC-SCHEMA / API-SPEC lock the wire contract to snake_case. Keep this authored
+        // explicitly rather than relying on a serializer rename convention.
         json!({
             "code": self.code,
             "message": self.message,
-            "lineNo": self.line_no,
+            "line_no": self.line_no,
             "details": self.details,
         })
     }
@@ -727,6 +1040,25 @@ struct BuildResult {
     hard: Vec<RowIssue>,
     warnings: Vec<RowIssue>,
     preview: Vec<serde_json::Value>,
+}
+
+fn mapped_preview_row(line: &MappedLine, account_code: &str) -> serde_json::Value {
+    // IPC-SCHEMA / API-SPEC lock this read model to snake_case. The preview is derived only
+    // from a line that passed every HARD row check; raw source rows never leak into it.
+    json!({
+        "line_no": line.line_no,
+        "period_id": line.period_id,
+        "account_id": line.account_id,
+        "account_code": account_code,
+        "business_unit_id": line.bu_id,
+        "amount_minor": line.amount_minor,
+        "debit_minor": line.debit_minor,
+        "credit_minor": line.credit_minor,
+        "currency": line.currency_code,
+        "posting_ref": line.posting_ref,
+        "doc_type": line.doc_type,
+        "is_ic": line.is_ic,
+    })
 }
 
 /// `YYYY-MM` / `YYYYMM` → month · `YYYYMMDD` / ISO / `DD.MM.YYYY` → exact day ·
@@ -847,9 +1179,9 @@ fn query_account_ids(
 /// Resolve `account_code` → `accounts.id`.
 ///
 /// Precedence: the row's own BU → the shared (`bu_id IS NULL`) account → nothing. Another BU's
-/// account is never borrowed (that is a missing account, offered as "create from name
-/// (confirmed)" — GL-TEMPLATE-SPEC §6). Two candidates in the winning scope are ambiguous and
-/// are reported with the candidate list, never auto-picked.
+/// account is never borrowed. A missing account is reported for source/mapping correction; this
+/// command does not invent an account-creation or per-row remap action. Two candidates in the
+/// winning scope are reported with the candidate list, never auto-picked.
 fn resolve_account(
     conn: &Connection,
     company_id: &str,
@@ -1040,13 +1372,25 @@ fn build_lines(
                 continue;
             }
         };
-        let (amount_minor, debit_minor, credit_minor) = match (debit, credit, signed) {
+        if debit.is_some_and(|value| value < 0) || credit.is_some_and(|value| value < 0) {
+            hard.push(RowIssue::row(
+                "VALUE_INVALID",
+                "DEBIT_CREDIT_NEGATIVE: use non-negative debit/credit columns or a signed amount column",
+                row.line_no,
+                json!({ "debit": row.debit, "credit": row.credit }),
+            ));
+            continue;
+        }
+        let amount_parts = match (debit, credit, signed) {
             // Debit/Credit columns → signed amount = debit − credit (GL-TEMPLATE-SPEC §3).
-            (Some(d), Some(c), _) => (d - c, Some(d), Some(c)),
-            (Some(d), None, _) => (d, Some(d), None),
-            (None, Some(c), _) => (-c, None, Some(c)),
+            (Some(d), Some(c), _) => d.checked_sub(c).map(|amount| (amount, Some(d), Some(c))),
+            (Some(d), None, _) => Some((d, Some(d), None)),
+            (None, Some(c), _) => c.checked_neg().map(|amount| (amount, None, Some(c))),
             // Signed amount: the mapping's explicit sign toggle decides, never a guess.
-            (None, None, Some(a)) => (if mapping.credit_positive { -a } else { a }, None, None),
+            (None, None, Some(a)) if mapping.credit_positive => {
+                a.checked_neg().map(|amount| (amount, None, None))
+            }
+            (None, None, Some(a)) => Some((a, None, None)),
             (None, None, None) => {
                 hard.push(RowIssue::row(
                     "VALUE_INVALID",
@@ -1056,6 +1400,15 @@ fn build_lines(
                 ));
                 continue;
             }
+        };
+        let Some((amount_minor, debit_minor, credit_minor)) = amount_parts else {
+            hard.push(RowIssue::row(
+                "VALUE_INVALID",
+                "AMOUNT_OVERFLOW: normalized signed amount exceeds i64 minor-unit range",
+                row.line_no,
+                json!({}),
+            ));
+            continue;
         };
 
         let bu_id = match row.business_unit.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
@@ -1101,7 +1454,7 @@ fn build_lines(
                 hard.push(RowIssue::row(
                     "MAP_ACCOUNT_AMBIGUOUS",
                     format!(
-                        "ACCOUNT_MISSING: '{}' is not in the COA — create it from the name (confirmed) or map the row (GL-TEMPLATE-SPEC §6)",
+                        "ACCOUNT_MISSING: '{}' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
                         row.account_code
                     ),
                     row.line_no,
@@ -1183,8 +1536,8 @@ fn build_lines(
                 dims.insert(key.to_string(), json!(v));
             }
         }
-        // Dimension *value ids* are resolved by the dimension-master import (M2-5); the
-        // canonical keys are stored verbatim so nothing is lost in the meantime.
+        // Dimension *value ids* are resolved by the dimension-master import (M2-5); canonical
+        // keys retain the explicitly normalized text so nothing is silently guessed.
         let dims_json = serde_json::Value::Object(dims).to_string();
 
         currencies.insert(currency.clone());
@@ -1204,20 +1557,7 @@ fn build_lines(
             ic: ic.clone(),
         };
         if preview.len() < PREVIEW_ROWS {
-            preview.push(json!({
-                "lineNo": line.line_no,
-                "periodId": line.period_id,
-                "accountId": line.account_id,
-                "accountCode": row.account_code.clone(),
-                "businessUnitId": line.bu_id,
-                "amountMinor": line.amount_minor,
-                "debitMinor": line.debit_minor,
-                "creditMinor": line.credit_minor,
-                "currency": line.currency_code,
-                "postingRef": line.posting_ref,
-                "docType": line.doc_type,
-                "isIc": line.is_ic,
-            }));
+            preview.push(mapped_preview_row(&line, &row.account_code));
         }
         lines.push(line);
     }
@@ -1272,7 +1612,7 @@ fn build_lines(
 /// Diff rows are attributed **only** through `posting_ref`: a journal entry balances to zero, so
 /// an unbalanced reference names its own rows. Without a reference the difference is reported in
 /// the totals alone — never spread onto arbitrary rows (M5 attribution honesty).
-fn tie_out(lines: &[MappedLine]) -> (i64, i64, Vec<serde_json::Value>) {
+fn tie_out(lines: &[MappedLine]) -> AppResult<(i64, i64, Vec<serde_json::Value>)> {
     let mut debits: i64 = 0;
     let mut credits: i64 = 0;
     let mut groups: BTreeMap<String, (i64, Vec<usize>)> = BTreeMap::new();
@@ -1283,13 +1623,24 @@ fn tie_out(lines: &[MappedLine]) -> (i64, i64, Vec<serde_json::Value>) {
             (Some(d), None) => (d, 0),
             (None, Some(c)) => (0, c),
             (None, None) if line.amount_minor >= 0 => (line.amount_minor, 0),
-            (None, None) => (0, -line.amount_minor),
+            (None, None) => (
+                0,
+                line.amount_minor.checked_neg().ok_or_else(|| {
+                    AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: signed credit exceeds i64")
+                })?,
+            ),
         };
-        debits += d;
-        credits += c;
+        debits = debits
+            .checked_add(d)
+            .ok_or_else(|| AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: debit total exceeds i64"))?;
+        credits = credits
+            .checked_add(c)
+            .ok_or_else(|| AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: credit total exceeds i64"))?;
         if let Some(reference) = line.posting_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
             let entry = groups.entry(reference.to_string()).or_insert((0, Vec::new()));
-            entry.0 += line.amount_minor;
+            entry.0 = entry.0.checked_add(line.amount_minor).ok_or_else(|| {
+                AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: posting-reference residual exceeds i64")
+            })?;
             entry.1.push(i);
         }
     }
@@ -1302,18 +1653,19 @@ fn tie_out(lines: &[MappedLine]) -> (i64, i64, Vec<serde_json::Value>) {
             }
             for idx in members {
                 let line = &lines[*idx];
+                // IPC-SCHEMA / API-SPEC lock the Tie-Out row to snake_case.
                 diff_rows.push(json!({
-                    "lineNo": line.line_no,
-                    "postingRef": reference,
-                    "debitMinor": line.debit_minor,
-                    "creditMinor": line.credit_minor,
-                    "amountMinor": line.amount_minor,
-                    "residualMinor": residual,
+                    "line_no": line.line_no,
+                    "posting_ref": reference,
+                    "debit_minor": line.debit_minor,
+                    "credit_minor": line.credit_minor,
+                    "amount_minor": line.amount_minor,
+                    "residual_minor": residual,
                 }));
             }
         }
     }
-    (debits, credits, diff_rows)
+    Ok((debits, credits, diff_rows))
 }
 
 fn batch_currency(lines: &[MappedLine], fallback: &str) -> String {
@@ -1446,7 +1798,163 @@ pub fn import_parse(
     }))
 }
 
-/// `import.validate` — {parse_id, mapping_id} → {hard[], warnings[], preview[]}.
+fn persist_mapping(
+    conn: &mut Connection,
+    company_id: &str,
+    key: &[u8],
+    template: &ValidatedMappingTemplate,
+) -> AppResult<(String, String)> {
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(AppError::from)?;
+    let existing: Option<(String, String, String)> = tx
+        .query_row(
+            "SELECT id, version, checksum FROM mapping_templates
+              WHERE company_id = ?1 AND name = ?2",
+            rusqlite::params![company_id, template.name.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if let Some((existing_id, _, _)) = existing.as_ref() {
+        // Never overwrite (and thereby launder) a materialized mapping that no longer matches
+        // its immutable audit definition. The IMMEDIATE transaction holds the write lock.
+        resolve_mapping(&tx, company_id, existing_id)?;
+    }
+    let mapping_id = existing
+        .as_ref()
+        .map(|(id, _, _)| id.clone())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let version = next_mapping_version(existing.as_ref().map(|(_, version, _)| version.as_str()))?;
+    let checksum = mapping_checksum(template);
+
+    let before_json = if let Some((id, old_version, old_checksum)) = existing.as_ref() {
+        let rows = {
+            let mut statement = tx
+                .prepare(
+                    "SELECT source_pattern, semantic_target FROM mapping_columns
+                      WHERE template_id = ?1 ORDER BY source_pattern",
+                )
+                .map_err(AppError::from)?;
+            let mapped = statement
+                .query_map([id], |row| {
+                    Ok(json!({
+                        "sourcePattern": row.get::<_, String>(0)?,
+                        "semanticTarget": row.get::<_, String>(1)?,
+                    }))
+                })
+                .map_err(AppError::from)?;
+            mapped.collect::<Result<Vec<_>, _>>().map_err(AppError::from)?
+        };
+        Some(
+            json!({
+                "mappingId": id,
+                "name": template.name.as_str(),
+                "version": old_version,
+                "checksum": old_checksum,
+                "persistedRows": rows,
+            })
+            .to_string(),
+        )
+    } else {
+        None
+    };
+
+    if existing.is_some() {
+        tx.execute(
+            "UPDATE mapping_templates SET version = ?1, checksum = ?2
+              WHERE id = ?3 AND company_id = ?4",
+            rusqlite::params![
+                version.as_str(),
+                checksum.as_str(),
+                mapping_id.as_str(),
+                company_id,
+            ],
+        )
+        .map_err(AppError::from)?;
+        tx.execute(
+            "DELETE FROM mapping_columns WHERE template_id = ?1",
+            [mapping_id.as_str()],
+        )
+        .map_err(AppError::from)?;
+    } else {
+        tx.execute(
+            "INSERT INTO mapping_templates (id, company_id, name, version, checksum)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                mapping_id.as_str(),
+                company_id,
+                template.name.as_str(),
+                version.as_str(),
+                checksum.as_str(),
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
+    let mut persisted = template.columns.clone();
+    persisted.extend([
+        (RULE_SIGN_CONVENTION.to_string(), template.sign_convention.clone()),
+        (RULE_ACCOUNT_CODE.to_string(), template.account_normalization.clone()),
+        (RULE_DIMENSION_VALUES.to_string(), template.dimension_normalization.clone()),
+        (RULE_PERIOD.to_string(), template.period_normalization.clone()),
+    ]);
+    for (source, target) in persisted {
+        tx.execute(
+            "INSERT INTO mapping_columns (id, template_id, source_pattern, semantic_target)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                Uuid::new_v4().to_string(),
+                mapping_id.as_str(),
+                source,
+                target,
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
+    let after_json = mapping_payload(&mapping_id, &version, &checksum, template).to_string();
+    let previous_hash = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(key, &previous_hash, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
+                                   before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'import.map.save_v1', 'mapping_template', ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            company_id,
+            mapping_id.as_str(),
+            before_json,
+            after_json,
+            previous_hash,
+            hash,
+            chrono::Utc::now().to_rfc3339(),
+        ],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+    Ok((mapping_id, version))
+}
+
+/// `import.map.save_v1` — save or version-bump a Company mapping. The current row is replaced,
+/// while the full before/after definitions are retained in the HMAC audit chain and committed
+/// atomically with the mapping rows (API-SPEC §11; B18-1).
+#[tauri::command(name = "import.map.save_v1", rename_all = "snake_case")]
+pub fn import_map_save_v1(
+    app: tauri::AppHandle,
+    template: MappingTemplateInput,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let template = validate_mapping_template(template)?;
+    let dir = app_data_dir(&app)?;
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let (mapping_id, version) = persist_mapping(&mut conn, &company_id, &key, &template)?;
+    Ok(json!({ "data": { "mapping_id": mapping_id, "version": version } }))
+}
+
+/// `import.validate` — {parse_id, mapping_id} →
+/// {hard[], warnings[], preview[≤50], rows, mapping_version}.
 #[tauri::command(name = "import.validate", rename_all = "snake_case")]
 pub fn import_validate(
     app: tauri::AppHandle,
@@ -1501,7 +2009,10 @@ pub fn import_tieout(
     let mapping = resolve_mapping(&conn, &company_id, &mapping_id)?;
     let rows = prepare_rows(&parsed, &mapping)?;
     let built = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &HashSet::new())?;
-    let (debits_minor, credits_minor, diff_rows) = tie_out(&built.lines);
+    if let Some(first) = built.hard.first() {
+        return Err(issue_to_error(first));
+    }
+    let (debits_minor, credits_minor, diff_rows) = tie_out(&built.lines)?;
 
     Ok(json!({
         "data": {
@@ -1518,9 +2029,50 @@ pub fn import_tieout(
 /// `import.commit` — {parse_id, mapping_id, name, exclusions[]} → the committed batch summary
 /// (API-SPEC §4). The Tie-Out gate and the duplicate-source hash gate live here.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Exclusion {
     pub line_no: i64,
     pub reason: String,
+}
+
+fn validate_exclusions(
+    exclusions: &[Exclusion],
+    known_lines: &HashSet<i64>,
+    attributable_lines: &HashSet<i64>,
+) -> AppResult<HashSet<i64>> {
+    let mut excluded = HashSet::new();
+    for exclusion in exclusions {
+        let reason = exclusion.reason.trim();
+        if reason.is_empty() {
+            return Err(AppError::invalid(
+                "EXCLUSION_REASON_REQUIRED: every excluded row needs a reason",
+            ));
+        }
+        if reason.chars().count() > 500 {
+            return Err(AppError::invalid(
+                "EXCLUSION_REASON_TOO_LONG: at most 500 characters",
+            ));
+        }
+        if !known_lines.contains(&exclusion.line_no) {
+            return Err(AppError::invalid(format!(
+                "EXCLUSION_LINE_NOT_FOUND: row {} is not in this file",
+                exclusion.line_no
+            )));
+        }
+        if !excluded.insert(exclusion.line_no) {
+            return Err(AppError::invalid(format!(
+                "EXCLUSION_DUPLICATE_LINE: row {} was selected more than once",
+                exclusion.line_no
+            )));
+        }
+        if !attributable_lines.contains(&exclusion.line_no) {
+            return Err(AppError::invalid(format!(
+                "EXCLUSION_LINE_NOT_ATTRIBUTABLE: row {} was not named by the authoritative Tie-Out",
+                exclusion.line_no
+            )));
+        }
+    }
+    Ok(excluded)
 }
 
 #[tauri::command(name = "import.commit", rename_all = "snake_case")]
@@ -1554,31 +2106,40 @@ pub fn import_commit(
     let mapping = resolve_mapping(&conn, &company_id, &mapping_id)?;
     let rows = prepare_rows(&parsed, &mapping)?;
 
-    // Exclusions are validated against the real source rows and applied BEFORE validation:
-    // an excluded row is out of the batch, so its own problems can never block the commit
-    // (GL-TEMPLATE-SPEC §6 "import blocked until excluded").
-    let known: HashSet<i64> = rows.iter().map(|r| r.line_no).collect();
-    let mut excluded: HashSet<i64> = HashSet::new();
-    for exclusion in &exclusions {
-        if exclusion.reason.trim().is_empty() {
-            return Err(AppError::invalid("EXCLUSION_REASON_REQUIRED: every excluded row needs a reason"));
-        }
-        if !known.contains(&exclusion.line_no) {
-            return Err(AppError::invalid(format!(
-                "EXCLUSION_LINE_NOT_FOUND: row {} is not in this file",
-                exclusion.line_no
-            )));
-        }
-        excluded.insert(exclusion.line_no);
+    // Commit never trusts the browser's exclusion list. First reproduce the clean validation and
+    // authoritative Tie-Out over the complete mapped working set. Only physical source rows named
+    // by that Tie-Out may then be excluded; arbitrary balanced pairs can never be removed through
+    // a crafted IPC request.
+    let baseline = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &HashSet::new())?;
+    if let Some(first) = baseline.hard.first() {
+        return Err(issue_to_error(first));
     }
+    let (_, _, baseline_diff_rows) = tie_out(&baseline.lines)?;
+    let attributable_lines: HashSet<i64> = baseline_diff_rows
+        .iter()
+        .filter_map(|row| row.get("line_no").and_then(serde_json::Value::as_i64))
+        .collect();
+    let known_lines: HashSet<i64> = rows.iter().map(|row| row.line_no).collect();
+    let excluded = validate_exclusions(&exclusions, &known_lines, &attributable_lines)?;
 
-    let built = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &excluded)?;
+    // Rebuild after authoritative exclusions so validation and exact Tie-Out are both rerun over
+    // precisely the rows that would be persisted. Reuse the baseline when there is no exclusion.
+    let built = if excluded.is_empty() {
+        baseline
+    } else {
+        build_lines(&conn, &company, &rows, parsed.kind, &mapping, &excluded)?
+    };
     if let Some(first) = built.hard.first() {
         return Err(issue_to_error(first));
     }
-    let (debits_minor, credits_minor, diff_rows) = tie_out(&built.lines);
+    if built.lines.is_empty() {
+        return Err(AppError::invalid(
+            "BATCH_EMPTY_AFTER_EXCLUSIONS: at least one valid row is required",
+        ));
+    }
+    let (debits_minor, credits_minor, diff_rows) = tie_out(&built.lines)?;
+    let currency = batch_currency(&built.lines, &company.default_currency);
     if debits_minor != credits_minor {
-        let currency = batch_currency(&built.lines, &company.default_currency);
         return Err(AppError::import_tie_out_failed(
             debits_minor,
             credits_minor,
@@ -1586,8 +2147,12 @@ pub fn import_commit(
             json!(diff_rows),
         ));
     }
-    // Duplicate-source guard (ERROR-HANDLING: 409, the user confirms a deliberate re-import).
-    let existing: Option<String> = conn
+    // Duplicate-source guard and insert share one immediate transaction: concurrent commits of the
+    // same source cannot both pass the hash check.
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(AppError::from)?;
+    let existing: Option<String> = tx
         .query_row(
             "SELECT id FROM import_batches WHERE company_id = ?1 AND source_hash = ?2 LIMIT 1",
             rusqlite::params![company_id, parsed.source_hash],
@@ -1603,9 +2168,8 @@ pub fn import_commit(
     let now = chrono::Utc::now().to_rfc3339();
     let row_count = built.lines.len() as i64;
     // Excluded rows are logged, never dropped in silence (GL-TEMPLATE-SPEC §3).
-    let tie_out_status = if exclusions.is_empty() { "pass" } else { "excluded_rows_logged" };
+    let tie_out_status = if excluded.is_empty() { "pass" } else { "excluded_rows_logged" };
 
-    let tx = conn.transaction().map_err(AppError::from)?;
     tx.execute(
         "INSERT INTO import_batches (id, company_id, kind, source_name, source_hash,
                                      mapping_version, status, row_count, debits_minor,
@@ -1684,6 +2248,7 @@ pub fn import_commit(
         "rows": row_count,
         "debitsMinor": debits_minor,
         "creditsMinor": credits_minor,
+        "currency": currency,
         "tieOutStatus": tie_out_status,
         "sourceHash": parsed.source_hash,
         "sourceName": parsed.source_name,
@@ -1713,10 +2278,135 @@ pub fn import_commit(
             "credits_minor": credits_minor,
             "tie_out_status": tie_out_status,
             "audit_id": audit_id,
-            "excluded_rows": exclusions.len() as i64,
+            "excluded_rows": excluded.len() as i64,
             "source_hash": parsed.source_hash,
         }
     }))
+}
+
+fn import_history_data(
+    conn: &Connection,
+    company_id: &str,
+    page: i64,
+) -> AppResult<serde_json::Value> {
+    if page < 1 {
+        return Err(AppError::invalid("HISTORY_PAGE_INVALID: page starts at 1"));
+    }
+    let offset = page
+        .checked_sub(1)
+        .and_then(|value| value.checked_mul(HISTORY_PAGE_SIZE))
+        .ok_or_else(|| AppError::invalid("HISTORY_PAGE_INVALID: page is too large"))?;
+    let total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM import_batches
+              WHERE company_id = ?1 AND status IN ('committed', 'rolled_back')",
+            [company_id],
+            |row| row.get(0),
+        )
+        .map_err(AppError::from)?;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        total
+            .checked_add(HISTORY_PAGE_SIZE - 1)
+            .ok_or_else(|| AppError::invalid("HISTORY_TOTAL_OVERFLOW"))?
+            / HISTORY_PAGE_SIZE
+    };
+    let mut stmt = conn
+        .prepare(
+            "SELECT id,
+                    COALESCE(
+                        (SELECT json_extract(a.after_json, '$.name')
+                           FROM audit_events a
+                          WHERE a.company_id = import_batches.company_id
+                            AND a.object_type = 'import_batch'
+                            AND a.object_id = import_batches.id
+                            AND a.action = 'import.commit'
+                          ORDER BY a.seq DESC
+                          LIMIT 1),
+                        source_name
+                    ) AS name,
+                    kind, source_name, source_hash, mapping_version, status, row_count,
+                    COALESCE(
+                        (SELECT json_extract(a.after_json, '$.currency')
+                           FROM audit_events a
+                          WHERE a.company_id = import_batches.company_id
+                            AND a.object_type = 'import_batch'
+                            AND a.object_id = import_batches.id
+                            AND a.action = 'import.commit'
+                          ORDER BY a.seq DESC
+                          LIMIT 1),
+                        (SELECT default_currency_code
+                           FROM companies
+                          WHERE id = import_batches.company_id)
+                    ) AS currency,
+                    debits_minor, credits_minor, tie_out_status, rollback_to_batch_id,
+                    committed_at, created_at
+               FROM import_batches
+              WHERE company_id = ?1 AND status IN ('committed', 'rolled_back')
+              ORDER BY COALESCE(committed_at, created_at) DESC, id DESC
+              LIMIT ?2 OFFSET ?3",
+        )
+        .map_err(AppError::from)?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![company_id, HISTORY_PAGE_SIZE, offset],
+            |row| {
+                Ok(json!({
+                    "batch_id": row.get::<_, String>(0)?,
+                    "name": row.get::<_, String>(1)?,
+                    "kind": row.get::<_, String>(2)?,
+                    "source_name": row.get::<_, String>(3)?,
+                    "source_hash": row.get::<_, String>(4)?,
+                    "mapping_version": row.get::<_, String>(5)?,
+                    "status": row.get::<_, String>(6)?,
+                    "rows": row.get::<_, i64>(7)?,
+                    "currency": row.get::<_, String>(8)?,
+                    "debits_minor": row.get::<_, i64>(9)?,
+                    "credits_minor": row.get::<_, i64>(10)?,
+                    "tie_out_status": row.get::<_, String>(11)?,
+                    "rollback_to_batch_id": row.get::<_, Option<String>>(12)?,
+                    "committed_at": row.get::<_, String>(13)?,
+                    "created_at": row.get::<_, String>(14)?,
+                }))
+            },
+        )
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+    Ok(json!({
+        "rows": rows,
+        "meta": {
+            "page": page,
+            "page_size": HISTORY_PAGE_SIZE,
+            "total": total,
+            "total_pages": total_pages,
+        }
+    }))
+}
+
+/// `import.history` — the persistent Company-scoped Import Batch read side used by S-030.
+#[tauri::command(name = "import.history", rename_all = "snake_case")]
+pub fn import_history(
+    app: tauri::AppHandle,
+    company_id: String,
+    page: i64,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let active_company_id = require_unlocked(&session)?;
+    if company_id != active_company_id {
+        return Err(AppError::invalid(
+            "HISTORY_COMPANY_MISMATCH: open the requested Company first",
+        ));
+    }
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    // Keep count, page rows, and audit-backed metadata on one SQLite read snapshot so a concurrent
+    // commit cannot produce pagination metadata from a different database state.
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let data = import_history_data(&tx, &company_id, page)?;
+    tx.commit().map_err(AppError::from)?;
+    Ok(json!({ "data": data }))
 }
 
 /// `import.rollback` — {batch_id, reason} → {rolled_back_to}. Excises the batch's rows so the
@@ -1740,27 +2430,38 @@ pub fn import_rollback(
 
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir).map_err(AppError::from)?;
-    let found: Option<String> = conn
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(AppError::from)?;
+    let found: Option<(String, String, String)> = tx
         .query_row(
-            "SELECT status FROM import_batches WHERE id = ?1 AND company_id = ?2",
+            "SELECT status, kind, COALESCE(committed_at, created_at)
+               FROM import_batches WHERE id = ?1 AND company_id = ?2",
             rusqlite::params![batch_id, company_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()
         .map_err(AppError::from)?;
-    let status = found.ok_or_else(|| AppError::invalid(format!("BATCH_NOT_FOUND: {batch_id}")))?;
+    let (status, kind, committed_at) =
+        found.ok_or_else(|| AppError::invalid(format!("BATCH_NOT_FOUND: {batch_id}")))?;
     if status == "rolled_back" {
         return Err(AppError::batch_already_rolled_back());
     }
+    if status != "committed" {
+        return Err(AppError::invalid(format!(
+            "BATCH_NOT_COMMITTED: batch {batch_id} has status {status}"
+        )));
+    }
 
-    let tx = conn.transaction().map_err(AppError::from)?;
-    // The batch the Company's Actuals fall back to once this one is excised; NULL when this
-    // was the only committed batch — i.e. the Company returns to "no Actuals".
+    // Rollback lineage stays in the same import stream and strictly precedes the target. A newer
+    // unrelated batch is never misreported as the fallback.
     let previous: Option<String> = tx
         .query_row(
-            "SELECT id FROM import_batches WHERE company_id = ?1 AND id != ?2 AND status = 'committed'
-              ORDER BY COALESCE(committed_at, created_at) DESC LIMIT 1",
-            rusqlite::params![company_id, batch_id],
+            "SELECT id FROM import_batches
+              WHERE company_id = ?1 AND id != ?2 AND kind = ?3 AND status = 'committed'
+                AND COALESCE(committed_at, created_at) < ?4
+              ORDER BY COALESCE(committed_at, created_at) DESC, id DESC LIMIT 1",
+            rusqlite::params![company_id, batch_id, kind, committed_at],
             |r| r.get(0),
         )
         .optional()
@@ -1806,6 +2507,7 @@ pub fn import_rollback(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::audit::GENESIS_HASH;
 
     /* ── import.parse path resolution (demo asset fallback) ── */
 
@@ -1978,6 +2680,246 @@ mod tests {
     }
 
     #[test]
+    fn validation_wire_rows_use_the_locked_snake_case_contract() {
+        let issue = RowIssue::row(
+            "VALUE_INVALID",
+            "POSTING_REF_DUPLICATE: 'JE-1' first seen on row 2",
+            3,
+            json!({ "postingRef": "JE-1", "firstLineNo": 2 }),
+        )
+        .to_json();
+        assert_eq!(issue["line_no"], 3);
+        assert!(issue.get("lineNo").is_none());
+
+        let mut mapped = line(-635_000_000, Some("JE-1"));
+        mapped.line_no = 3;
+        mapped.credit_minor = Some(635_000_000);
+        let preview = mapped_preview_row(&mapped, "4000");
+        assert_eq!(
+            preview,
+            json!({
+                "line_no": 3,
+                "period_id": "fp-1",
+                "account_id": "a-1",
+                "account_code": "4000",
+                "business_unit_id": null,
+                "amount_minor": -635_000_000,
+                "debit_minor": null,
+                "credit_minor": 635_000_000,
+                "currency": "USD",
+                "posting_ref": "JE-1",
+                "doc_type": null,
+                "is_ic": false,
+            })
+        );
+        for camel_key in [
+            "lineNo",
+            "periodId",
+            "accountId",
+            "accountCode",
+            "businessUnitId",
+            "amountMinor",
+            "debitMinor",
+            "creditMinor",
+            "postingRef",
+            "docType",
+            "isIc",
+        ] {
+            assert!(preview.get(camel_key).is_none(), "wire key drifted to {camel_key}");
+        }
+    }
+
+    fn validation_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE fiscal_calendars (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 name TEXT NOT NULL,
+                 preset TEXT NOT NULL
+             );
+             CREATE TABLE fiscal_years (
+                 id TEXT PRIMARY KEY,
+                 calendar_id TEXT NOT NULL,
+                 fy_label TEXT NOT NULL
+             );
+             CREATE TABLE fiscal_periods (
+                 id TEXT PRIMARY KEY,
+                 fiscal_year_id TEXT NOT NULL,
+                 period_no INTEGER NOT NULL,
+                 code TEXT NOT NULL,
+                 start_date TEXT NOT NULL,
+                 end_date TEXT NOT NULL
+             );
+             CREATE TABLE accounts (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 bu_id TEXT,
+                 code TEXT NOT NULL,
+                 active INTEGER NOT NULL,
+                 version INTEGER NOT NULL
+             );
+             CREATE TABLE business_units (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 name TEXT NOT NULL
+             );
+             CREATE TABLE import_batches (
+                 id TEXT PRIMARY KEY,
+                 company_id TEXT NOT NULL,
+                 kind TEXT NOT NULL,
+                 status TEXT NOT NULL
+             );
+             INSERT INTO fiscal_calendars VALUES ('cal-1','company-1','Default','12month');
+             INSERT INTO fiscal_years VALUES ('fy-1','cal-1','FY2026');
+             INSERT INTO fiscal_periods VALUES (
+                 'fp-2026-p08','fy-1',8,'P08','2026-08-01','2026-08-31'
+             );
+             INSERT INTO accounts VALUES ('account-4000','company-1',NULL,'4000',1,1);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn validation_company() -> CompanyCtx {
+        CompanyCtx {
+            id: "company-1".into(),
+            kind: "operating".into(),
+            default_currency: "USD".into(),
+            calendar_preset: "12month".into(),
+        }
+    }
+
+    fn validation_source_row(
+        line_no: i64,
+        period: &str,
+        account_code: &str,
+        posting_ref: Option<String>,
+    ) -> SourceRow {
+        SourceRow {
+            line_no,
+            period: period.into(),
+            account_code: account_code.into(),
+            account_name: String::new(),
+            debit: Some("1.00".into()),
+            credit: None,
+            amount: None,
+            cost_center: None,
+            project: None,
+            product: None,
+            customer: None,
+            business_unit: None,
+            intercompany_tag: None,
+            currency: None,
+            posting_ref,
+            doc_type: None,
+        }
+    }
+
+    #[test]
+    fn validation_returns_only_valid_lines_and_caps_the_preview_at_fifty() {
+        let conn = validation_connection();
+        let rows: Vec<SourceRow> = (0..52)
+            .map(|index| {
+                validation_source_row(
+                    index + 2,
+                    "2026-08",
+                    "4000",
+                    Some(format!("JE-{index}")),
+                )
+            })
+            .collect();
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::GlDump,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.lines.len(), 52);
+        assert!(built.hard.is_empty());
+        assert!(built.warnings.is_empty());
+        assert_eq!(built.preview.len(), PREVIEW_ROWS);
+        assert_eq!(built.preview.first().unwrap()["line_no"], 2);
+        assert_eq!(built.preview.last().unwrap()["line_no"], 51);
+        assert_eq!(built.preview.first().unwrap()["amount_minor"], 100);
+    }
+
+    #[test]
+    fn validation_rejects_negative_columns_and_signed_amount_overflow() {
+        let conn = validation_connection();
+        let mut negative = validation_source_row(2, "2026-08", "4000", None);
+        negative.debit = Some("-1.00".into());
+        let mut minimum = validation_source_row(3, "2026-08", "4000", None);
+        minimum.debit = None;
+        minimum.amount = Some("-92233720368547758.08".into());
+        let mut mapping = canonical_mapping();
+        mapping.credit_positive = true;
+
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &[negative, minimum],
+            ImportKind::GlDump,
+            &mapping,
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert!(built.lines.is_empty());
+        assert_eq!(built.hard.len(), 2);
+        assert!(built.hard.iter().all(|issue| issue.code == "VALUE_INVALID"));
+        assert!(built.hard[0].message.starts_with("DEBIT_CREDIT_NEGATIVE:"));
+        assert!(built.hard[1].message.starts_with("AMOUNT_OVERFLOW:"));
+    }
+
+    #[test]
+    fn validation_separates_row_batch_and_warning_findings_without_fake_remediation() {
+        let conn = validation_connection();
+        let mut eur = validation_source_row(6, "2026-08", "4000", Some("JE-1".into()));
+        eur.currency = Some("EUR".into());
+        let rows = vec![
+            validation_source_row(2, "2026-08", "9999", None),
+            validation_source_row(3, "2027-01", "4000", None),
+            validation_source_row(4, "2026-08", "4000", Some("JE-1".into())),
+            validation_source_row(5, "2026-08", "4000", Some("JE-1".into())),
+            eur,
+        ];
+        let built = build_lines(
+            &conn,
+            &validation_company(),
+            &rows,
+            ImportKind::GlDump,
+            &canonical_mapping(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(built.lines.len(), 3, "the two invalid source rows are not preview lines");
+        assert_eq!(built.preview.len(), 3);
+        assert_eq!(built.hard.len(), 3);
+        assert_eq!(built.hard[0].code, "VALUE_INVALID");
+        assert_eq!(built.hard[0].line_no, None, "mixed currency is batch scope");
+        assert_eq!(built.hard[1].code, "MAP_ACCOUNT_AMBIGUOUS");
+        assert_eq!(built.hard[1].line_no, Some(2));
+        assert!(!built.hard[1].message.contains("create it"));
+        assert!(!built.hard[1].message.contains("map the row"));
+        assert_eq!(built.hard[2].code, "PERIOD_NOT_FOUND");
+        assert_eq!(built.hard[2].line_no, Some(3));
+        assert_eq!(built.warnings.len(), 2);
+        assert_eq!(built.warnings[0].code, "VALUE_INVALID");
+        assert_eq!(built.warnings[0].line_no, Some(5));
+        assert_eq!(built.warnings[1].line_no, Some(6));
+        assert!(built.preview.iter().all(|row| {
+            let line_no = row["line_no"].as_i64();
+            line_no != Some(2) && line_no != Some(3)
+        }));
+    }
+
+    #[test]
     fn tie_out_balances_debit_credit_and_signed_layouts() {
         // Debit/Credit columns: 300 out, 300 in.
         let mut a = line(0, None);
@@ -1986,26 +2928,171 @@ mod tests {
         let mut b = line(0, None);
         b.debit_minor = Some(0);
         b.credit_minor = Some(300);
-        assert_eq!(tie_out(&[a, b]), (300, 300, vec![]));
+        assert_eq!(tie_out(&[a, b]).unwrap(), (300, 300, vec![]));
 
         // Signed amounts: +300 / −300 reduce to the same gate.
-        assert_eq!(tie_out(&[line(300, None), line(-300, None)]), (300, 300, vec![]));
+        assert_eq!(
+            tie_out(&[line(300, None), line(-300, None)]).unwrap(),
+            (300, 300, vec![])
+        );
     }
 
     #[test]
     fn tie_out_attributes_a_difference_only_through_posting_ref() {
         let mut lines = vec![line(100, Some("JE-1")), line(-95, Some("JE-1")), line(500, None)];
-        let (debits, credits, diff) = tie_out(&lines.clone());
+        let (debits, credits, diff) = tie_out(&lines.clone()).unwrap();
         assert_eq!((debits, credits), (600, 95));
         assert_eq!(diff.len(), 2, "only the unbalanced journal entry's rows are named");
-        assert_eq!(diff[0]["postingRef"], "JE-1");
-        assert_eq!(diff[0]["residualMinor"], 5);
+        assert_eq!(diff[0]["posting_ref"], "JE-1");
+        assert_eq!(diff[0]["residual_minor"], 5);
+        assert!(diff[0].get("postingRef").is_none());
 
         // Without a posting reference nothing is attributed — the totals still disagree.
         lines = vec![line(100, None), line(-95, None)];
-        let (debits, credits, diff) = tie_out(&lines);
+        let (debits, credits, diff) = tie_out(&lines).unwrap();
         assert_eq!((debits, credits), (100, 95));
         assert!(diff.is_empty(), "a difference is never spread onto arbitrary rows");
+    }
+
+    #[test]
+    fn tie_out_rejects_integer_overflow_instead_of_wrapping_money() {
+        let err = tie_out(&[line(i64::MAX, None), line(1, None)]).unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+        let err = tie_out(&[line(i64::MIN, None)]).unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+    }
+
+    #[test]
+    fn exclusions_require_unique_known_authoritatively_attributed_rows_and_reasons() {
+        let known = HashSet::from([1, 2, 3]);
+        let attributable = HashSet::from([2]);
+        let accepted = validate_exclusions(
+            &[Exclusion { line_no: 2, reason: "Source rounding".into() }],
+            &known,
+            &attributable,
+        )
+        .unwrap();
+        assert_eq!(accepted, HashSet::from([2]));
+
+        for (exclusions, expected) in [
+            (
+                vec![Exclusion { line_no: 2, reason: " ".into() }],
+                "EXCLUSION_REASON_REQUIRED",
+            ),
+            (
+                vec![Exclusion { line_no: 2, reason: "x".repeat(501) }],
+                "EXCLUSION_REASON_TOO_LONG",
+            ),
+            (
+                vec![Exclusion { line_no: 9, reason: "Not in source".into() }],
+                "EXCLUSION_LINE_NOT_FOUND",
+            ),
+            (
+                vec![
+                    Exclusion { line_no: 2, reason: "First".into() },
+                    Exclusion { line_no: 2, reason: "Duplicate".into() },
+                ],
+                "EXCLUSION_DUPLICATE_LINE",
+            ),
+            (
+                vec![Exclusion { line_no: 1, reason: "Arbitrary balanced row".into() }],
+                "EXCLUSION_LINE_NOT_ATTRIBUTABLE",
+            ),
+        ] {
+            let error = validate_exclusions(&exclusions, &known, &attributable).unwrap_err();
+            assert_eq!(error.body().code, "VALUE_INVALID");
+            assert!(error.to_string().contains(expected));
+        }
+    }
+
+    #[test]
+    fn import_history_is_company_scoped_ordered_and_bounded_to_twenty_five() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE companies (
+                id TEXT PRIMARY KEY,
+                default_currency_code TEXT NOT NULL
+             );
+             CREATE TABLE audit_events (
+                seq INTEGER PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                after_json TEXT
+             );
+             INSERT INTO companies VALUES ('company-1', 'USD'), ('company-2', 'EUR');
+             CREATE TABLE import_batches (
+                id TEXT PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_hash TEXT NOT NULL,
+                mapping_version TEXT NOT NULL,
+                status TEXT NOT NULL,
+                row_count INTEGER NOT NULL,
+                debits_minor INTEGER,
+                credits_minor INTEGER,
+                tie_out_status TEXT NOT NULL,
+                rollback_to_batch_id TEXT,
+                committed_at TEXT,
+                created_at TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        for day in 1..=27 {
+            conn.execute(
+                "INSERT INTO import_batches VALUES (
+                    ?1, 'company-1', 'gl_dump', ?2, ?3, 'canonical-v1', 'committed',
+                    3, 100, 100, 'pass', NULL, ?4, ?4
+                 )",
+                rusqlite::params![
+                    Uuid::new_v4().to_string(),
+                    format!("GL-{day}.csv"),
+                    format!("{day:064x}"),
+                    format!("2026-08-{day:02}T00:00:00Z"),
+                ],
+            )
+            .unwrap();
+        }
+        let latest_id: String = conn
+            .query_row(
+                "SELECT id FROM import_batches WHERE company_id = 'company-1' AND source_name = 'GL-27.csv'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO audit_events
+                (company_id, action, object_type, object_id, after_json)
+             VALUES ('company-1', 'import.commit', 'import_batch', ?1, ?2)",
+            rusqlite::params![
+                latest_id,
+                json!({ "name": "August close", "currency": "EUR" }).to_string()
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO import_batches VALUES (
+                ?1, 'company-2', 'gl_dump', 'other.csv', ?2, 'canonical-v1', 'committed',
+                1, 1, 1, 'pass', NULL, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'
+             )",
+            rusqlite::params![Uuid::new_v4().to_string(), "f".repeat(64)],
+        )
+        .unwrap();
+
+        let first = import_history_data(&conn, "company-1", 1).unwrap();
+        assert_eq!(first["rows"].as_array().unwrap().len(), 25);
+        assert_eq!(first["rows"][0]["source_name"], "GL-27.csv");
+        assert_eq!(first["rows"][0]["name"], "August close");
+        assert_eq!(first["rows"][0]["currency"], "EUR");
+        assert_eq!(first["rows"][0]["debits_minor"], 100);
+        assert_eq!(first["meta"]["total"], 27);
+        assert_eq!(first["meta"]["total_pages"], 2);
+        let second = import_history_data(&conn, "company-1", 2).unwrap();
+        assert_eq!(second["rows"].as_array().unwrap().len(), 2);
+        assert_eq!(second["rows"][1]["source_name"], "GL-1.csv");
+        assert_eq!(import_history_data(&conn, "company-1", 0).unwrap_err().body().code, "VALUE_INVALID");
     }
 
     /* ── misc ── */
@@ -2026,6 +3113,260 @@ mod tests {
             assert_eq!(ImportKind::parse(raw).unwrap().as_str(), raw);
         }
         assert_eq!(ImportKind::parse("connector_sync"), None, "connector batches are not parsed from a file");
+    }
+
+    #[test]
+    fn explicit_mapping_normalization_is_deterministic_and_never_numeric() {
+        assert_eq!(
+            normalize_account_code("  4100-00  ", "trim_collapse_whitespace_remove_hyphens"),
+            "410000"
+        );
+        assert_eq!(
+            normalize_account_code("  00  4100  ", "trim_collapse_whitespace"),
+            "00 4100",
+            "leading zeros remain text"
+        );
+        assert_eq!(
+            normalize_dimension_value(" Sales   -  North ", "trim_collapse_whitespace"),
+            "Sales - North"
+        );
+        assert_eq!(
+            normalize_period_value("AUG26", "month_name_mmm_yy"),
+            "2026-08"
+        );
+        assert_eq!(
+            normalize_period_value("aug2026", "month_name_mmm_yy"),
+            "2026-08"
+        );
+        assert_eq!(
+            normalize_period_value("2026-08", "month_name_mmm_yy"),
+            "2026-08",
+            "documented period shapes remain unchanged"
+        );
+    }
+
+    #[test]
+    fn mapping_contract_rejects_unknown_or_duplicate_targets_and_bumps_versions() {
+        let valid = MappingTemplateInput {
+            name: " Tally GL ".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Dr".into(),
+                    semantic_target: "debit".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Cr".into(),
+                    semantic_target: "credit".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim_collapse_whitespace_remove_hyphens".into(),
+                dimension_values: "trim_collapse_whitespace".into(),
+                period: "month_name_mmm_yy".into(),
+            },
+        };
+        let checked = validate_mapping_template(valid).unwrap();
+        assert_eq!(checked.name, "Tally GL");
+        assert_eq!(next_mapping_version(None).unwrap(), "v1");
+        assert_eq!(next_mapping_version(Some("v8")).unwrap(), "v9");
+        assert_eq!(mapping_checksum(&checked).len(), 64);
+
+        let duplicate = MappingTemplateInput {
+            name: "Bad".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Other ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim".into(),
+                dimension_values: "trim".into(),
+                period: "documented".into(),
+            },
+        };
+        let mut unknown = duplicate.clone();
+        unknown.columns[2].semantic_target = "unsupported_target".into();
+        assert_eq!(
+            validate_mapping_template(unknown).unwrap_err().body().code,
+            "MAP_TARGET_INVALID"
+        );
+        let mut reserved = duplicate.clone();
+        reserved.columns[0].source_pattern = "__onefpa_account_code".into();
+        assert_eq!(
+            validate_mapping_template(reserved).unwrap_err().body().code,
+            "MAP_TARGET_INVALID"
+        );
+
+        let error = validate_mapping_template(duplicate).unwrap_err().body();
+        assert_eq!(error.code, "MAP_TARGET_INVALID");
+        assert_eq!(
+            error.user_message,
+            "This column cannot map to that field. Choose a supported target."
+        );
+        assert!(!error.retryable);
+    }
+
+    #[test]
+    fn mapping_save_versions_audits_resolves_and_rolls_back_atomically() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE mapping_templates (
+                id TEXT PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                UNIQUE(company_id, name)
+             );
+             CREATE TABLE mapping_columns (
+                id TEXT PRIMARY KEY,
+                template_id TEXT NOT NULL,
+                source_pattern TEXT NOT NULL,
+                semantic_target TEXT NOT NULL
+             );
+             CREATE TABLE audit_events (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT,
+                prev_hash TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        let input = MappingTemplateInput {
+            name: "Tally GL".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Date".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Ledger".into(),
+                    semantic_target: "account_code".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Dr".into(),
+                    semantic_target: "debit".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Cr".into(),
+                    semantic_target: "credit".into(),
+                },
+            ],
+            sign_convention: "credit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim_collapse_whitespace_remove_hyphens".into(),
+                dimension_values: "trim_collapse_whitespace".into(),
+                period: "month_name_mmm_yy".into(),
+            },
+        };
+        let template = validate_mapping_template(input.clone()).unwrap();
+        let key = b"mapping-transaction-test-key";
+        let (first_id, first_version) =
+            persist_mapping(&mut conn, "company-a", key, &template).unwrap();
+        let (second_id, second_version) =
+            persist_mapping(&mut conn, "company-a", key, &template).unwrap();
+        assert_eq!(first_id, second_id, "same Company/name retains its mapping id");
+        assert_eq!((first_version.as_str(), second_version.as_str()), ("v1", "v2"));
+
+        let current: (String, i64) = conn
+            .query_row(
+                "SELECT version,
+                        (SELECT COUNT(*) FROM mapping_columns WHERE template_id = mapping_templates.id)
+                   FROM mapping_templates WHERE id = ?1",
+                [&first_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(current, ("v2".into(), 8), "four mappings plus four reserved rule rows");
+        let resolved = resolve_mapping(&conn, "company-a", &first_id).unwrap();
+        assert!(resolved.credit_positive);
+        assert_eq!(
+            resolved.account_normalization,
+            "trim_collapse_whitespace_remove_hyphens"
+        );
+        assert_eq!(resolved.period_normalization, "month_name_mmm_yy");
+
+        let events: Vec<(Option<String>, String, String, String)> = {
+            let mut statement = conn
+                .prepare(
+                    "SELECT before_json, after_json, prev_hash, hash
+                       FROM audit_events WHERE company_id = 'company-a' ORDER BY seq",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(events.len(), 2);
+        assert!(events[0].0.is_none());
+        assert!(events[1].0.as_deref().unwrap().contains("persistedRows"));
+        assert!(events[1].0.as_deref().unwrap().contains("v1"));
+        assert_eq!(events[0].2, GENESIS_HASH);
+        assert_eq!(events[0].3, next_hash(key, GENESIS_HASH, events[0].1.as_bytes()));
+        assert_eq!(events[1].2, events[0].3);
+        assert_eq!(events[1].3, next_hash(key, &events[0].3, events[1].1.as_bytes()));
+
+        conn.execute(
+            "UPDATE mapping_columns SET semantic_target = 'amount'
+              WHERE template_id = ?1 AND source_pattern = 'dr'",
+            [&first_id],
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_mapping(&conn, "company-a", &first_id).unwrap_err().body().code,
+            "STORAGE_FILE_CORRUPT",
+            "the checksum/audit definition detects materialized-row tampering"
+        );
+        assert_eq!(
+            persist_mapping(&mut conn, "company-a", key, &template)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_FILE_CORRUPT",
+            "a later save cannot legitimize a tampered current definition"
+        );
+
+        conn.execute_batch(
+            "CREATE TRIGGER reject_mapping_audit BEFORE INSERT ON audit_events
+             BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;",
+        )
+        .unwrap();
+        let mut rejected = input;
+        rejected.name = "Must roll back".into();
+        let rejected = validate_mapping_template(rejected).unwrap();
+        assert!(persist_mapping(&mut conn, "company-a", key, &rejected).is_err());
+        let template_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM mapping_templates", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(template_count, 1, "a failed audit insert rolls back the mapping write");
     }
 
     #[test]

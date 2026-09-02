@@ -14,11 +14,18 @@ describe("IPC bridge — Zod gate at the boundary (B12)", () => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   });
 
-  it("rejects invalid args before invoking", async () => {
+  it("rejects invalid args before invoking with the command's locked error surface", async () => {
     await expect(call("company.create", { name: "A" } as never)).rejects.toMatchObject({
       code: "VALUE_INVALID",
       httpStatus: 422,
     });
+    await expect(call("import.map.save_v1", { template: {} } as never)).rejects.toMatchObject({
+      code: "MAP_TARGET_INVALID",
+      userMessage: "This column cannot map to that field. Choose a supported target.",
+      httpStatus: 422,
+      retryable: false,
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("command registry is exhaustive (name → schema)", () => {

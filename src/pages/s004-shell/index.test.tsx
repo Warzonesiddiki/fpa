@@ -46,6 +46,8 @@ describe("S-004 App Shell — a11y-first chrome", () => {
     }
     // Active route styling on the current link (relative nav under /app)
     expect(screen.getByRole("link", { name: "Dashboard" }).className).toContain("oneprimary");
+    expect(screen.getByRole("link", { name: "Data" })).toHaveAttribute("href", "/app/import");
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app/settings");
   });
 
   it("renders the outlet content inside the shell", () => {

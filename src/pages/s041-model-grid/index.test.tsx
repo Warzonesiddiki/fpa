@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { ModelGridPage } from "./index";
 import { useModelGridStore } from "@/stores/model";
+import { createDefaultSettings, useSettingsStore } from "@/stores/settings";
 
 const callMock = vi.fn();
 vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
@@ -90,6 +91,13 @@ describe("S-041 Model Grid (F-012)", () => {
     callMock.mockReset();
     companyIdMock.mockReturnValue(CO);
     useModelGridStore.getState().reset();
+    useSettingsStore.setState({
+      preferences: {
+        ...createDefaultSettings("en-US"),
+        displayThousands: false,
+        displayDecimals: "2",
+      },
+    });
   });
 
   it("renders the loading state while data is in flight", async () => {
@@ -136,10 +144,15 @@ describe("S-041 Model Grid (F-012)", () => {
     expect(cell).not.toBeNull();
   }, 20000);
 
-  it("renders the populated grid with money cells after loading", async () => {
+  it("renders the populated grid with money cells at the persisted density", async () => {
+    useSettingsStore.setState((state) => ({
+      preferences: { ...state.preferences, density: "compact" },
+    }));
     mockLoad();
     const { container } = renderPage();
     await waitForGridCell(container);
+    expect(screen.getByTestId("model-grid")).toHaveAttribute("data-density", "compact");
+    expect(container.querySelector(".ag-row")).toHaveStyle({ height: "28px" });
     // Line rows from coa.list render in the AG Grid.
     expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
     expect(screen.getByText("4100 · Software Licenses")).toBeInTheDocument();

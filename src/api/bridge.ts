@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CommandArgs, type CommandInput, type CommandName } from "./schema";
+import {
+  CommandArgs,
+  MAP_TARGET_INVALID_MESSAGE,
+  type CommandInput,
+  type CommandName,
+} from "./schema";
 import { mockInvoke, isTauriRuntime } from "./mock";
 
 export interface BridgeError {
@@ -47,9 +52,12 @@ export async function call<C extends CommandName>(
   const schema = CommandArgs[command];
   const parsed = schema.safeParse(args);
   if (!parsed.success) {
+    const mappingInvalid = command === "import.map.save_v1";
     throw toBridgeError({
-      code: "VALUE_INVALID",
-      userMessage: `Invalid arguments for ${command}.`,
+      code: mappingInvalid ? "MAP_TARGET_INVALID" : "VALUE_INVALID",
+      userMessage: mappingInvalid
+        ? MAP_TARGET_INVALID_MESSAGE
+        : `Invalid arguments for ${command}.`,
       httpStatus: 422,
       retryable: false,
       retryAfterMs: null,

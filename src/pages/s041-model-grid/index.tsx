@@ -6,6 +6,8 @@ import type { ScreenState } from "@/components/ui/StatePanel";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { useModelGridStore } from "@/stores/model";
 import { useSessionStore } from "@/stores/session";
+import { useSettingsStore } from "@/stores/settings";
+import { tokens } from "@/theme/tokens";
 import type { GridCellView, SetCellInput } from "@/workers/modelEngine";
 import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -37,6 +39,7 @@ export function ModelGridPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const companyId = useSessionStore((s) => s.companyId);
+  const density = useSettingsStore((s) => s.preferences.density);
   const status = useModelGridStore((s) => s.status);
   const error = useModelGridStore((s) => s.error);
   const lines = useModelGridStore((s) => s.lines);
@@ -367,11 +370,14 @@ export function ModelGridPage() {
           aria-label={t("gridPage.gridRegion")}
           className="ag-theme-quartz overflow-hidden rounded-lg border border-[var(--color-oneborder)]"
           data-testid="model-grid"
+          data-density={density}
         >
           <AgGridReact<GridRow>
             rowData={filteredRows}
             columnDefs={columnDefs}
             domLayout="autoHeight"
+            rowHeight={tokens.density[density]}
+            headerHeight={tokens.density[density]}
             suppressCellFocus={false}
             onCellClicked={(e) => {
               if (e.colDef.colId === "line") return;

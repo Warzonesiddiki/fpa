@@ -59,13 +59,13 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `assumption.upsert` | session | `{model_id, assumption{...}}` | `{assumption_id}` | ASSUMPTION_IN_USE_LOCKED |
 | `assumption.list` | session | `{model_id}` | `AssumptionListRow[]` (`version`, `last_changed_at`) | — |
 | `assumption.find_usages` | session | `{assumption_id}` | `{cells[]}` | — |
-| `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
-| `import.map.save_v1` | session | `{template{...}}` | `{mapping_id, version}` | MAP_TARGET_INVALID |
-| `import.validate` | session | `{parse_id, mapping_id}` | `{hard[], warnings[], preview[]}` | MAP_ACCOUNT_AMBIGUOUS, UNIT_PERIOD_MISMATCH, OPENING_ALREADY_SET |
-| `import.tieout` | session | `{parse_id, mapping_id}` | `{debits_minor, credits_minor, diff_rows[]}` | IMPORT_TIE_OUT_FAILED |
-| `import.commit` | session | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, MODEL_CELL_LOCKED |
-| `import.rollback` | session | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK |
-| `import.history` | session | `{company_id, page}` | `{rows[], meta}` | — |
+| `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts, source_name, source_hash, size_bytes, headers}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
+| `import.map.save_v1` | session (write) | `{template{name, columns[], sign_convention, normalization}}` | `{mapping_id, version}` | MAP_TARGET_INVALID, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
+| `import.validate` | session | `{parse_id, mapping_id}` | strict snake_case `{hard[], warnings[], preview[≤50], rows(valid), mapping_version}` | IMPORT_PARSE_EXPIRED, VALUE_INVALID, STORAGE_FILE_CORRUPT, SESSION_LOCKED, INTERNAL; finding codes in §12 |
+| `import.tieout` | session | `{parse_id, mapping_id}` | strict `{debits_minor, credits_minor, diff_rows[], balanced, rows, currency}` | IMPORT_PARSE_EXPIRED, VALUE_INVALID, STORAGE_FILE_CORRUPT, SESSION_LOCKED |
+| `import.commit` | session (write) | `{parse_id, mapping_id, name, exclusions[]}` | `{batch_id, audit_id, rows, debits_minor, credits_minor, tie_out_status, excluded_rows, source_hash}` | IMPORT_BATCH_HASH_EXISTS, IMPORT_TIE_OUT_FAILED, IMPORT_PARSE_EXPIRED, AUDIT_CHAIN_BREAK, STORAGE_FILE_CORRUPT |
+| `import.rollback` | session (write) | `{batch_id, reason}` | `{rolled_back_to}` | BATCH_ALREADY_ROLLED_BACK, AUDIT_CHAIN_BREAK, VALUE_INVALID |
+| `import.history` | session | `{company_id, page}` | strict `{rows[], meta}` | SESSION_LOCKED, VALUE_INVALID, INTERNAL |
 | `connector.connect` | session | `{connector_key}` | `{auth_url}` | CONNECTOR_ALREADY_CONNECTED |
 | `connector.callback` | session | `{connector_key, code, state}` | `{connected}` | CONNECTOR_AUTH_EXPIRED, CONNECTOR_AUTH_STATE_MISMATCH |
 | `connector.sync` | session | `{connector_key, scope}` | `{run_id}` | CONNECTOR_RATE_LIMITED, CONNECTOR_NETWORK, CONNECTOR_AUTH_EXPIRED |
@@ -136,11 +136,36 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 ```
 **Success**
 ```json
-{ "data": { "batch_id": "ib-1", "rows": 47999, "debits_minor": 4128300000,
-            "credits_minor": 4128300000, "tie_out_status": "excluded_rows_logged",
-            "audit_id": 99 } }
+{
+  "data": {
+    "batch_id": "ib-1",
+    "audit_id": 99,
+    "rows": 47999,
+    "debits_minor": 4128300000,
+    "credits_minor": 4128300000,
+    "tie_out_status": "excluded_rows_logged",
+    "excluded_rows": 1,
+    "source_hash": "aa11…ff"
+  }
+}
 ```
-**All errors** — `IMPORT_TIE_OUT_FAILED (422, retry false, details.diff_rows)` · `IMPORT_BATCH_HASH_EXISTS (409, retry false, details.existing_batch)` · `MODEL_CELL_LOCKED?` no — `SESSION_LOCKED (401)` · `IMPORT_PARSE_EXPIRED (410, retry true)` · `INTERNAL (500, retry true)`.
+
+The write engine, not the browser, first reproduces clean validation and the authoritative baseline
+Tie-Out, then accepts only unique existing source lines named by that Tie-Out, each with a trimmed
+1–500-character reason. It reapplies those exclusions to the ephemeral source working set, reruns
+mapping validation and Tie-Out over retained rows, and rejects a zero-row result. Only then does one
+immediate transaction insert the batch/GL rows and the `import.commit` HMAC audit event. That audit
+payload retains the exact batch name, source hash, mapping id/version, currency, totals, Tie-Out
+status, and every excluded line/reason. Excluded source rows are not silently converted into GL rows.
+A duplicate source hash in the same Company hard-fails; the immediate transaction prevents
+concurrent same-hash commits from both passing. The locked duplicate text is displayed, but the
+catalog has no override command, so S-032 does not fabricate a re-import confirmation.
+
+**All errors** — `IMPORT_TIE_OUT_FAILED (422, retry false, details.diffRows)` ·
+`IMPORT_BATCH_HASH_EXISTS (409, retry false, details.existingBatch)` ·
+`IMPORT_PARSE_EXPIRED (410, retry true)` · `AUDIT_CHAIN_BREAK (409, retry false)` ·
+`STORAGE_FILE_CORRUPT (422, retry false)` · validation finding codes from §12 ·
+`VALUE_INVALID (422, retry false)` · `SESSION_LOCKED (401)` · `INTERNAL (500, retry true)`.
 
 ## 5. DETAILED SPEC — `consolidation.run` (group)
 
@@ -249,4 +274,263 @@ The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is r
 a `company.clone_sandbox` audit event (object `company`) inside the same transaction that
 inserts the rows and seals the container (B18-1) — a failed seal rolls back the whole clone.
 
+## 11. DETAILED SPEC — `import.map.save_v1` (S-031 mapping contract)
+
+`import.map.save_v1` is the only mapping write in the locked 97-command catalog. It requires a
+writable unlocked session and derives `company_id` from that session; callers cannot write a
+mapping into another Company. The request is strict (unknown object keys or enum values are
+invalid):
+
+```json
+{
+  "template": {
+    "name": "Tally GL",
+    "columns": [
+      { "source_pattern": "Posting Date", "semantic_target": "period" },
+      { "source_pattern": "Ledger Code", "semantic_target": "account_code" },
+      { "source_pattern": "Dr", "semantic_target": "debit" },
+      { "source_pattern": "Cr", "semantic_target": "credit" }
+    ],
+    "sign_convention": "debit_positive",
+    "normalization": {
+      "account_code": "trim_collapse_whitespace_remove_hyphens",
+      "dimension_values": "trim_collapse_whitespace",
+      "period": "month_name_mmm_yy"
+    }
+  }
+}
+```
+
+`semantic_target` is exactly one of `period`, `account_code`, `account_name`, `debit`,
+`credit`, `amount`, `cost_center`, `project`, `product`, `customer`, `business_unit`,
+`intercompany_tag`, `currency`, `posting_ref`, or `doc_type`. Sources and targets are unique
+case-insensitively. `period` and `account_code` are required, plus either `amount` or both
+`debit` and `credit`; 3–15 mapped columns (the finite target set is unique) and a trimmed
+1–120-character name are accepted.
+Unknown, duplicate, missing-required, blank, control-character, or reserved rule sources return
+`MAP_TARGET_INVALID (422, retry false)` with locked text “This column cannot map to that field.
+Choose a supported target.” The same error covers invalid
+sign/normalization enums; validation occurs independently in Zod and serde-backed Rust code.
+
+The finite rule enums are:
+
+- `sign_convention`: `debit_positive | credit_positive`; it applies only to a signed `amount`
+  source. Explicit debit/credit columns retain debit-minus-credit semantics.
+- `normalization.account_code`: `trim | trim_collapse_whitespace |
+  trim_collapse_whitespace_remove_hyphens`. Codes always remain text and leading zeroes survive.
+- `normalization.dimension_values`: `trim | trim_collapse_whitespace` for cost center, project,
+  product, customer, and business-unit values.
+- `normalization.period`: `documented | month_name_mmm_yy`. The additive explicit pattern accepts
+  only `MMMYY` or `MMMYYYY` (English month abbreviation, case-insensitive), maps two-digit years
+  to 2000–2099, and emits `YYYY-MM` (`AUG26` → `2026-08`). Other inputs pass unchanged to the
+  documented period parser and can still fail validation; there is no fuzzy date guess.
+
+A first Company/name save returns `{mapping_id: <uuid>, version: "v1"}`. A later exact-name save
+in that Company keeps the id and increments the checked `vN` label. The current materialized
+`mapping_templates`/`mapping_columns` body is replaced, including the four reserved policy rows
+defined in DATABASE-SCHEMA §7, and its deterministic SHA-256 checksum changes with the semantic
+definition. The replacement and an `import.map.save_v1` HMAC audit event commit in one immediate
+transaction; an audit failure rolls the mapping write back. Resolution recomputes the body checksum
+and matches the complete normalized definition, id, checksum, and version to the latest verified
+mapping audit payload; a materialized-row or metadata mismatch is `STORAGE_FILE_CORRUPT`, never a
+silently altered map. A degraded
+audit-chain session is read-only and returns `AUDIT_CHAIN_BREAK` before opening the transaction.
+
+Historical definitions are immutable in the append-only HMAC audit chain: every event stores the
+full new definition in `after_json`; a version bump also stores the full prior persisted body in
+`before_json`. `import.commit` captures the mapping id and version in its audit payload and the
+version in `import_batches.mapping_version`. The schema intentionally materializes only the latest
+body, so historical versions are not mutable rows and cannot be loaded by id today. There is no
+mapping-list/load/history command in the locked catalog; S-031 visibly gates browsing instead of
+inventing one. The bundled `mapping_id = "canonical"` is read-only, needs no save, and resolves to
+`canonical-v1`.
+
+**Success**
+
+```json
+{ "data": { "mapping_id": "00000000-0000-4000-8000-000000000031", "version": "v1" } }
+```
+
 *Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, INTEGRATIONS.md, FEATURE-TRACEABILITY-MATRIX.md, LICENSE-SPEC.md, SCREENS-SPEC.md, TEST-FIXTURES-SPEC.md, DATABASE-SCHEMA.md.*
+
+## 12. DETAILED SPEC — `import.validate` (S-031 validation contract)
+
+`import.validate {parse_id, mapping_id}` is a read-only Company-scoped command. It resolves the
+same ephemeral parse and either bundled `canonical-v1` or the complete latest audited mapping body;
+it is allowed in an audit-degraded read-only session because it writes neither rows nor an audit
+event. A real response uses the following strict snake_case wire shape:
+
+```json
+{
+  "data": {
+    "hard": [
+      {
+        "code": "MAP_ACCOUNT_AMBIGUOUS",
+        "message": "ACCOUNT_MISSING: '99999' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+        "line_no": 3,
+        "details": { "accountCode": "99999", "list": [] }
+      }
+    ],
+    "warnings": [
+      {
+        "code": "VALUE_INVALID",
+        "message": "POSTING_REF_DUPLICATE: 'INV-2001' first seen on row 2",
+        "line_no": 4,
+        "details": { "postingRef": "INV-2001", "firstLineNo": 2 }
+      }
+    ],
+    "preview": [
+      {
+        "line_no": 2,
+        "period_id": "fp-2026-p08",
+        "account_id": "00000000-0000-4000-8000-000000004000",
+        "account_code": "4000",
+        "business_unit_id": null,
+        "amount_minor": -635000000,
+        "debit_minor": null,
+        "credit_minor": 635000000,
+        "currency": "USD",
+        "posting_ref": "INV-2001",
+        "doc_type": "INVOICE",
+        "is_ic": false
+      }
+    ],
+    "rows": 47999,
+    "mapping_version": "v3"
+  }
+}
+```
+
+`line_no` is the one-based physical source row and is `null` only for a batch-scope finding.
+`rows` means **valid mapped rows**, not total parsed source rows. `preview` contains only valid
+mapped rows, in source order, and is capped at 50 by both the core and Zod response schema; invalid
+raw rows are never reconstructed in the browser. Every money field is an integer minor-unit value.
+`mapping_version` is exactly `canonical-v1` or checked `vN`, and the client rejects a version that
+differs from the selected mapping.
+
+The finding code is restricted to the existing locked subset `VALUE_INVALID`, `PERIOD_NOT_FOUND`,
+`MAP_ACCOUNT_AMBIGUOUS`, `UNIT_PERIOD_MISMATCH`, or `OPENING_ALREADY_SET`; an ad-hoc validation
+code is malformed. Current HARD checks cover required/parseable period and amount fields, Company
+calendar resolution, Company/BU-scoped account resolution, supported currency, Group BU presence,
+intercompany tag/BU resolution, mixed-currency batch input, weekly driver data against a monthly
+calendar, and duplicate opening balances. The currently implemented WARNING is a duplicate
+non-empty posting reference on another valid row. Missing account names are not currently a
+WARNING and are not fabricated by the mock or S-031.
+
+HARD and WARNING arrays remain separate and preserve row-versus-batch scope. S-031 reports their
+full returned counts but renders only the first 50 items in each list to keep the webview responsive;
+it says when more returned findings are not rendered. It does not expose row exclusion, account
+creation, per-row remap, warning acknowledgement, Tie-Out, or commit controls. The only S-031
+remediation paths are edit the mapping or return to the Import Hub, correct/re-select the source,
+and re-parse.
+
+Command errors use the normal envelope. In particular, `IMPORT_PARSE_EXPIRED (410, retry true)`
+must display the locked text “This parse session expired. Re-run the import.” and route to S-030;
+S-031 must not invoke Retry against the same expired id. Mapping/company mismatch is
+`VALUE_INVALID`; an audited-body/checksum mismatch is `STORAGE_FILE_CORRUPT`; locked sessions use
+`SESSION_LOCKED`; unexpected transport/storage failures use the existing `INTERNAL` envelope.
+
+*Referenced by: STATE-MANAGEMENT.md, ERROR-HANDLING.md, FEATURE-TRACEABILITY-MATRIX.md, GL-TEMPLATE-SPEC.md, SCREENS-SPEC.md, USER-FLOWS.md.*
+
+## 13. DETAILED SPEC — `import.tieout` / `import.history` / `import.rollback` (M2-4)
+
+### Tie-Out
+
+`import.tieout {parse_id,mapping_id}` is a read-only, Company-scoped preview over the same ephemeral
+parse and exact mapping resolver used by commit. It rejects any remaining HARD mapped-line finding,
+uses checked integer-minor-unit sums, and returns only evidence produced by the Rust engine:
+
+```json
+{
+  "data": {
+    "debits_minor": 635000005,
+    "credits_minor": 635000000,
+    "diff_rows": [
+      {
+        "line_no": 5,
+        "posting_ref": "ROUNDING-5",
+        "amount_minor": 5,
+        "debit_minor": 5,
+        "credit_minor": null,
+        "residual_minor": 5
+      }
+    ],
+    "balanced": false,
+    "rows": 4,
+    "currency": "USD"
+  }
+}
+```
+
+A difference row must be attributable to a real retained source line with a nonblank posting
+reference; the engine never fabricates an “unattributable” row. S-032 may collect reasons against
+those source line numbers, but it does not calculate post-exclusion money. `import.commit` remains
+the authoritative gate and recomputes validation and Tie-Out after exclusions.
+
+### Persistent Import Batch history
+
+`import.history {company_id,page}` verifies that the requested Company is the unlocked session
+Company. Pages are one-indexed, fixed at 25 rows, and ordered by persisted commit timestamp
+descending then batch id descending. Its strict
+response contains only persisted `committed` or `rolled_back` batches with positive row counts,
+equal debit/credit totals, a passing Tie-Out state, and a non-null commit timestamp:
+
+```json
+{
+  "data": {
+    "rows": [
+      {
+        "batch_id": "ib-1",
+        "name": "2026-08-30_001",
+        "kind": "gl_dump",
+        "source_name": "SAP_GL_Aug2026.xlsx",
+        "source_hash": "aa11…ff",
+        "mapping_version": "v3",
+        "status": "committed",
+        "rows": 47999,
+        "debits_minor": 4128300000,
+        "credits_minor": 4128300000,
+        "currency": "USD",
+        "tie_out_status": "excluded_rows_logged",
+        "rollback_to_batch_id": null,
+        "committed_at": "2026-08-30T00:00:00Z",
+        "created_at": "2026-08-30T00:00:00Z"
+      }
+    ],
+    "meta": { "page": 1, "page_size": 25, "total": 1, "total_pages": 1 }
+  }
+}
+```
+
+`total_pages` is exactly `ceil(total / 25)` (zero when `total` is zero), and the row count must
+match the requested page metadata. Name and currency come from the latest matching
+`import.commit` audit event; legacy rows fall back to source name and Company currency. The command
+is read-only and remains available in an audit-degraded session so the user can inspect persisted
+facts while all writes stay blocked.
+
+### Rollback
+
+`import.rollback {batch_id,reason}` requires a writable session and a trimmed 1–500-character
+reason. In one immediate transaction it rechecks that the Company-owned batch is currently
+`committed`, deletes its IC/GL facts, marks the batch `rolled_back`, stores the nearest strictly
+older committed batch of the same import kind as `rollback_to_batch_id` (or `null`), and appends an
+HMAC-chained `import.rollback` audit event containing the reason and deleted-row count. The batch
+history row remains; repeated or concurrent rollback attempts fail rather than appending a second
+rollback. No browser-only undo behavior exists.
+
+## 14. SOURCE FILE VAULT IMPLEMENTATION GATE (M2-4)
+
+The locked command catalog has no command that can persist or retrieve a Source Vault payload. The
+`source_files` table is metadata-only (`stored_path`, size, SHA-256); it has no compressed payload
+column. **No compliant compressed SQLite-payload mutation/checkpoint/atomic authenticated
+Company-container reseal lifecycle exists.** More specifically, the current import/app-database
+lifecycle has no transactionally coupled path that compresses source bytes, inserts them into the
+SQLite image inside the Company File, then checkpoints and atomically re-seals that authenticated
+encrypted container. Writing the original, a plaintext sidecar, or a path that falsely implies a
+contained payload would violate the Source Vault and Company-containment requirements.
+
+Therefore M2-4 deliberately exposes an unavailable Source Vault card with this exact architectural
+blocker and persists no source-file row or copy. Vault persistence remains gated until a reviewed
+compressed-payload schema plus authenticated Company-container mutation/reseal lifecycle and
+rollback/crash tests exist. `import.history` is batch metadata/history, not evidence that the source
+file itself was vaulted.

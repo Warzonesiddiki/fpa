@@ -46,6 +46,22 @@
   outline-offset: 2px;
 }
 
+:root {
+  --one-grid-row-height: 36px;
+}
+
+html[data-density="compact"] {
+  --one-grid-row-height: 28px;
+}
+
+.dark .ag-theme-quartz {
+  --ag-background-color: var(--color-onesurface);
+  --ag-foreground-color: var(--color-onetext);
+  --ag-border-color: var(--color-oneborder);
+  --ag-header-background-color: var(--color-onesurfacealt);
+  --ag-odd-row-background-color: var(--color-onesurface);
+}
+
 html,
 body,
 #root {

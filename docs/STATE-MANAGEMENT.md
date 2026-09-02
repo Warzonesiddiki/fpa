@@ -18,10 +18,11 @@
 | Dirty cell queue (pending writes) | local (grid) | ephemeral | Flush on commit, blur, save, lock, app close (with confirm) |
 | Recalculation status (dirty cells, cycles, duration) | global | ephemeral | On recalc completion / edit enqueue |
 | Formula worker instance (HyperFormula) | global | ephemeral (webview worker) | Rebuilt on Model/Scenario switch; disposed on lock |
-| Import pipeline state (stage, pct, row counts) | global | ephemeral + progress persisted in `import_batches` for resume | On commit, cancel, app restart (resume from checkpoint) |
-| Import Batch list + statuses | global | persistent (DB, read cache) | On `import.commit`/`rollback`, connector `sync` completion |
+| Import parse/mapping/validation/Tie-Out/commit working set | active Company | ephemeral Zustand hand-off (`filePath`, typed parse facts, mapping/validation/Tie-Out/commit status/error/result) + native in-memory parsed rows | On Company/source/kind/mapping change, app restart, native 30-minute parse TTL, or a newer operation token. Validation/Tie-Out are read-only; Commit is a Rust/DB write. Expiry returns to S-030 and no checkpoint/resume exists. S-032 batch-name/exclusion form drafts are local and parse-keyed. |
+| Import Batch history + rollback | active Company | persistent DB facts/audit metadata + page-scoped `importHistory` Zustand read cache (`page`, rows/meta, load/rollback status/error/result) | Clear on Company change; newest history request wins; successful rollback patches only the target row from the authoritative response. The registered read side uses 25-row pages. |
+| Source Vault payload | active Company | unavailable — no client cache or persisted `source_files` claim | Requires compressed bytes stored inside the SQLite image plus authenticated Company-container reseal. Until that lifecycle exists, commit writes no source copy/sidecar/metadata-only vault row. |
 | Connector health | global | persistent (DB `connectors`) + ephemeral last-pull | On sync run end, auth expiry |
-| Mapping templates (list) | global | persistent (DB, cache) | On template save/version bump |
+| Mapping templates | active Company | latest body persistent in `mapping_templates`/`mapping_columns`; current S-031 selection ephemeral in import store; historical definitions in HMAC audit events | Same-name save/version bump; no catalogued mapping list/load/history command or template cache |
 | Active Company/Model + assumption register | session + global | active model id from Company lifecycle; persistent (DB `assumptions`, `assumption_values`) + read cache | Company open/unlock selects the model; on `assumption.list`/`upsert`; usage cache invalidates after a name change |
 | Scenario list + states | global | persistent (DB, cache) | On create/duplicate/approve/lock; state changes pushed by Rust event |
 | Scenario Version list | global | persistent (DB) | On lock/export/import |
@@ -49,7 +50,8 @@ src/stores/
 ├── sessionStore.ts        # session, company, lock (ephemeral)
 ├── modelStore.ts          # model/sheets/lines/current scenario+period (cache of DB)
 ├── gridStore.ts           # visible cell cache + dirty queue + undo stack (virtualized)
-├── importStore.ts         # pipeline progress + batches + mapping list
+├── import.ts              # Company-scoped S-030→S-032 parse/map/validate/Tie-Out/commit working set
+├── importHistory.ts       # Company-scoped persistent history pages + audited rollback lifecycle
 ├── assumptionsStore.ts    # versioned register + exact period values + usage cache
 ├── connectorStore.ts      # health, runs, auth status
 ├── scenarioStore.ts       # scenarios, versions, states
@@ -65,7 +67,7 @@ src/stores/
 3. No writing to DB from stores — mutations always `invoke` (single write path, audit guaranteed).
 4. Zustand selectors are memoized; grid virtualization means the grid store holds only the visible window (≤ 5k cells), not 1M.
 5. Undo is command-based (operator pattern) + occasional model snapshot refs; undo never crosses a lock boundary.
-6. Cross-store events: `audit:event`, `recalc:done`, `import:progress`, `connector:status`, `license:changed` — typed Tauri events, consumed only by owning store.
+6. Cross-store events are consumed only by their owning store. `audit:event`, `recalc:done`, `connector:status`, and `license:changed` are catalog targets; `import:progress` is **not registered or emitted by the current parser**, so the import store never fabricates it.
 
 ## 3. RACE & COHERENCE RULES (zero-compromise)
 
@@ -74,7 +76,10 @@ src/stores/
 | Two rapid cell edits on same cell | Serialize via queue; last-write-wins only after both recalc responses; never interleave |
 | Import commit while grid editing | Commit takes a model-level Snapshot; edits re-applied on top with conflict dialog if line changed |
 | Undo during background recalc | Undo is disabled while recalc in flight (button state); no half-applied states |
-| HMR/reload during import | `import.parse` checkpoints; resume with same hash (no duplicate commit) |
+| HMR/reload/app restart during Parse/Map/Tie-Out | The parse registry and import working set are ephemeral; return to S-030 and re-parse. No checkpoint/resume command exists. Persistent history survives, and `import.commit` still guards duplicate source hashes. |
+| Company/source/mapping changes while parse, mapping save, validation, Tie-Out, or Commit is in flight | Independent monotonic operation tokens invalidate late responses; every publish rechecks Company plus the relevant parse/mapping/version. Stale data cannot repopulate a changed working set. Native mapping/Commit writes derive Company from the writable session; validation/Tie-Out perform no write. |
+| Company/page changes while history load or rollback is in flight | The history store invalidates request and mutation tokens and verifies Company before publish/refetch. A late old-page response cannot replace the selected Company's page. Rust scopes history/rollback to the session Company. |
+| Concurrent same-source commits or repeated rollback | Commit hash check+insert and rollback status recheck+mutation each use an immediate transaction. At most one writer succeeds; the other receives the typed duplicate/already-rolled-back error and no second audit event. |
 | Lock scenario while worker has dirty cells | Flush or discard prompt before lock (audited); lock never applies over unflushed edits silently |
 | Export during partial recalc | Export waits for recalc quiescence (max 500ms) or blocks with `RECALC_IN_FLIGHT` |
 | Second instance | OS file lock → read-only, zero writes |

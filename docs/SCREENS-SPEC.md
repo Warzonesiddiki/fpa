@@ -93,32 +93,40 @@
 - **Success:** preview + "Apply to company/BUs" (diff shown).
 - **Populated:** saved calendars; BU rows show preset + status.
 
-### S-030 Import Hub | `/import`
+### S-030 Import Hub | `/app/import`
 **Purpose:** entry to all ingestion — F-007/008/009/010/011.
-**Elements:** source tabs (GL Dump / Excel/CSV / Connectors), drop zone, recent mappings, Import Batch history table (date, type, rows, status, hash, rollback), Source Reconciliation link, Source Vault link, Connector health cards.
-- **Loading:** batch list skeleton; connector health spinners.
-- **Empty:** no batches — onboarding hint "Start with a GL Dump".
-- **Error:** batch row error states (`IMPORT_BATCH_HASH_EXISTS`, `REVOKED_SOURCE`).
-- **Success:** hub renders; successful batch highlighted; toast.
-- **Populated:** history + health chips + vault usage.
+**Elements:** source tabs (GL Dump / Excel/CSV / Connectors), native file picker + desktop/browser-development drop zone, current parse working set, canonical mapping card, recent mappings, persistent Import Batch history (date/name/type/rows/Tie-Out/totals/currency/mapping/hash/status/rollback lineage), Source Reconciliation link, Source Vault gate, and Connector health cards.
+- **Loading:** local parser spinner with the selected path; no fabricated percentage while `import:progress` is absent. History and rollback have separate busy states and never erase the already rendered page.
+- **Empty:** no source selected — onboarding drop zone; without an active Company, the Company-scoping requirement is shown instead. A real zero-result history response says no Import Batches yet.
+- **Error:** locked parser text/code for `IMPORT_FILE_UNREADABLE`, `IMPORT_FILE_LOCKED`, or retryable `ENCODING_UNSUPPORTED`. History/rollback errors render their typed text and code; Retry appears only for retryable failures.
+- **Success:** typed parse response shows source name, byte size, full SHA-256, sheets/row counts, and encoding detection while explicitly stating that nothing was committed. A successful rollback keeps the terminal batch row and announces its persisted predecessor (or that no predecessor exists).
+- **Populated:** selected local source + type with Parse enabled; a Company/type/source change invalidates stale parse responses. History uses the real fixed-size 25-row pages and only a currently committed batch has a rollback action.
+- **Read-only/edge:** history remains inspectable, while rollback controls are disabled with an audit-integrity explanation. Stale page/rollback responses cannot overwrite a changed Company. Hashes remain text and all totals render from integer minor units.
 
-### S-031 Mapping Wizard | `/import/map`
-**Purpose:** F-011 column/field mapping (saved templates).
-**Elements:** step indicator (Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit), file info, encoding/delimiter detectors, column cards (source → semantic: Account/Dimension/Period/Debit/Credit/Amount…), period pattern suggestions, Account normalization rules, preview table (first 50 rows), mapping template save/load.
-- **Loading:** parse progress (streaming %, cancellable).
-- **Empty:** "Drop a file to begin".
-- **Error:** row-level HARD/WARNING list w/ exact rows; `FILE_UNREADABLE`, `ENCODING_UNSUPPORTED` (auto-heal Latin-1 → UTF-8 option).
-- **Success:** mapping saved / batch committed.
-- **Populated:** preview + suggestions + options.
+**M2-1–M2-4 availability:** `/app/import`, shell Data navigation, global search, the real S-031/S-032 hand-off, and the registered, Company-scoped `import.history`/`import.rollback` paths are wired. Production file selection uses the registered Tauri dialog plugin and desktop drag events; browser file input is limited to the explicit development mock path. The registered parser supports XLSX/XLSM/XLSB/XLS/ODS/CSV/TSV/TXT, UTF-8 BOM and visible Latin-1 detection, delimiter detection, exact locale-number normalization, SHA-256, and ephemeral parse IDs. ZIP remains explicitly rejected; background streaming/progress/cancel and the 500k-row benchmark remain open. Saved-mapping listing, `connector.*`, and `reconcile.run` still lack complete runtime paths and remain visibly unavailable. Source Vault is also visibly unavailable: `source_files` stores metadata only, and no command/lifecycle can yet compress source bytes into the SQLite payload and atomically reseal the authenticated encrypted Company File; no plaintext/sidecar substitute is written.
 
-### S-032 Tie-Out & Commit | `/import/commit`
-**Purpose:** Trial Balance Tie-Out gate + commit (F-007).
-**Elements:** debit/credit totals panel (each to cent), per-source balance, diff table, exclude-row list (logged), commit button (disabled until passes or exclusions acknowledged), batch name/hash preview.
-- **Loading:** recompute spinner.
-- **Empty:** no rows to commit.
-- **Error:** `IMPORT_TIE_OUT_FAILED` — blocked, diff rows clickable.
-- **Success:** commit complete → batch summary + "View in Variance".
-- **Populated:** totals + counts + mapping version + file hash.
+### S-031 Mapping & Validation Wizard | `/app/import/map`
+**Purpose:** F-011 explicit source-column mapping and versioning, followed by the real Company-scoped validation engine and a bounded valid-row preview.
+**Elements:** step indicator (Parse→Normalize→Map→Validate→Preview→Tie-Out→Commit), real S-030 file/row/encoding facts, an honest delimiter gate, source→canonical target cards, required-target/duplicate-header checks, finite Account/Dimension/Period/sign rules with deterministic examples, bundled canonical selection, custom template name/save, mapping id/version context, valid-row/HARD/WARNING/preview counts, separate row- and batch-scope finding lists, and the first 50 valid mapped rows using integer-minor-unit money display.
+- **Loading:** either `import.map.save_v1` plus transactional audit, or read-only `import.validate`; no percentage or Cancel because no progress event/cancel command exists.
+- **Empty:** no active Company or matching Company-scoped parse hand-off routes to the Import Hub; a completed validation with zero valid mapped rows shows an explicit no-preview state and never invents source rows.
+- **Error:** typed save/validation errors display exact user text and code. Non-retryable mapping errors have no false Retry. Retryable transport errors retain the selected mapping, except `IMPORT_PARSE_EXPIRED`: despite the envelope's retry flag, the screen shows “This parse session expired. Re-run the import.” and routes to S-030 rather than retrying the same id.
+- **Success:** mapping selection/save is complete with no batch write; a clean validation has no HARD findings and shows valid mapped counts and preview. WARNING-only results remain successful but visibly require later review. Clean, nonzero validation enables the real S-032 continuation.
+- **Populated:** before selection, editable mapping/rule controls; after validation, any HARD findings plus valid mapped preview. The screen labels source row versus batch scope, renders at most the first 50 findings per severity with an omitted count, and blocks S-032 while HARD findings remain or no valid row exists.
+
+**M2-2–M2-4 availability and limits:** strict mapping and validation Zod contracts, Company-scoped request invalidation, native `import.map.save_v1` and `import.validate` handler registration, stable mapping versions/audit integrity, snake_case issue/preview serialization, real HARD/WARNING evaluation, and the first-50-valid-row S-031 surface are implemented. A clean nonzero result now continues to the registered S-032 Tie-Out/Commit path; HARD findings retain only real remediation (edit the mapping or return to S-030 to correct/re-select and re-parse). Validation remains usable in audit-degraded read-only mode because it writes nothing, although S-032 cannot commit there. `import.parse` exposes no raw source rows; the preview comes only from valid rows returned by `import.validate`. Account creation, individual-row remap, and warning acknowledgement are not invented; only Rust-attributed Tie-Out rows can be explicitly excluded in S-032. The catalog still has no mapping-list/load/history command, so saved-mapping browsing remains visibly unavailable. Native compile/test/rustfmt/Clippy evidence remains CI/toolchain-bound where those binaries are absent.
+
+### S-032 Tie-Out & Commit | `/app/import/commit`
+**Purpose:** Trial Balance Tie-Out gate plus audited Import Batch commit (F-007).
+**Elements:** exact debit/credit/difference totals, balanced state, valid-row count, currency, mapping version, source file/hash, trimmed 1–120-character batch name, Rust-attributed difference rows (source line, posting reference, signed amount, debit, credit, residual), optional logged exclusion reason per attributed row, and authoritative Commit action.
+- **Loading:** the initial `import.tieout` request and later `import.commit` each expose a named busy state; controls are disabled and no percentage is invented.
+- **Empty:** missing Company/parse/mapping/clean validation returns to the owning earlier screen. A valid Tie-Out with zero rows shows “No valid rows to commit,” never refetches in a loop, and cannot commit.
+- **Error:** exact typed user text/code is shown. Retry is limited to retryable transport failures; `IMPORT_PARSE_EXPIRED` returns to S-030, duplicate-file `IMPORT_BATCH_HASH_EXISTS` has no override action, and nonretryable `IMPORT_TIE_OUT_FAILED` stays blocked. Late Tie-Out/commit responses cannot repopulate a changed Company/source/mapping.
+- **Success:** the strict commit response shows persisted batch id, audit id, retained/excluded row counts, exact tied totals, Tie-Out status, and source hash. The only next action is Return to Import Hub, where registered history shows the batch; no Variance navigation is fabricated.
+- **Populated:** a balanced preview with a valid name can commit directly. For an unbalanced preview, only difference rows attributed by Rust may be selected and every selection requires a trimmed reason. Because `import.tieout` has no exclusions input, the browser does not invent adjusted totals: it submits logged exclusions and the Rust commit engine reapplies them, reruns validation/Tie-Out, and either commits atomically or returns the locked failure.
+- **Read-only/edge:** audit-degraded sessions may inspect Tie-Out but Commit is disabled. Intentional blank-name and exclusion drafts are keyed to the parse id and never leak to another source. Labels, descriptions, live status, native table semantics, focusable error summary, and keyboard controls are accessibility-tested.
+
+**M2-4 availability and limits:** strict TS/mock/native contracts and the production IPC route are implemented for Tie-Out and Commit. Commit derives Company from the writable session, uses checked integer sums, rejects blank/duplicate/nonexistent/unattributed/overlong exclusions and an empty retained set, serializes duplicate-hash checking with insertion, writes retained GL/IC facts plus the HMAC audit event transactionally, and persists exact exclusion reasons in audited batch metadata. There is no duplicate override, warning acknowledgement, post-exclusion preview command, Variance hand-off, or Source Vault payload command, so none is simulated.
 
 ### S-033 Connector Manager | `/import/connectors`
 **Purpose:** F-009 connect/sync/manage QuickBooks/Xero/NetSuite/Sage.
@@ -386,12 +394,14 @@
 
 ### S-075 Settings | `/settings`
 **Purpose:** app/account/UI preferences (F-038, F-001).
-**Elements:** Appearance (theme), Language (v1.0.0: English UI; locale-aware formats), Currency defaults, formatting (parentheses, 000s, decimals), keyboard shortcuts, Auto-update channel, Local Diagnostics export, storage location.
-- **Loading:** skeleton.
-- **Empty:** n/a.
-- **Error:** `SETTINGS_SAVE_FAILED`.
-- **Success:** rendered.
-- **Populated:** values.
+**Elements:** Appearance (system/light/dark theme + comfortable/compact grid density), Language (v1.0.0: English UI; locale-aware formats), Currency defaults, formatting (parentheses/minus, 000s, decimals), keyboard shortcuts, Auto-update channel, Local Diagnostics export, storage location.
+- **Loading:** settings-card skeleton while the versioned preference document is validated.
+- **Empty:** n/a as a blocking state; when no saved document exists, safe defaults render with a first-use status.
+- **Error:** `SETTINGS_SAVE_FAILED` — the exact retryable message is shown and the unsaved draft remains editable.
+- **Success:** saved confirmation; the root theme/density updates without reload.
+- **Populated:** validated persisted values, locale-safe money preview, and all preference controls.
+
+**M1 native availability:** Auto-update channel preference is usable, but update checks require the signed desktop updater + `update.check` handler. Local Diagnostics export requires the redacting `app.diagnostics.export` handler + native save-path picker. Storage relocation requires a Stage-0 command contract + native folder picker. These controls remain visibly unavailable; the UI never reports a fake export or relocation.
 
 ### S-076 Help & Explainers | `/help/:topic` (+ F1 overlays)
 **Purpose:** F-038 in-app help; KPI/driver explainers; keyboard shortcuts; glossary (mirror GLOSSARY.md).
