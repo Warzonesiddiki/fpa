@@ -13,6 +13,7 @@ import type { ModelEngine } from "./modelEngine";
 export type EngineOp =
   | "loadGrid"
   | "setCell"
+  | "clearCell"
   | "recalc"
   | "getGrid"
   | "getDerived"
@@ -57,6 +58,10 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
         };
       case "recalc":
         return { id: req.id, ok: true, data: engine.recalc() };
+      case "clearCell": {
+        const { lineId, periodId } = req.args as { lineId: string; periodId: string };
+        return { id: req.id, ok: true, data: engine.clearCell(lineId, periodId) };
+      }
       case "getGrid":
         return { id: req.id, ok: true, data: engine.getGrid() };
       case "getDerived": {

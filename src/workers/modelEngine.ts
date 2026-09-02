@@ -349,6 +349,29 @@ export class ModelEngine {
     return this.readCell(line_id, period_id);
   }
 
+  /**
+   * Clear a single cell back to empty (delete its content) and recompute the graph. Used by
+   * undo-to-empty (the catalogued `model.cell.set.v1` requires a value or formula, so a clear is
+   * a graph-only reconciliation — see `M3-9` store notes). Never leaves a float as the stored
+   * amount: the cell simply has no `amount_text`/`formula` afterward.
+   */
+  clearCell(line_id: string, period_id: string): GridCellView {
+    if (this.sheetId === null) {
+      throw new Error("INTERNAL: loadGrid must run before clearCell");
+    }
+    const row = this.lineRow.get(line_id);
+    const col = this.periodCol.get(period_id);
+    if (row === undefined || col === undefined) {
+      throw new Error("REFERENCE_BROKEN: unknown line or period in the loaded grid");
+    }
+    this.hf.setCellContents({ sheet: this.sheetId, col, row }, null);
+    this.manualAmounts.delete(this.key(line_id, period_id));
+    this.overrides.delete(this.key(line_id, period_id));
+    this.dirtyLines.add(line_id);
+    this.hf.rebuildAndRecalculate();
+    return this.readCell(line_id, period_id);
+  }
+
   /** Snapshot the whole grid (lines × real periods) for rendering. */
   getGrid(): GridCellView[] {
     const out: GridCellView[] = [];

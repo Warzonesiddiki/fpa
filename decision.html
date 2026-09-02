@@ -194,20 +194,21 @@
       <h2 id="A">A. Session Dashboard</h2>
       <div class="card">
         <div class="field">
-          <b>Current Session ID:</b> <code>arena-01a0600b-fpa</code> (branch) — 2026-09-02
+          <b>Current Session ID:</b> <code>arena-01a06450-fpa</code> (branch) — 2026-09-02
         </div>
         <div class="field">
-          <b>Session Goal:</b> Ship the settings persistence slice (done, M1-10), then close the
-          M3-3 driver gap by adding the catalogued <code>driver.upsert</code> /
-          <code>driver.set_value</code> Rust handlers and registering them; continue M2-5
-          driver/dimension destination pipelines once a Stage-0 contract exists.
+          <b>Session Goal:</b> M3-9 Excel-parity grid UX first (S-041): in-memory undo/redo ≥100,
+          fill down/right with relative formula-ref adjustment, TSV/CSV paste with
+          <code>VALUE_INVALID</code> rejection, copy-as-TSV, and arrow/Tab/Enter/F2/Esc +
+          shift-arrow range selection — all client-side, no new cataloged IPC command. Then continue
+          M3-4 / M6-7 / M6-5 JS slices and keep every unit honestly PARTIAL until cargo/CI runs.
         </div>
         <div class="field"><b>Status:</b> <span class="status ok">🟢 On Track</span></div>
         <div class="grid" style="margin-top: 12px">
-          <div class="stat"><b>3</b>files created</div>
-          <div class="stat"><b>16</b>files modified</div>
-          <div class="stat"><b>6</b>decisions made</div>
-          <div class="stat"><b>+3</b>functions changed</div>
+          <div class="stat"><b>1</b>file created</div>
+          <div class="stat"><b>12</b>files modified</div>
+          <div class="stat"><b>1</b>decision made</div>
+          <div class="stat"><b>+8</b>functions changed</div>
         </div>
       </div>
 
@@ -216,6 +217,55 @@
         Newest first. Entries are append-only; reversals create a new entry and mark the old one
         <span class="badge rev">REVISITED</span>/<span class="badge dep">OVERRIDDEN</span>.
       </p>
+
+      <div class="card">
+        <div class="field">
+          <b>📌 Decision ID:</b> D-007 · <b>Category:</b>
+          <span class="badge cat">Architecture</span>
+        </div>
+        <div class="field"><b>📅 Timestamp:</b> 2026-09-02</div>
+        <div class="field">
+          <b>📝 Title:</b> M3-9 Excel-parity grid UX is client-side only (undo/redo/fill/paste/copy
+          + keyboard/range nav) with no new cataloged IPC command
+        </div>
+        <div class="field">
+          <b>✅ What:</b> Built the S-041 Excel-parity surface in pure TS:
+          <code>src/stores/modelHistory.ts</code> (History ≥250 levels,
+          <code>adjustFormulaRefs</code> for relative fill refs, <code>parsePasteBlock</code> with
+          <code>VALUE_INVALID</code> rejection, <code>buildFillEdits</code>,
+          <code>buildPasteEdits</code>, <code>serializeSelection</code>); wired undo/redo, fill
+          down/right, paste (TSV/CSV), copy-as-TSV, arrow/Tab/Enter/F2/Esc + shift-arrow range
+          selection and a selection overlay into <code>src/stores/model.ts</code> +
+          <code>src/pages/s041-model-grid/index.tsx</code>; added engine <code>clearCell</code> (a
+          worker-transport op, <em>not</em> a cataloged command) so undo-to-empty reconciles the
+          graph; extended store + page + engine tests (+40). No new entry in the 97-command catalog
+          and no new error code (VALUE_INVALID is already locked and now reused for paste).
+        </div>
+        <div class="field">
+          <b>🧠 Why:</b> The catalog has no <code>grid.undo</code>/<code>grid.paste</code> command,
+          so these stay client-side (B1). Relative ref adjustment mirrors Excel (FORMULA-ENGINE-SPEC
+          §5) and keeps the exact decimal strings (B18-2). A clear can't go through
+          <code>model.cell.set.v1</code> (it requires a value or formula), so undo-to-empty is
+          graph-only — a documented limitation, not a silent fix.
+        </div>
+        <div class="field">
+          <b>❌ Rejected:</b> Inventing <code>grid.undo</code>/<code>grid.paste</code> IPC commands
+          (not in the 97); silently casting pasted floats (would break B18-2); using
+          <code>Number(</code>/<code>parseFloat</code>
+          on money (money:ast gate).
+        </div>
+        <div class="field">
+          <b>💥 Impact:</b> <code>src/stores/modelHistory.ts</code> (new),
+          <code>src/stores/model.ts</code>,
+          <code>src/workers/modelEngine.ts</code> (+<code>clearCell</code>),
+          <code>src/workers/modelEngineClient.ts</code>, <code>src/workers/protocol.ts</code>,
+          <code>src/pages/s041-model-grid/index.tsx</code>, <code>src/i18n/en.json</code>, and their
+          tests. JS suite 431→471 green; coverage main 89.31/81.75/89.56/89.00, critical
+          98.41/96.98/100/98.32; money:ast + all gates green.
+        </div>
+        <div class="field"><b>🔗 Related:</b> D-006, TASKBOARD §3/§10/§13/§14/§15, M3-9</div>
+        <div class="field"><b>📊 Status:</b> <span class="badge act">ACTIVE</span></div>
+      </div>
 
       <div class="card">
         <div class="field">
@@ -508,6 +558,39 @@ src/main.tsx::(root render)
 
       <h2 id="D">D. Session Changelog</h2>
       <div class="card sess">
+        <h3>Session: arena-01a06450-fpa · 2026-09-02 (current)</h3>
+        <div class="field">
+          <b>🆕 Created:</b> <code>src/stores/modelHistory.ts</code> (pure undo/redo + fill + paste
+          + copy logic); <code>src/stores/modelHistory.test.ts</code>.
+        </div>
+        <div class="field">
+          <b>✏️ Modified:</b>
+          <code>src/stores/model.ts</code> (+history/selection/undo/redo/fill/paste/copy +
+          <code>active</code> moved to store);
+          <code>src/workers/modelEngine.ts</code> (+<code>clearCell</code>);
+          <code>src/workers/modelEngineClient.ts</code> (+<code>clearCell</code> to
+          interface/transport); <code>src/workers/protocol.ts</code> (+<code>clearCell</code> op);
+          <code>src/pages/s041-model-grid/index.tsx</code> (toolbar undo/redo/fill/copy/paste,
+          keyboard nav, shift-click range, paste dialog, selection overlay);
+          <code>src/i18n/en.json</code> (+undo/redo/fill/copy/paste keys);
+          <code>src/stores/model.test.ts</code>, <code>src/workers/modelEngine.test.ts</code>,
+          <code>src/pages/s041-model-grid/index.test.tsx</code> (M3-9 tests);
+          <code>TASKBOARD.md</code>, <code>decision.html</code>.
+        </div>
+        <div class="field">
+          <b>🐛 Fixed:</b> engine no longer throws on a clearing edit (added
+          <code>clearCell</code>); store keeps the locked-97 contract — undo/paste are client-only,
+          no invented command.
+        </div>
+        <div class="field">
+          <b>⚠️ Known Issues:</b> undo-to-empty reconciles the engine graph only (catalog
+          <code>model.cell.set.v1</code> requires a value or formula, so a clear cannot persist via
+          IPC — M3-1 <code>model_values</code> persistence is still PARTIAL); 1M-cell perf is
+          CI-bound; Rust cargo/rustfmt/clippy remain CI-only.
+        </div>
+      </div>
+
+      <div class="card sess">
         <h3>Session: arena-01a0600b-fpa · 2026-09-02 (current)</h3>
         <div class="field">
           <b>🆕 Created:</b> <code>src-tauri/src/commands/settings.rs</code> (settings.get/set
@@ -549,9 +632,11 @@ src/main.tsx::(root render)
             tie-out shape. Need an explicit row/per-period contract before persisting.
           </li>
           <li>
-            <b>M3-9 Excel-parity grid UX:</b> is the next JS-verifiable candidate
-            (undo/redo/fill/paste/keys on S-041). Needs the model store to keep an in-memory edit
-            history and a way to restore prior cell values without feedback loops.
+            <b>M3-9 Excel-parity grid UX:</b> built this session (UNIT U) — in-memory undo/redo
+            ≥100, fill down/right with relative formula-ref adjustment, TSV/CSV paste (VALUE_INVALID
+            on bad input), copy-as-TSV, and arrow/Tab/Enter/F2/Esc + shift-arrow range selection,
+            all client-side with no new cataloged command. Remaining: 1M-cell perf is CI-bound;
+            undo-to-empty is graph-only until <code>model_values</code> persistence lands (M3-1).
           </li>
           <li>
             <b>Native gates:</b> <code>cargo test</code>/clippy/rustfmt, tauri-specta bindings,

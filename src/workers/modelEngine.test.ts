@@ -352,3 +352,22 @@ describe("ModelEngine (HyperFormula graph, FORMULA-ENGINE-SPEC §5)", () => {
     expect(recalc.dirty_cells).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("ModelEngine.clearCell (M3-9 undo-to-empty)", () => {
+  it("clears a cell back to empty and recomputes derived totals", () => {
+    const e = engineWithLayout();
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "100.00" });
+    expect(e.getCell(LINES[0].id, PERIODS[0].id).amount_text).toBe("100.00");
+    const cleared = e.clearCell(LINES[0].id, PERIODS[0].id);
+    expect(cleared.amount_text).toBeNull();
+    expect(cleared.formula).toBeNull();
+    expect(cleared.computed_text).toBeNull();
+    expect(e.getCell(LINES[0].id, PERIODS[0].id).amount_text).toBeNull();
+  });
+
+  it("throws REFERENCE_BROKEN for an unknown line or period", () => {
+    const e = engineWithLayout();
+    expect(() => e.clearCell("nope", PERIODS[0].id)).toThrow(/REFERENCE_BROKEN/);
+    expect(() => e.clearCell(LINES[0].id, "nope")).toThrow(/REFERENCE_BROKEN/);
+  });
+});

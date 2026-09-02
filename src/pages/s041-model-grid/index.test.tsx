@@ -230,3 +230,134 @@ describe("S-041 Model Grid (F-012)", () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    useModelGridStore.getState().reset();
+    useSettingsStore.setState({
+      preferences: {
+        ...createDefaultSettings("en-US"),
+        displayThousands: false,
+        displayDecimals: "2",
+      },
+    });
+  });
+
+  it("undo/redo via the toolbar reverts and re-applies the last edit", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    const cell = await waitForGridCell(container);
+    await userEvent.click(cell);
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "182500.00");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9001,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBe(
+        "182500.00",
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Undo/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBeNull(),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Redo/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBe(
+        "182500.00",
+      ),
+    );
+  }, 20000);
+
+  it("pastes a TSV block through the paste dialog", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    const cell = container.querySelector('[col-id="p-fp-2026-p01"]') as HTMLElement;
+    await userEvent.click(cell);
+    await userEvent.click(screen.getByRole("button", { name: /Paste/ }));
+    const textarea = await screen.findByLabelText(/Paste TSV/);
+    await userEvent.type(textarea, "1.00\t2.00\n3.00\t4.00");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9003,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Insert/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBe("1.00"),
+    );
+    expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p02`].amount_text).toBe("2.00");
+    expect(useModelGridStore.getState().cells[`${ACCOUNTS[1].id}:fp-2026-p01`].amount_text).toBe(
+      "3.00",
+    );
+  }, 20000);
+
+  it("shows VALUE_INVALID from a bad paste and keeps the dialog open", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    const cell = container.querySelector('[col-id="p-fp-2026-p01"]') as HTMLElement;
+    await userEvent.click(cell);
+    await userEvent.click(screen.getByRole("button", { name: /Paste/ }));
+    const textarea = await screen.findByLabelText(/Paste TSV/);
+    await userEvent.type(textarea, "USD 100");
+    await userEvent.click(screen.getByRole("button", { name: /Insert/ }));
+    await waitFor(() => expect(useModelGridStore.getState().status).toBe("error"));
+    expect(useModelGridStore.getState().error?.code).toBe("VALUE_INVALID");
+    // Dialog remains open so the user can correct the input.
+    expect(screen.queryByLabelText(/Paste TSV/)).not.toBeNull();
+  }, 20000);
+
+  it("copy serializes the selection to the clipboard", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9005,
+    });
+    await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: "fp-2026-p01", value: "7.00" });
+    useModelGridStore.getState().setActiveCell(LINE, "fp-2026-p01");
+    useModelGridStore.getState().extendSelection(LINE, "fp-2026-p02");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      writable: true,
+      configurable: true,
+      value: { writeText },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Copy/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const tsv = writeText.mock.calls[0][0] as string;
+    expect(tsv.split("\n")[0].split("\t")).toEqual(["7.00", ""]);
+  }, 20000);
+
+  it("fill down copies the source value through the toolbar", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9006,
+    });
+    await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: "fp-2026-p01", value: "55.00" });
+    useModelGridStore.getState().setActiveCell(LINE, "fp-2026-p01");
+    useModelGridStore.getState().extendSelection(ACCOUNTS[1].id, "fp-2026-p01");
+    await userEvent.click(screen.getByRole("button", { name: /Fill down/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${ACCOUNTS[1].id}:fp-2026-p01`].amount_text).toBe(
+        "55.00",
+      ),
+    );
+  }, 20000);
+});
