@@ -27,10 +27,14 @@ import { ImportHistoryPanel } from "./ImportHistoryPanel";
 
 const ACCEPTED_EXTENSIONS = ["xlsx", "xlsm", "xlsb", "xls", "ods", "csv", "tsv", "txt"];
 
-const SOURCE_TABS: { kind: ImportKind; key: "gl" | "files" }[] = [
+const SOURCE_TABS: { kind: ImportKind; key: "gl" | "files" | "opening" }[] = [
   { kind: "gl_dump", key: "gl" },
   { kind: "excel_csv", key: "files" },
+  { kind: "opening_balances", key: "opening" },
 ];
+
+/** Kinds whose destination pipeline does not exist, named honestly instead of offered as a tab. */
+const UNAVAILABLE_SOURCE_KEYS = ["drivers", "dimensions"] as const;
 
 function AvailabilityRow({
   icon: Icon,
@@ -444,6 +448,19 @@ export function ImportHubPage() {
               {t(`importHub.source.${tab.key}`)}
             </button>
           ))}
+          {UNAVAILABLE_SOURCE_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-describedby="destination-gate"
+              disabled
+              className="rounded-md border border-[var(--color-oneborder)] px-3 py-2 text-sm font-medium text-[var(--color-onetextmuted)] opacity-60"
+            >
+              {t(`importHub.source.${key}`)}
+            </button>
+          ))}
           <button
             type="button"
             role="tab"
@@ -455,6 +472,12 @@ export function ImportHubPage() {
             {t("importHub.source.connectors")}
           </button>
         </div>
+        <p className="mt-2 text-xs text-[var(--color-onetextsecondary)]">
+          {t(`importHub.source.hint.${SOURCE_TABS.find((tab) => tab.kind === kind)?.key ?? "gl"}`)}
+        </p>
+        <p id="destination-gate" className="mt-2 text-xs text-[var(--color-onetextmuted)]">
+          {t("importHub.source.destinationGate")}
+        </p>
         <p id="connectors-gate" className="mt-2 text-xs text-[var(--color-onetextmuted)]">
           {t("importHub.source.connectorsGate")}
         </p>

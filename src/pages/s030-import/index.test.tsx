@@ -262,6 +262,51 @@ describe("S-030 Import Hub (M2-1)", () => {
     expect(await screen.findByText("Source parsed")).toBeInTheDocument();
   });
 
+  it("offers Opening Balances as a real source kind and sends it to import.parse", async () => {
+    const user = userEvent.setup();
+    callMock.mockResolvedValue(PARSED);
+    renderPage();
+
+    const openingTab = screen.getByRole("tab", { name: "Opening Balances" });
+    expect(openingTab).toBeEnabled();
+    await user.click(openingTab);
+    expect(openingTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByText(
+        "Prior-year closing balances committed as the first Actuals of a Period. One period per batch, one opening balance per account, and once per Company.",
+      ),
+    ).toBeInTheDocument();
+
+    const dropZone = screen.getByText("Drop a workbook or delimited file here").parentElement;
+    fireEvent.drop(dropZone as HTMLElement, {
+      dataTransfer: {
+        files: [new File(["a,b"], "OpeningBalances.xlsx", { type: "text/csv" })],
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Parse locally" }));
+
+    expect(callMock).toHaveBeenCalledWith("import.parse", {
+      file_path: "OpeningBalances.xlsx",
+      kind: "opening_balances",
+    });
+    expect(await screen.findByText("Source parsed")).toBeInTheDocument();
+  });
+
+  it("names driver and dimension sources as unavailable instead of offering a fabricated tab", () => {
+    renderPage();
+    for (const label of ["Driver data", "Dimension master"]) {
+      const tab = screen.getByRole("tab", { name: label });
+      expect(tab).toBeDisabled();
+      expect(tab).toHaveAttribute("aria-selected", "false");
+      expect(tab).toHaveAttribute("aria-describedby", "destination-gate");
+    }
+    expect(
+      screen.getByText(
+        "Driver data and dimension master lists remain unavailable: they do not post to the general ledger, and the driver_values and dimension_values destination pipelines are not implemented. import.commit refuses those kinds rather than writing them as GL facts.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders the loading state while the local parser is working", async () => {
     const user = userEvent.setup();
     callMock.mockReturnValue(new Promise(() => undefined));

@@ -11,6 +11,7 @@ import Decimal from "decimal.js";
 import {
   CANONICAL_MAPPING_ID,
   findUnsupportedFunction,
+  isLedgerImportKind,
   type CommandInput,
   type CommandName,
   type ImportKind,
@@ -898,6 +899,34 @@ export async function mockInvoke<C extends CommandName>(
       if (!mappingVersion) return mappingNotFound(mapping_id);
       const currency = mockCompanyCurrency(parse.companyId);
       const preview = mockPreviewRows(parse.balanced, currency);
+      // Opening Balances are once-guarded per Company (GL-TEMPLATE-SPEC §5; the same batch-scope
+      // OPENING_ALREADY_SET the Rust core raises once a committed opening batch exists).
+      if (parse.kind === "opening_balances") {
+        const openingExists = [...importBatches.values()].some(
+          (batch) =>
+            batch.company_id === parse.companyId &&
+            batch.kind === "opening_balances" &&
+            batch.status === "committed",
+        );
+        if (openingExists) {
+          return {
+            data: {
+              hard: [
+                {
+                  code: "OPENING_ALREADY_SET",
+                  message: "OPENING_ALREADY_SET: opening balances already exist for this Company",
+                  line_no: null,
+                  details: { existingBatches: 1 },
+                },
+              ],
+              warnings: [],
+              preview: [],
+              rows: 0,
+              mapping_version: mappingVersion,
+            },
+          };
+        }
+      }
       if (parse.validationFindings) {
         return {
           data: {
@@ -991,6 +1020,16 @@ export async function mockInvoke<C extends CommandName>(
           "Import Batch write blocked in degraded session",
           "Audit integrity check failed. Restore from the last verified Snapshot?",
           409,
+        );
+      }
+      // Destination honesty: driver/dimension sources never post to the general ledger, and their
+      // destination pipelines do not exist (mirrors the Rust guard in `import.commit`).
+      if (!isLedgerImportKind(parse.kind)) {
+        return mockError(
+          "VALUE_INVALID",
+          `IMPORT_KIND_DESTINATION_UNAVAILABLE: '${parse.kind}' does not post to the general ledger and its destination pipeline is not implemented`,
+          "Invalid arguments.",
+          422,
         );
       }
       if (!name.trim() || [...name.trim()].length > 120) {
