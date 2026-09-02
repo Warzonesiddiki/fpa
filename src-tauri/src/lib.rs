@@ -12,15 +12,17 @@ use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
     company_clone_sandbox, company_create, company_delete, company_list, company_open,
 };
+use commands::driver::{driver_set_value, driver_upsert};
 use commands::import::{
     import_commit, import_history, import_map_save_v1, import_parse, import_rollback, import_tieout,
     import_validate, ParseRegistry,
 };
 use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
-use commands::license::{license_apply_response, license_request_file};
+use commands::license::{license_apply_response, license_request_file, license_verify};
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
+use commands::settings::{settings_get, settings_set};
 use storage::keys::KeyVault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,8 +71,12 @@ pub fn run() {
             license_verify,
             license_request_file,
             license_apply_response,
+            settings_get,
+            settings_set,
             model_cell_set_v1,
             model_recalc,
+            driver_upsert,
+            driver_set_value,
             assumption_upsert,
             assumption_list,
             assumption_find_usages,

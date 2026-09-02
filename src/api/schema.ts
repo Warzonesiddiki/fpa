@@ -1295,6 +1295,36 @@ export const LicenseApplyResponseData = z.object({
 });
 export type LicenseApplyResponseData = z.infer<typeof LicenseApplyResponseData>;
 
+/* ── App settings (F-038 · API-SPEC §2 `settings.get`/`settings.set`).
+ * The value is an opaque JSON string stored in the app DB `settings` row (scope `app`).
+ * The client keeps the versioned preference document under `SettingsDocumentKey`; the Rust
+ * core is the only writer of the audited app row (B18-1). */
+
+export const SettingsDocumentKey = "onefpa.preferences.v1";
+export const SettingsKey = z
+  .string()
+  .trim()
+  .min(1, "SETTINGS_SAVE_FAILED: settings key is required.")
+  .max(128, "SETTINGS_SAVE_FAILED: settings key is too long.");
+
+export const SettingsGetArgs = z.object({ key: SettingsKey }).strict();
+export const SettingsGetData = z.object({
+  value: z.string().nullable(),
+});
+export type SettingsGetData = z.infer<typeof SettingsGetData>;
+
+export const SettingsSetArgs = z
+  .object({
+    key: SettingsKey,
+    value_json: z
+      .string()
+      .min(2, "SETTINGS_SAVE_FAILED: settings value must be a JSON document.")
+      .max(16384, "SETTINGS_SAVE_FAILED: settings value is too large."),
+  })
+  .strict();
+export const SettingsSetData = z.object({ ok: z.literal(true) });
+export type SettingsSetData = z.infer<typeof SettingsSetData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1305,6 +1335,8 @@ export const CommandArgs = {
   "license.verify": LicenseVerifyArgs,
   "license.request_file": LicenseRequestFileArgs,
   "license.apply_response": LicenseApplyResponseArgs,
+  "settings.get": SettingsGetArgs,
+  "settings.set": SettingsSetArgs,
   "company.list": CompanyListArgs,
   "company.create": CompanyCreateArgs,
   "company.open": CompanyOpenArgs,

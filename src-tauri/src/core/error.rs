@@ -99,6 +99,8 @@ pub enum AppError {
     /// a silent type flip — LICENSE-free COA semantics, S-021).
     #[error("account code {code} already exists with a different type")]
     CoaDuplicateCode { code: String },
+    #[error("settings write failed: {0}")]
+    SettingsSaveFailed(String),
     #[error("cannot merge: account types differ ({from_type} vs {to_type})")]
     CoaTypeMismatch { from_type: String, to_type: String },
     /// Import would touch an account already referenced by GL lines — history is never
@@ -157,6 +159,8 @@ impl AppError {
             // ERROR-HANDLING §H: both license codes are 403, not retryable.
             AppError::LicenseInvalidSignature { .. } => ("LICENSE_INVALID_SIGNATURE", 403, false, None),
             AppError::LicenseExpired { .. } => ("LICENSE_EXPIRED", 403, false, None),
+            // ERROR-HANDLING §H: settings writes are exactly the documented retryable 500.
+            AppError::SettingsSaveFailed(_) => ("SETTINGS_SAVE_FAILED", 500, true, None),
             AppError::CoaDuplicateCode { .. } => ("COA_DUPLICATE_CODE", 409, false, None),
             AppError::CoaTypeMismatch { .. } => ("COA_TYPE_MISMATCH", 422, false, None),
             AppError::CoaReferenced { .. } => ("COA_REFERENCED", 409, false, None),
@@ -210,6 +214,10 @@ impl AppError {
             }
             AppError::LicenseExpired => {
                 "License expired. The Company is read-only. Activate to continue."
+            }
+            // Exact documented text (ERROR-HANDLING.md §H).
+            AppError::SettingsSaveFailed(_) => {
+                "Settings could not be saved. Retry."
             }
             AppError::CoaDuplicateCode { code } => {
                 // Exact documented template (ERROR-HANDLING.md) with the colliding code.
@@ -560,6 +568,10 @@ impl AppError {
             low: low.to_string(),
             high: high.to_string(),
         }
+    }
+
+    pub fn settings_save_failed(msg: impl Into<String>) -> Self {
+        AppError::SettingsSaveFailed(msg.into())
     }
 
     pub fn assumption_in_use_locked(assumption_id: &str) -> Self {

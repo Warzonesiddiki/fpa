@@ -417,6 +417,13 @@ let modelAuditSeq = 100;
 const mockDrivers = new Map<string, DriverDef>();
 const mockAssumptions = new Map<string, AssumptionListRow>();
 const mockAssumptionModels = new Map<string, string>();
+/** Dev mirror of the app-scope `settings` table (B18-3): key → JSON string. */
+const mockSettings = new Map<string, string>();
+
+/** Reset the dev settings mirror between independent test cases/order-sensitive suites. */
+export function resetMockSettingsState(): void {
+  mockSettings.clear();
+}
 /** `driver_values` rows keyed `${driver_id}:${scenario_id}:${period_id}` → exact decimal string. */
 const mockDriverValues = new Map<string, string>();
 
@@ -1587,6 +1594,56 @@ export async function mockInvoke<C extends CommandName>(
         );
       }
       return { data: { batch_id: nextImportId("400") } };
+    }
+    /* ── App settings (F-038 · API-SPEC §2 `settings.get`/`settings.set`) ──────────
+     * The app DB `settings` table is app-scope; the mock mirror keeps the same
+     * session gate so the dev preview exercises the real IPC shape (B18-3). */
+    case "settings.get": {
+      const { key } = args as { key: string };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "The session is locked. Unlock first.",
+          401,
+          true,
+        );
+      }
+      return { data: { value: mockSettings.get(key) ?? null } };
+    }
+    case "settings.set": {
+      const { key, value_json } = args as { key: string; value_json: string };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "The session is locked. Unlock first.",
+          401,
+          true,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "settings.set on a read-only Company",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+          false,
+        );
+      }
+      try {
+        JSON.parse(value_json);
+      } catch {
+        return mockError(
+          "SETTINGS_SAVE_FAILED",
+          "settings value is not valid JSON",
+          "Settings could not be saved. Retry.",
+          500,
+          true,
+        );
+      }
+      mockSettings.set(key, value_json);
+      return { data: { ok: true } };
     }
     /* ── License (F-035) — shape mirror only (B18-3): the Rust core owns Ed25519 ─────
      * Dev triggers so S-073's states are reachable in the browser: a payload JSON whose
