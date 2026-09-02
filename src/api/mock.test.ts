@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ImportHistoryData, ImportValidateData } from "./schema";
-import { isTauriRuntime, mockInvoke } from "./mock";
+import { ImportHistoryData, ImportValidateData, SettingsDocumentKey } from "./schema";
+import { isTauriRuntime, mockInvoke, resetMockSettingsState } from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
   it("isTauriRuntime is false in plain webview (jsdom)", () => {
@@ -925,5 +925,44 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       name: " ",
     })) as { error: { code: string } };
     expect(bad.error.code).toBe("VALUE_INVALID");
+  });
+
+  it("settings.get/set mirror the app-scope settings row with session + save-failure gates", async () => {
+    resetMockSettingsState();
+    await mockInvoke("session.lock", {});
+
+    const locked = (await mockInvoke("settings.get", {
+      key: SettingsDocumentKey,
+    })) as { error: { code: string } };
+    expect(locked.error.code).toBe("SESSION_LOCKED");
+
+    await mockInvoke("session.unlock", {
+      pin: "Meridian2026",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    });
+
+    const empty = (await mockInvoke("settings.get", {
+      key: SettingsDocumentKey,
+    })) as { data: { value: string | null } };
+    expect(empty.data.value).toBeNull();
+
+    const saved = (await mockInvoke("settings.set", {
+      key: SettingsDocumentKey,
+      value_json: JSON.stringify({ theme: "dark", density: "compact" }),
+    })) as { data: { ok: boolean } };
+    expect(saved.data.ok).toBe(true);
+
+    const restored = (await mockInvoke("settings.get", {
+      key: SettingsDocumentKey,
+    })) as { data: { value: string } };
+    expect(JSON.parse(restored.data.value)).toEqual({ theme: "dark", density: "compact" });
+
+    const bad = (await mockInvoke("settings.set", {
+      key: SettingsDocumentKey,
+      value_json: "{not-json",
+    })) as { error: { code: string; userMessage: string; retryable: boolean } };
+    expect(bad.error.code).toBe("SETTINGS_SAVE_FAILED");
+    expect(bad.error.userMessage).toBe("Settings could not be saved. Retry.");
+    expect(bad.error.retryable).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { call } from "@/api/bridge";
 import {
   applySettingsAppearance,
   createDefaultSettings,
+  SETTINGS_DOCUMENT_KEY,
   SETTINGS_SAVE_ERROR,
   SETTINGS_STORAGE_KEY,
   useSettingsStore,
@@ -9,12 +11,27 @@ import {
   type SettingsPreferences,
 } from "./settings";
 
+const SESSION_LOCKED_ERROR = vi.hoisted(() => ({
+  code: "SESSION_LOCKED",
+  message: "session locked",
+  userMessage: "The session is locked. Unlock first.",
+  httpStatus: 401,
+  retryable: true,
+  retryAfterMs: null,
+  details: {},
+}));
+
+vi.mock("@/api/bridge", () => ({
+  call: vi.fn().mockRejectedValue(SESSION_LOCKED_ERROR),
+}));
+
 const BASE = { ...createDefaultSettings("en-US") };
 
 function resetStore(): void {
   useSettingsStore.setState({
     status: "loading",
     hydrated: false,
+    remoteSynced: false,
     preferences: { ...BASE },
     restoreIssue: null,
     error: null,
@@ -50,6 +67,8 @@ describe("settings store — versioned local persistence (S-075)", () => {
     localStorage.clear();
     clearRootAppearance();
     resetStore();
+    vi.mocked(call).mockReset();
+    vi.mocked(call).mockRejectedValue(SESSION_LOCKED_ERROR);
   });
 
   it("hydrates first-use defaults as the non-blocking empty state", async () => {
@@ -128,6 +147,67 @@ describe("settings store — versioned local persistence (S-075)", () => {
     resetStore();
     await useSettingsStore.getState().hydrate();
     expect(useSettingsStore.getState()).toMatchObject({ status: "populated", preferences });
+  });
+
+  it("persists to the catalogued settings.set command as well as the local mirror", async () => {
+    const preferences = populatedPreferences();
+    vi.mocked(call).mockResolvedValueOnce({ ok: true } as never);
+
+    await expect(useSettingsStore.getState().save(preferences)).resolves.toBe(true);
+
+    expect(call).toHaveBeenCalledWith("settings.set", {
+      key: SETTINGS_DOCUMENT_KEY,
+      value_json: JSON.stringify(preferences),
+    });
+    expect(JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null")).toEqual(preferences);
+  });
+
+  it("adopts the authoritative settings.get document and leaves it as the populated state", async () => {
+    const preferences = populatedPreferences();
+    await useSettingsStore.getState().hydrate();
+    vi.mocked(call).mockResolvedValueOnce({ value: JSON.stringify(preferences) } as never);
+
+    await useSettingsStore.getState().syncRemote();
+
+    expect(useSettingsStore.getState().preferences).toEqual(preferences);
+    expect(useSettingsStore.getState().status).toBe("populated");
+    expect(useSettingsStore.getState().restoreIssue).toBeNull();
+    expect(useSettingsStore.getState().remoteSynced).toBe(true);
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-density", "compact");
+  });
+
+  it.each([
+    ["malformed remote JSON", "{not-json"],
+    ["schema-invalid remote JSON", JSON.stringify({ theme: "sepia" })],
+  ])("falls back to safe defaults and reports %s from settings.get", async (_label, value) => {
+    vi.mocked(call).mockResolvedValueOnce({ value } as never);
+
+    await useSettingsStore.getState().syncRemote();
+
+    expect(useSettingsStore.getState().status).toBe("empty");
+    expect(useSettingsStore.getState().restoreIssue).toBe("invalid");
+    expect(useSettingsStore.getState().preferences).toEqual(BASE);
+    expect(useSettingsStore.getState().remoteSynced).toBe(true);
+  });
+
+  it("reports an unavailable remote read without touching the local mirror", async () => {
+    await useSettingsStore.getState().hydrate();
+    vi.mocked(call).mockRejectedValueOnce({
+      code: "INTERNAL",
+      message: "db down",
+      userMessage: "A database error occurred.",
+      httpStatus: 500,
+      retryable: true,
+      retryAfterMs: null,
+      details: {},
+    });
+
+    await useSettingsStore.getState().syncRemote();
+
+    expect(useSettingsStore.getState().status).toBe("empty");
+    expect(useSettingsStore.getState().restoreIssue).toBe("unavailable");
+    expect(useSettingsStore.getState().preferences).toEqual(BASE);
   });
 
   it("surfaces the locked SETTINGS_SAVE_FAILED body and preserves prior values on write failure", async () => {

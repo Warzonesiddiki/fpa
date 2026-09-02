@@ -403,6 +403,8 @@
 - **Success:** saved confirmation; the root theme/density updates without reload.
 - **Populated:** validated persisted values, locale-safe money preview, and all preference controls.
 
+**Persistence (M1-10):** app preferences are stored via the catalogued `settings.get`/`settings.set` commands in the app DB `settings` row (`scope='app'`), with one HMAC-chained `settings.set` audit event on the active Company chain per write; localStorage is kept only as the pre-unlock/offline mirror.
+
 **M1 native availability:** Auto-update channel preference is usable, but update checks require the signed desktop updater + `update.check` handler. Local Diagnostics export requires the redacting `app.diagnostics.export` handler + native save-path picker. Storage relocation requires a Stage-0 command contract + native folder picker. These controls remain visibly unavailable; the UI never reports a fake export or relocation.
 
 ### S-076 Help & Explainers | `/help/:topic` (+ F1 overlays)

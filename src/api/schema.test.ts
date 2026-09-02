@@ -38,6 +38,11 @@ import {
   AssumptionFindUsagesArgs,
   AssumptionFindUsagesData,
   CORE_DRIVER_ADVISORY_MAX,
+  SettingsGetArgs,
+  SettingsGetData,
+  SettingsSetArgs,
+  SettingsSetData,
+  SettingsDocumentKey,
   MoneyMinor,
   RowIssue,
   SecurityPinSetupData,
@@ -1232,5 +1237,31 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
 
   it("exposes the core-driver advisory constant (≤7)", () => {
     expect(CORE_DRIVER_ADVISORY_MAX).toBe(7);
+  });
+
+  it("settings.get/set validate the app-scope document contract", () => {
+    expect(SettingsDocumentKey).toBe("onefpa.preferences.v1");
+    expect(SettingsGetArgs.safeParse({ key: SettingsDocumentKey }).success).toBe(true);
+    expect(SettingsGetArgs.safeParse({ key: "" }).success).toBe(false);
+    expect(SettingsGetArgs.safeParse({ key: "x", extra: 1 }).success).toBe(false);
+
+    expect(
+      SettingsSetArgs.safeParse({
+        key: SettingsDocumentKey,
+        value_json: JSON.stringify({ theme: "dark" }),
+      }).success,
+    ).toBe(true);
+    expect(
+      SettingsSetArgs.safeParse({ key: SettingsDocumentKey, value_json: "{not-json" }).success,
+    ).toBe(true); // the IPC gate only checks a JSON string; the Rust core parses it (B18-1)
+    expect(SettingsSetArgs.safeParse({ key: SettingsDocumentKey, value_json: "{}" }).success).toBe(
+      true,
+    );
+    expect(SettingsSetData.safeParse({ ok: true }).success).toBe(true);
+    expect(SettingsGetData.safeParse({ value: null }).success).toBe(true);
+    expect(SettingsGetData.safeParse({ value: '{"theme":"dark"}' }).success).toBe(true);
+    expect(SettingsGetData.safeParse({ value: 1 }).success).toBe(false);
+    expect(CommandArgs["settings.get"]).toBeDefined();
+    expect(CommandArgs["settings.set"]).toBeDefined();
   });
 });

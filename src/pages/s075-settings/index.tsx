@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, Database, Download, Keyboard, RotateCcw } from "lucide-react";
 import { Button, Card, MoneyCell } from "@/components/ui";
@@ -425,13 +425,19 @@ function SettingsForm({ status, persisted, restoreIssue, error, onSave }: Settin
   );
 }
 
-/** S-075 Settings — app/UI preferences persisted locally under a versioned, validated key. */
+/** S-075 Settings — app/UI preferences persisted through the catalogued `settings.set` command
+ *  into the app DB, with localStorage kept as the pre-unlock/offline mirror. */
 export function SettingsPage() {
   const status = useSettingsStore((state) => state.status);
   const preferences = useSettingsStore((state) => state.preferences);
   const restoreIssue = useSettingsStore((state) => state.restoreIssue);
   const error = useSettingsStore((state) => state.error);
   const save = useSettingsStore((state) => state.save);
+  const syncRemote = useSettingsStore((state) => state.syncRemote);
+
+  useEffect(() => {
+    void syncRemote();
+  }, [syncRemote]);
 
   if (status === "loading") return <SettingsLoading />;
 

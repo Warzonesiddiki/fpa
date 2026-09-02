@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { z } from "zod";
 import type { ScreenState } from "@/components/ui/StatePanel";
+import { call } from "@/api/bridge";
+import { SettingsDocumentKey, type SettingsGetData } from "@/api/schema";
 import { tokens, type Density } from "@/theme/tokens";
 import type { NegativeStyle } from "@/utils/money";
 
 export const SETTINGS_STORAGE_KEY = "onefpa.settings.v1";
+/** Catalogued app-DB settings row that mirrors the versioned local preference document. */
+export const SETTINGS_DOCUMENT_KEY = SettingsDocumentKey;
 export const SETTINGS_SAVE_ERROR = {
   code: "SETTINGS_SAVE_FAILED",
   userMessage: "Settings could not be saved. Retry.",
@@ -148,19 +152,32 @@ function settingsError(cause: unknown): SettingsStoreError {
   return { ...SETTINGS_SAVE_ERROR, message: detail };
 }
 
+function isSessionLocked(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    (cause as { code?: string }).code === "SESSION_LOCKED"
+  );
+}
+
 interface SettingsState {
   status: ScreenState;
   hydrated: boolean;
+  remoteSynced: boolean;
   preferences: SettingsPreferences;
   restoreIssue: SettingsRestoreIssue;
   error: SettingsStoreError | null;
   hydrate: () => Promise<void>;
+  /** Fetch the authoritative app-DB document and adopt it (pre-unlock: SESSION_LOCKED is ignored). */
+  syncRemote: () => Promise<void>;
   save: (preferences: SettingsPreferences) => Promise<boolean>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   status: "loading",
   hydrated: false,
+  remoteSynced: false,
   preferences: createDefaultSettings(),
   restoreIssue: null,
   error: null,
@@ -231,6 +248,76 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     });
   },
 
+  syncRemote: async () => {
+    if (get().remoteSynced) return;
+    let data: SettingsGetData;
+    try {
+      data = (await call("settings.get", { key: SETTINGS_DOCUMENT_KEY })) as SettingsGetData;
+    } catch (cause) {
+      // Pre-unlock / browser preview: the local mirror is the only valid source until a session
+      // opens, so a locked session is intentionally non-fatal.
+      if (isSessionLocked(cause)) return;
+      const defaults = createDefaultSettings();
+      applySettingsAppearance(defaults);
+      set({
+        status: "empty",
+        hydrated: true,
+        remoteSynced: true,
+        preferences: defaults,
+        restoreIssue: "unavailable",
+        error: null,
+      });
+      return;
+    }
+
+    if (data.value == null) {
+      set({ remoteSynced: true });
+      return;
+    }
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(data.value) as unknown;
+    } catch {
+      const defaults = createDefaultSettings();
+      applySettingsAppearance(defaults);
+      set({
+        status: "empty",
+        hydrated: true,
+        remoteSynced: true,
+        preferences: defaults,
+        restoreIssue: "invalid",
+        error: null,
+      });
+      return;
+    }
+
+    const parsed = SettingsPreferencesSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      const defaults = createDefaultSettings();
+      applySettingsAppearance(defaults);
+      set({
+        status: "empty",
+        hydrated: true,
+        remoteSynced: true,
+        preferences: defaults,
+        restoreIssue: "invalid",
+        error: null,
+      });
+      return;
+    }
+
+    applySettingsAppearance(parsed.data);
+    set({
+      status: "populated",
+      hydrated: true,
+      remoteSynced: true,
+      preferences: parsed.data,
+      restoreIssue: null,
+      error: null,
+    });
+  },
+
   save: async (preferences) => {
     const parsed = SettingsPreferencesSchema.safeParse(preferences);
     if (!parsed.success) {
@@ -245,10 +332,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return false;
     }
 
+    // App-scope DB persistence through the catalogued `settings.set` command. A locked session
+    // is intentionally local-only (the unlock/company screens have no active Company yet); any
+    // real write failure surfaces SETTINGS_SAVE_FAILED verbatim (S-075 error state).
+    try {
+      await call("settings.set", {
+        key: SETTINGS_DOCUMENT_KEY,
+        value_json: JSON.stringify(parsed.data),
+      });
+    } catch (cause) {
+      if (!isSessionLocked(cause)) {
+        set({ status: "error", error: settingsError(cause) });
+        return false;
+      }
+    }
+
     applySettingsAppearance(parsed.data);
     set({
       status: "success",
       hydrated: true,
+      remoteSynced: true,
       preferences: parsed.data,
       restoreIssue: null,
       error: null,

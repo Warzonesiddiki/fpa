@@ -17,10 +17,11 @@ use commands::import::{
     import_validate, ParseRegistry,
 };
 use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
-use commands::license::{license_apply_response, license_request_file};
+use commands::license::{license_apply_response, license_request_file, license_verify};
 use commands::pack::pack_list;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{session_lock, session_status, session_unlock, SessionState};
+use commands::settings::{settings_get, settings_set};
 use storage::keys::KeyVault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,6 +70,8 @@ pub fn run() {
             license_verify,
             license_request_file,
             license_apply_response,
+            settings_get,
+            settings_set,
             model_cell_set_v1,
             model_recalc,
             assumption_upsert,

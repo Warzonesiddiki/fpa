@@ -8,3 +8,4 @@ pub mod model;
 pub mod pack;
 pub mod security;
 pub mod session;
+pub mod settings;
