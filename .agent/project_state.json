@@ -27,12 +27,17 @@
   },
   "baseline_gates": {
     "verified_at": "2026-09-03",
-    "vitest": { "result": "PASS", "files": 49, "tests": 526, "duration_s": 111 },
+    "vitest": {
+      "result": "PASS",
+      "files": 49,
+      "tests": 530,
+      "note": "Unit W-1 added 4"
+    },
     "coverage_main": {
-      "statements": 89.43,
-      "branches": 81.67,
-      "functions": 89.82,
-      "lines": 88.9,
+      "statements": 89.49,
+      "branches": 81.76,
+      "functions": 89.84,
+      "lines": 88.96,
       "thresholds": "85/80/80/85",
       "gate": "PASS"
     },
@@ -82,7 +87,7 @@
       "tier": 2,
       "severity": "defect",
       "summary": "stores/drivers.ts + stores/model.ts send API-SPEC example WORKING_MODEL_ID; Rust driver.upsert enforces model_belongs_to_company → 403 in shell",
-      "status": "scheduled Unit W-1"
+      "status": "FIXED in Unit W-1 (TS + mock + tests); Rust untouched"
     },
     {
       "id": "B3",
@@ -125,14 +130,15 @@
       "id": "W-0",
       "title": "Takeover baseline + truth sync (TASKBOARD counters, CHANGELOG stale lines, .agent state)",
       "tier": 1,
-      "status": "IN_PROGRESS",
-      "rollback": "git revert <commit>"
+      "status": "DONE",
+      "rollback": "git revert <commit>",
+      "commit": "ba055c5"
     },
     {
       "id": "W-1",
       "title": "Session-scoped model id in drivers/model stores + mock ownership gate + tests",
       "tier": 2,
-      "status": "TODO",
+      "status": "DONE (this commit)",
       "rollback": "git revert <commit>"
     },
     {
@@ -151,5 +157,5 @@
     }
   ],
   "last_updated": "2026-09-03",
-  "last_action": "Unit W-0: TASKBOARD/CHANGELOG reconciliation + this state file created"
+  "last_action": "Unit W-1: session-scoped model id in drivers/model stores; mock ownership gate; +4 tests"
 }

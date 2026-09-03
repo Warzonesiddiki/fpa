@@ -702,9 +702,18 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(again.data.computed_text).toBe("42.50");
   });
 
+  /** The Model the mock session currently owns — what the stores send via `activeModelId()`. */
+  async function activeMockModelId(): Promise<string> {
+    const status = (await mockInvoke("session.status", {})) as {
+      data: { model_id: string | null };
+    };
+    // Outside a session the ownership gate is off; any shape-valid id is accepted then.
+    return status.data.model_id ?? "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+  }
+
   it("driver.upsert creates and updates a driver (exact decimal bounds)", async () => {
     const created = (await mockInvoke("driver.upsert", {
-      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      model_id: await activeMockModelId(),
       driver: {
         name: "units_upsert",
         driver_type: "volume_x_rate",
@@ -719,7 +728,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(created.data.created).toBe(true);
 
     const updated = (await mockInvoke("driver.upsert", {
-      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      model_id: await activeMockModelId(),
       driver: {
         id: "dr-units_upsert",
         name: "units_upsert",
@@ -736,7 +745,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
 
   it("driver.upsert refuses a collection driver with no feed source (DRIVER_FEED_MISSING)", async () => {
     const out = (await mockInvoke("driver.upsert", {
-      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      model_id: await activeMockModelId(),
       driver: {
         name: "nofeed",
         driver_type: "manual",
@@ -751,7 +760,7 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
 
   it("driver.set_value stores the exact decimal and enforces bounds (DRIVER_OUT_OF_BOUNDS)", async () => {
     const set = (await mockInvoke("driver.upsert", {
-      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      model_id: await activeMockModelId(),
       driver: {
         name: "units_bound",
         driver_type: "volume_x_rate",
@@ -788,6 +797,55 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       value_decimal: "1",
     })) as { error: { code: string } };
     expect(unknown.error.code).toBe("REFERENCE_BROKEN");
+  });
+
+  it("mirrors the native model_belongs_to_company gate once a Company is unlocked (403, not silent)", async () => {
+    // Regression (2026-09-03): the preview accepted any model_id, masking a guaranteed native
+    // failure for stores that still sent the API-SPEC example id.
+    const unlocked = (await mockInvoke("session.unlock", {
+      pin: "Meridian#2026",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as { data: { model_id: string } };
+    const activeModel = unlocked.data.model_id;
+    expect(activeModel).toBeTruthy();
+    const exampleModel = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+    expect(activeModel).not.toBe(exampleModel);
+
+    const driverBody = {
+      name: "scope_units",
+      driver_type: "volume_x_rate",
+      unit: "units",
+      source: "global",
+      is_core: false,
+    } as const;
+    const refused = (await mockInvoke("driver.upsert", {
+      model_id: exampleModel,
+      driver: driverBody,
+    })) as { error: { code: string; httpStatus: number; userMessage: string; retryable: boolean } };
+    // Same envelope as `AppError::Scope` (core/error.rs): VALUE_INVALID · 403 · not retryable.
+    expect(refused.error.code).toBe("VALUE_INVALID");
+    expect(refused.error.httpStatus).toBe(403);
+    expect(refused.error.retryable).toBe(false);
+    expect(refused.error.userMessage).toBe("This operation is not permitted.");
+
+    const accepted = (await mockInvoke("driver.upsert", {
+      model_id: activeModel,
+      driver: driverBody,
+    })) as { data: { driver_id: string; created: boolean } };
+    expect(accepted.data.created).toBe(true);
+
+    const listRefused = (await mockInvoke("assumption.list", { model_id: exampleModel })) as {
+      error: { code: string; httpStatus: number };
+    };
+    expect(listRefused.error).toEqual(
+      expect.objectContaining({ code: "VALUE_INVALID", httpStatus: 403 }),
+    );
+    const listOk = (await mockInvoke("assumption.list", { model_id: activeModel })) as {
+      data: unknown[];
+    };
+    expect(Array.isArray(listOk.data)).toBe(true);
+    // Lock again so the model-scoped tests below (no session → not gated) keep their meaning.
+    await mockInvoke("session.lock", {});
   });
 
   it("assumption.upsert/list preserve exact values and scope list results by model", async () => {

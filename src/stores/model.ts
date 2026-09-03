@@ -38,8 +38,23 @@ import {
 
 /** M3-1 working scenario (API-SPEC §3 example id). Scenario selection ships with S-050. */
 export const WORKING_SCENARIO_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
-/** M3-1 working model (API-SPEC §2 example id). */
+/**
+ * API-SPEC §2 example model id — the dev/test fallback ONLY. The native core mints a fresh model
+ * UUID per Company (`company.create` → `create_default_model`) and every model-scoped command
+ * checks `model_belongs_to_company`, so this id is never valid against a real `.fpa` file.
+ * Product code must resolve the model through `activeModelId()`.
+ */
 export const WORKING_MODEL_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+
+/**
+ * The active Model for model-scoped commands (`driver.upsert`, `model.recalc`, `assumption.*`):
+ * the id the core returned from `session.unlock` / `company.open` / `session.status`
+ * (STATE-MANAGEMENT §2 "active model id from Company lifecycle"). Falls back to the documented
+ * example id only when no session model is known (browser preview before unlock, unit tests).
+ */
+export function activeModelId(): string {
+  return useSessionStore.getState().modelId ?? WORKING_MODEL_ID;
+}
 /** Working fiscal calendar: 12-month year, April start, from today — the S-022 default. */
 export const WORKING_CALENDAR = {
   preset: "12month",
@@ -533,7 +548,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
     if (!s.client) return;
     try {
       await call("model.recalc", {
-        model_id: WORKING_MODEL_ID,
+        model_id: activeModelId(),
         scenario_id: s.scenarioId,
       });
       const report = await s.client.recalc();

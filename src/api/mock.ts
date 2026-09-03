@@ -415,6 +415,26 @@ let modelAuditSeq = 100;
 
 /** In-memory `drivers` rows keyed by driver_id. */
 const mockDrivers = new Map<string, DriverDef>();
+/**
+ * Mirror of the native `model_belongs_to_company` gate (`commands/driver.rs`, `assumption.rs`):
+ * a model-scoped write against a Model the unlocked Company does not own answers the same
+ * `VALUE_INVALID`/403 envelope as `AppError::Scope`. Without this the browser preview accepted
+ * any `model_id` and hid a guaranteed native failure (found 2026-09-03, TASKBOARD M3-3).
+ * The preview has no session before unlock; then the gate is skipped exactly like the mock's
+ * other session mirrors (`session.company_id === null` → not gated).
+ */
+function modelScopeViolation(modelId: string) {
+  if (!session.unlocked || session.company_id === null || session.model_id === null) return null;
+  if (modelId === session.model_id) return null;
+  return mockError(
+    "VALUE_INVALID",
+    "model is not owned by the active Company",
+    "This operation is not permitted.",
+    403,
+    false,
+    { model_id: modelId, active_model_id: session.model_id },
+  );
+}
 const mockAssumptions = new Map<string, AssumptionListRow>();
 const mockAssumptionModels = new Map<string, string>();
 /** Dev mirror of the app-scope `settings` table (B18-3): key → JSON string. */
@@ -1362,7 +1382,7 @@ export async function mockInvoke<C extends CommandName>(
       };
     }
     case "driver.upsert": {
-      const { driver } = args as {
+      const { model_id, driver } = args as {
         model_id: string;
         driver: {
           id?: string;
@@ -1375,6 +1395,9 @@ export async function mockInvoke<C extends CommandName>(
           bounds_high?: string | null;
         };
       };
+      // Native order: session gate → `model_belongs_to_company` → body validation.
+      const scope = modelScopeViolation(model_id);
+      if (scope) return scope;
       // DRIVER_FEED_MISSING mirror (ERROR-HANDLING §E): a `collection`/`imported` driver with no
       // feed source cannot be saved. Dev trigger: name contains "nofeed".
       if (driver.source === "collection" && driver.name.includes("nofeed")) {
@@ -1458,6 +1481,9 @@ export async function mockInvoke<C extends CommandName>(
     }
     case "assumption.list": {
       const { model_id } = args as { model_id: string };
+      // Native: `assumption.list` checks `model_belongs_to_company` before reading.
+      const listScope = modelScopeViolation(model_id);
+      if (listScope) return listScope;
       return {
         data: [...mockAssumptions.entries()]
           .filter(([id]) => mockAssumptionModels.get(id) === model_id)
@@ -1470,6 +1496,9 @@ export async function mockInvoke<C extends CommandName>(
         model_id: string;
         assumption: AssumptionDef;
       };
+      // Native: `assumption.upsert` checks `model_belongs_to_company` first (assumption.rs).
+      const upsertScope = modelScopeViolation(model_id);
+      if (upsertScope) return upsertScope;
       // Dev-only trigger for the locked-baseline branch. The real Rust command determines this
       // from scenario/version references; the preview has no scenario registry.
       if (assumption.id?.includes("locked")) {

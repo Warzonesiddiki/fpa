@@ -10,7 +10,9 @@
  * The working set is session-scoped (M3 has no `driver.list` command — the table starts empty and
  * the user creates/imports drivers, matching the S-043 "Create your first Driver" empty state). The
  * engine is SHARED with the Model grid store (`getModelEngineClient`) so driver values live in the
- * same HyperFormula workbook and feed Model formulas (`=Drivers!B2 * price`).
+ * same HyperFormula workbook and feed Model formulas (`=Drivers!B2 * price`). Model-scoped writes
+ * target the session's active Model (`activeModelId()` — the id the core returned at unlock/open),
+ * never the API-SPEC example id: the native `driver.upsert` rejects a Model the Company does not own.
  *
  * Zero-compromise: money/exact-decimal never crosses as float (values are decimal strings); no mock
  * data in the product path; every mutation goes through the audited command before the engine.
@@ -20,10 +22,10 @@ import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
 import {
+  activeModelId,
   getModelEngineClient,
   periodIdFromPreview,
   WORKING_CALENDAR,
-  WORKING_MODEL_ID,
   WORKING_SCENARIO_ID,
 } from "@/stores/model";
 import { CORE_DRIVER_ADVISORY_MAX, type DriverDef as SchemaDriverDef } from "@/api/schema";
@@ -167,8 +169,11 @@ export const useDriverStore = create<DriverStoreState>((set, get) => ({
   upsertDriver: async (def: SchemaDriverDef) => {
     const s = get();
     try {
+      // The Model must be the one the core opened for this Company — the native handler enforces
+      // `model_belongs_to_company` (403 otherwise), so the documented example id is never sent
+      // once a session model is known.
       const written = (await call("driver.upsert", {
-        model_id: WORKING_MODEL_ID,
+        model_id: activeModelId(),
         driver: def,
       })) as { driver_id: string; created: boolean };
       const targetId = written.driver_id;

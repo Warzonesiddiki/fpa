@@ -5,9 +5,12 @@ import { useModelGridStore, WORKING_MODEL_ID, WORKING_SCENARIO_ID } from "./mode
 const callMock = vi.fn();
 vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
 
-const { companyIdMock } = vi.hoisted(() => ({ companyIdMock: vi.fn() }));
+const { companyIdMock, modelIdMock } = vi.hoisted(() => ({
+  companyIdMock: vi.fn(),
+  modelIdMock: vi.fn(),
+}));
 vi.mock("@/stores/session", () => ({
-  useSessionStore: { getState: () => ({ companyId: companyIdMock() }) },
+  useSessionStore: { getState: () => ({ companyId: companyIdMock(), modelId: modelIdMock() }) },
 }));
 
 const CO = "3f9f2c9e-9f8b-4e2d-9a1c-000000000001";
@@ -37,6 +40,8 @@ describe("driver tables store (S-043)", () => {
   beforeEach(() => {
     callMock.mockReset();
     companyIdMock.mockReturnValue(CO);
+    // No native model id known → the store falls back to the documented example id.
+    modelIdMock.mockReturnValue(null);
     // Reset the shared engine client — the driver store and model grid store share the same
     // HyperFormula graph (getModelEngineClient), so clearing it isolates the driver sheet per test.
     useModelGridStore.getState().reset();
@@ -82,6 +87,58 @@ describe("driver tables store (S-043)", () => {
     expect(s.drivers).toHaveLength(1);
     expect(s.drivers[0].id).toBe(DRIVER_ID);
     expect(s.coreDriverCount).toBe(1);
+  });
+
+  it("sends the session's native Model id to driver.upsert, never the API-SPEC example id", async () => {
+    // Regression (2026-09-03): the store sent WORKING_MODEL_ID while the core mints a per-Company
+    // model id and `driver.upsert` enforces `model_belongs_to_company` → 403 in the shell.
+    const nativeModelId = "3f9f2c9e-9f8b-4e2d-9a1c-100000000001";
+    modelIdMock.mockReturnValue(nativeModelId);
+    mockCalendar();
+    await useDriverStore.getState().load();
+    callMock.mockResolvedValue({ driver_id: DRIVER_ID, created: true });
+    const ok = await useDriverStore.getState().upsertDriver({
+      name: "units",
+      driver_type: "volume_x_rate",
+      unit: "units",
+      source: "global",
+      is_core: false,
+    });
+    expect(ok).toBe(true);
+    expect(callMock).toHaveBeenCalledWith("driver.upsert", {
+      model_id: nativeModelId,
+      driver: expect.objectContaining({ name: "units" }),
+    });
+    expect(callMock).not.toHaveBeenCalledWith(
+      "driver.upsert",
+      expect.objectContaining({ model_id: WORKING_MODEL_ID }),
+    );
+  });
+
+  it("surfaces the core's model-scope refusal (VALUE_INVALID/403) as the error state", async () => {
+    mockCalendar();
+    await useDriverStore.getState().load();
+    callMock.mockRejectedValue({
+      code: "VALUE_INVALID",
+      userMessage: "This operation is not permitted.",
+      httpStatus: 403,
+      retryable: false,
+      retryAfterMs: null,
+      details: {},
+    });
+    const ok = await useDriverStore.getState().upsertDriver({
+      name: "units",
+      driver_type: "volume_x_rate",
+      unit: "units",
+      source: "global",
+      is_core: false,
+    });
+    expect(ok).toBe(false);
+    const s = useDriverStore.getState();
+    expect(s.status).toBe("error");
+    expect(s.error?.code).toBe("VALUE_INVALID");
+    expect(s.error?.httpStatus).toBe(403);
+    expect(s.drivers).toHaveLength(0);
   });
 
   it("sets a driver value through driver.set_value and stores the exact decimal", async () => {
