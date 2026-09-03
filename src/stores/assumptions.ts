@@ -16,7 +16,7 @@ import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { AssumptionListData, type AssumptionDef, type AssumptionListRow } from "@/api/schema";
 import { useSessionStore } from "@/stores/session";
-import { getModelEngineClient, WORKING_MODEL_ID, WORKING_SCENARIO_ID } from "@/stores/model";
+import { activeScenarioId, getModelEngineClient, WORKING_MODEL_ID } from "@/stores/model";
 import type { ScreenState } from "@/components/ui/StatePanel";
 import {
   convertHardcodedFormula,
@@ -312,7 +312,7 @@ export const useAssumptionStore = create<AssumptionStoreState>((set, get) => ({
       const converted = convertHardcodedFormula(finding.formula, literal, assumptionName);
       await call("model.cell.set.v1", {
         line_id: finding.line_id,
-        scenario_id: WORKING_SCENARIO_ID,
+        scenario_id: activeScenarioId(),
         period_id: finding.period_id,
         value: null,
         formula: converted,

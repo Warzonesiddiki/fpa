@@ -56,6 +56,15 @@ export const WORKING_MODEL_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
 export function activeModelId(): string {
   return useSessionStore.getState().modelId ?? WORKING_MODEL_ID;
 }
+
+/**
+ * The active Scenario for scenario-scoped commands (`model.cell.set.v1`, `driver.set_value`,
+ * `model.recalc`): the grid store's selected Scenario (S-050 picker / `setScenario`), defaulting
+ * to the documented working scenario id until a selection is made (tests, preview before load).
+ */
+export function activeScenarioId(): string {
+  return useModelGridStore.getState().scenarioId;
+}
 /** Working fiscal calendar: 12-month year, April start, from today — the S-022 default. */
 export const WORKING_CALENDAR = {
   preset: "12month",
@@ -90,6 +99,12 @@ interface ModelGridState {
   currency: string;
   scale: number;
   scenarioId: string;
+  /**
+   * Scenario switch (S-050 picker; STATE-MANAGEMENT §2: cell caches invalidate and the formula
+   * worker is REBUILT on a Scenario switch). Resets edit history — the new Scenario's cells
+   * reload from the audited path. No-op when the scenario is already active.
+   */
+  setScenario: (scenarioId: string) => Promise<void>;
   client: ModelEngineClient | null;
   /** Active (selected) cell — drives the formula bar and paste anchoring. */
   active: { lineId: string; periodId: string } | null;
@@ -684,6 +699,31 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   },
 
   retry: async () => {
+    await get().load();
+  },
+
+  setScenario: async (scenarioId: string) => {
+    if (get().scenarioId === scenarioId) return;
+    // STATE-MANAGEMENT §2: the HyperFormula worker is rebuilt on a Scenario switch — the old
+    // graph is disposed and the next load re-creates it; cell caches + history don't carry over.
+    client?.destroy();
+    client = null;
+    set({
+      scenarioId,
+      status: "loading",
+      error: null,
+      cells: {},
+      derived: {},
+      recalc: null,
+      auditId: null,
+      client: null,
+      active: null,
+      selection: null,
+      history: new History(),
+      canUndo: false,
+      canRedo: false,
+      spreadError: null,
+    });
     await get().load();
   },
 
