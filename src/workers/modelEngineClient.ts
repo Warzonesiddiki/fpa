@@ -15,6 +15,8 @@ import type {
   EngineRecalcReport,
   GridCellView,
   GridLayout,
+  HardcodedFinding,
+  HardcodedLiteral,
   ModelGridPeriod,
   SetCellInput,
   SetCellResult,
@@ -38,6 +40,13 @@ export interface ModelEngineClient {
   getDriverGrid(): Promise<DriverValueView[]>;
   getDrivers(): Promise<DriverDef[]>;
   getDriverImpact(driverId: string): Promise<DriverImpactRow[]>;
+  scanHardcoded(): Promise<HardcodedFinding[]>;
+  convertHardcoded(
+    lineId: string,
+    periodId: string,
+    literal: HardcodedLiteral,
+    assumptionName: string,
+  ): Promise<SetCellResult>;
   destroy(): void;
 }
 
@@ -110,6 +119,22 @@ class SingleFlight implements ModelEngineClient {
   }
   getDriverImpact(driverId: string): Promise<DriverImpactRow[]> {
     return this.enqueue("getDriverImpact", { driver_id: driverId });
+  }
+  scanHardcoded(): Promise<HardcodedFinding[]> {
+    return this.enqueue("scanHardcoded", undefined);
+  }
+  convertHardcoded(
+    lineId: string,
+    periodId: string,
+    literal: HardcodedLiteral,
+    assumptionName: string,
+  ): Promise<SetCellResult> {
+    return this.enqueue("convertHardcoded", {
+      line_id: lineId,
+      period_id: periodId,
+      literal,
+      assumption_name: assumptionName,
+    });
   }
   destroy(): void {
     this.transport.destroy();

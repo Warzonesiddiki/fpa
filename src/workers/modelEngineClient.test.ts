@@ -129,4 +129,23 @@ describe("modelEngineClient (single-flight queue)", () => {
       /DRIVER_OUT_OF_BOUNDS/,
     );
   });
+
+  it("scanHardcoded/convertHardcoded round-trip through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+    await client.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, formula: "=base*1.04" });
+
+    const findings = await client.scanHardcoded();
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.literals[0]?.literal).toBe("1.04");
+
+    const result = await client.convertHardcoded(
+      LINES[0].id,
+      PERIODS[0].id,
+      { literal: "1.04", start: 6, end: 10 },
+      "wage_inflation",
+    );
+    expect(result.cell.formula).toBe("=base*wage_inflation");
+    expect(await client.scanHardcoded()).toEqual([]);
+  });
 });
