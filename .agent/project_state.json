@@ -30,8 +30,8 @@
     "vitest": {
       "result": "PASS",
       "files": 53,
-      "tests": 586,
-      "note": "+12 (M4-2 PR A1: schema 4, mock 8); store wiring in A2"
+      "tests": 595,
+      "note": "+21 total for M4-2 A1+A2 (schema 4, mock 8, scenarios store 6, model setScenario 3)"
     },
     "coverage_main": {
       "statements": 89.49,
@@ -56,10 +56,10 @@
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 89.85,
+      "statements": 89.89,
       "branches": 82.02,
       "functions": 90.58,
-      "lines": 92.22
+      "lines": 92.27
     }
   },
   "environment": {
@@ -199,10 +199,16 @@
       "title": "Scenario lifecycle contract + mock state machine (PR A1 of M4-2)",
       "tier": 2,
       "status": "DONE (TS/mock only; Rust handlers pending; stores in A2, S-050 page in PR B)"
+    },
+    {
+      "id": "M4-2a2",
+      "title": "Scenario store wiring (PR A2 of M4-2)",
+      "tier": 2,
+      "status": "DONE (TS; S-050 page + S-041 picker in PR B)"
     }
   ],
   "last_updated": "2026-09-04",
-  "last_action": "Unit M4-2 PR A1: 9 scenario/plan commands typed+mocked (state machine, versions, baseline, MODEL_CELL_LOCKED table gate); gates 53f/586t",
+  "last_action": "Unit M4-2 PR A2: stores/scenarios.ts + model.setScenario + activeScenarioId routing; gates 53f/595t",
   "pr": {
     "number": 27,
     "url": "https://github.com/Warzonesiddiki/fpa/pull/27",

@@ -449,3 +449,103 @@ describe("model grid store — M3-9 Excel-parity (S-041)", () => {
     });
   });
 });
+
+describe("model grid store — scenario switching (S-050 · STATE-MANAGEMENT §2)", () => {
+  const SC2 = "5c4f1a2b-9d3e-4c7a-8b2f-000000000001";
+
+  // Local helpers — the first describe's mockLoad/mockEdit are scoped to that describe block.
+  function localLoad() {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      return Promise.resolve({});
+    });
+  }
+
+  function localEdit() {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      if (cmd === "model.cell.set.v1")
+        return Promise.resolve({
+          recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+          audit_id: 1,
+        });
+      return Promise.resolve({});
+    });
+  }
+
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    modelIdMock.mockReturnValue(null);
+    useModelGridStore.getState().reset();
+    // reset() keeps the previous scenario id — pin the documented default back.
+    useModelGridStore.setState({ scenarioId: WORKING_SCENARIO_ID });
+  });
+
+  it("setScenario switches the active scenario, rebuilds the worker, and reloads the grid", async () => {
+    localEdit();
+    await useModelGridStore.getState().load();
+    const firstClient = useModelGridStore.getState().client;
+    expect(firstClient).not.toBeNull();
+    await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: PERIOD, value: "10.00" });
+    expect(useModelGridStore.getState().canUndo).toBe(true);
+
+    await useModelGridStore.getState().setScenario(SC2);
+
+    const s = useModelGridStore.getState();
+    expect(s.scenarioId).toBe(SC2);
+    expect(s.client).not.toBeNull();
+    expect(s.client).not.toBe(firstClient); // STATE-MANAGEMENT §2: worker rebuilt on scenario switch
+    expect(s.cells[`${LINE}:${PERIOD}`]?.amount_text).toBeNull(); // cell cache invalidated
+    expect(s.canUndo).toBe(false); // history does not carry across scenarios
+    expect(s.status).toBe("success");
+    // grid reload requested the working reads again
+    expect(callMock).toHaveBeenCalledWith("coa.list", { company_id: CO });
+
+    // edits now flow to the new scenario id
+    await s.setCell({ line_id: LINE, period_id: PERIOD, value: "20.00" });
+    expect(callMock).toHaveBeenCalledWith(
+      "model.cell.set.v1",
+      expect.objectContaining({ scenario_id: SC2, line_id: LINE, period_id: PERIOD }),
+    );
+  });
+
+  it("setScenario is a no-op for the already-active scenario", async () => {
+    localLoad();
+    await useModelGridStore.getState().load();
+    const callsBefore = callMock.mock.calls.filter(([c]) => c === "coa.list").length;
+    await useModelGridStore.getState().setScenario(WORKING_SCENARIO_ID);
+    const callsAfter = callMock.mock.calls.filter(([c]) => c === "coa.list").length;
+    expect(callsAfter).toBe(callsBefore);
+    expect(useModelGridStore.getState().scenarioId).toBe(WORKING_SCENARIO_ID);
+  });
+
+  it("applyEdit surfaces MODEL_CELL_LOCKED when the scenario is locked", async () => {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      if (cmd === "model.cell.set.v1")
+        return Promise.reject({
+          code: "MODEL_CELL_LOCKED",
+          userMessage: "This scenario is locked. Create a Version to edit it.",
+          httpStatus: 422,
+          retryable: false,
+          retryAfterMs: null,
+          details: {},
+        });
+      return Promise.resolve({});
+    });
+    await useModelGridStore.getState().load();
+    const ok = await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: PERIOD, value: "5.00" });
+    expect(ok).toBe(false);
+    const s = useModelGridStore.getState();
+    expect(s.status).toBe("error");
+    expect(s.error?.code).toBe("MODEL_CELL_LOCKED");
+  });
+});

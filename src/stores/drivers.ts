@@ -23,10 +23,10 @@ import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
 import {
   activeModelId,
+  activeScenarioId,
   getModelEngineClient,
   periodIdFromPreview,
   WORKING_CALENDAR,
-  WORKING_SCENARIO_ID,
 } from "@/stores/model";
 import { CORE_DRIVER_ADVISORY_MAX, type DriverDef as SchemaDriverDef } from "@/api/schema";
 import type { ScreenState } from "@/components/ui/StatePanel";
@@ -228,7 +228,7 @@ export const useDriverStore = create<DriverStoreState>((set, get) => ({
     try {
       const written = (await call("driver.set_value", {
         driver_id: driverId,
-        scenario_id: WORKING_SCENARIO_ID,
+        scenario_id: activeScenarioId(),
         period_id: periodId,
         value_decimal: value,
       })) as { ok: true; recalc: EngineRecalcReport; value_decimal: string };

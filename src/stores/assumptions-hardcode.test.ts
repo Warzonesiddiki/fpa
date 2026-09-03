@@ -31,6 +31,7 @@ vi.mock("@/stores/session", () => ({
 }));
 vi.mock("@/stores/model", () => ({
   getModelEngineClient: () => engineClientMock(),
+  activeScenarioId: () => "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
   WORKING_MODEL_ID: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
   WORKING_SCENARIO_ID: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
 }));
