@@ -41,7 +41,7 @@
 | 31 | `README.md` (root) | <5-min quickstart + 60-second product path | 3, 12 |
 | 32 | `CHANGELOG.md` | Keep-a-changelog; v0.1.0 initial entry | 31 |
 | 33 | `TODO.md` | Actionable tasks by milestone (M0–M7) + V2 backlog | 35 |
-| 34 | `KNOWN-ISSUES.md` | KI-001…KI-011: severity/status/plan + entry template | 3, 19 |
+| 34 | `KNOWN-ISSUES.md` | KI-001…KI-013: severity/status/plan + entry template | 3, 19 |
 | 35 | `DECISIONS.md` | A1–A22 assumptions + 22 ADRs + superseded record | 1–34 |
 | 36 | `ROADMAP.md` | Dependency-ordered milestones w/ complexity + reference docs | 35 |
 | 37 | `DEFINITION-OF-DONE.md` | Feature/release doneness checklist + traps | 24, 36 |

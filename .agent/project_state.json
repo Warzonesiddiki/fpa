@@ -123,6 +123,18 @@
       "severity": "release",
       "summary": "tauri.conf.json updater pubkey empty — inject at release",
       "status": "tracked"
+    },
+    {
+      "id": "KI-012",
+      "tier": 3,
+      "status": "OPEN — awaiting human (RFC options a/b in KNOWN-ISSUES)",
+      "summary": "fiscal_periods.id UUID v4 vs documented fp-YYYY-pNN; no command exposes ids"
+    },
+    {
+      "id": "KI-013",
+      "tier": 2,
+      "status": "OPEN — bounded follow-up unit",
+      "summary": "auth user-text + lockout minutes-vs-30s countdown drift (S-001)"
     }
   ],
   "units": [
@@ -158,5 +170,5 @@
     }
   ],
   "last_updated": "2026-09-03",
-  "last_action": "Unit W-2: retryable reconciliation (error.rs tuples, mock mirror, Rust + TS tests)"
+  "last_action": "docs: KI-012 (period-id contract gap, Tier 3) + KI-013 (auth copy/countdown drift) registered; TASKBOARD §12 pointer"
 }

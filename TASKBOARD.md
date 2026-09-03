@@ -210,6 +210,8 @@ Done (39 — counted from `core/error.rs` `code()` tuples, 2026-09-03): `ASSUMPT
 
 **Envelope drift fixed (Unit W-2, 2026-09-03):** `core/error.rs` now returns exactly ERROR-HANDLING §A — `AUTH_PIN_INVALID` 401/retry=false, `AUTH_LOCKED` 423/retry=true with `retryAfterMs`, `SESSION_LOCKED` 401/retry=false (previously true/false/true). `mock.ts`, the settings/schema test fixtures and the `require_unlocked` doc comment were mirrored; a Rust unit test (`core::error::tests`) pins the three tuples + the camelCase serializer. Rust change is hand-reviewed only (brace-balance gate; `cargo test` remains CI-only — §14).
 
+**Open contract items awaiting a human decision (Tier 3 — not auto-fixed):** KI-012 fiscal-period id shape (core mints UUID v4; docs/UI/mock use `fp-YYYY-pNN`; no command exposes persisted ids → native `driver.set_value`/`assumption.upsert` hit `PERIOD_NOT_FOUND`) and KI-013 auth copy/countdown-unit drift (cosmetic, one bounded UI unit). See `docs/KNOWN-ISSUES.md`.
+
 **Rule:** never invent a code; reuse the 97. Add a code only through a Stage-0 docs decision + B20.
 
 ## 13. QUALITY GATES (must be green on every commit on this branch)
