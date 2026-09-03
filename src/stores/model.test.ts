@@ -182,3 +182,126 @@ describe("model grid store (S-041)", () => {
     expect(callMock).not.toHaveBeenCalledWith("model.inspect", expect.anything());
   });
 });
+
+describe("model grid store — M3-9 Excel-parity (S-041)", () => {
+  const SRC = ACCOUNTS[1].id;
+  const P2 = "fp-2026-p02";
+
+  function mockEdit(auditId = 1) {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      if (cmd === "model.cell.set.v1")
+        return Promise.resolve({
+          recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+          audit_id: auditId,
+        });
+      if (cmd === "model.recalc")
+        return Promise.resolve({
+          dirty_cells: 0,
+          cycles: [],
+          changed_cells: [LINE],
+          issues: [],
+          duration_ms: 0,
+        });
+      return Promise.resolve({});
+    });
+  }
+
+  it("undo restores the previous value and redo re-applies it (history round-trip)", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: PERIOD, value: "100.00" });
+    let s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${PERIOD}`].amount_text).toBe("100.00");
+    expect(s.canUndo).toBe(true);
+    expect(s.canRedo).toBe(false);
+
+    await useModelGridStore.getState().undo();
+    s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${PERIOD}`].amount_text).toBeNull();
+    expect(s.canRedo).toBe(true);
+
+    await useModelGridStore.getState().redo();
+    s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${PERIOD}`].amount_text).toBe("100.00");
+    expect(s.canUndo).toBe(true);
+  });
+
+  it("fills down, copying values and shifting relative formula refs", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    await useModelGridStore.getState().setCell({ line_id: SRC, period_id: PERIOD, value: "10.00" });
+    await useModelGridStore
+      .getState()
+      .setCell({ line_id: LINE, period_id: PERIOD, formula: "=B2+5" });
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    useModelGridStore.getState().extendSelection(LINE, PERIOD); // single-cell selection
+    await useModelGridStore.getState().fillSelection("down");
+    const s = useModelGridStore.getState();
+    expect(s.cells[`${SRC}:${PERIOD}`].formula).toBe("=B3+5"); // dRow=1 → B2→B3
+  });
+
+  it("paste rejects invalid input with VALUE_INVALID and leaves cells untouched", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    const ok = await useModelGridStore.getState().pasteBlock("USD 100");
+    const s = useModelGridStore.getState();
+    expect(ok).toBe(false);
+    expect(s.status).toBe("error");
+    expect(s.error?.code).toBe("VALUE_INVALID");
+    expect(s.cells[`${LINE}:${PERIOD}`].amount_text).toBeNull();
+  });
+
+  it("paste applies a valid TSV block anchored at the active cell", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    const ok = await useModelGridStore.getState().pasteBlock("1.00\t2.00\n3.00\t4.00");
+    const s = useModelGridStore.getState();
+    expect(ok).toBe(true);
+    expect(s.cells[`${LINE}:${PERIOD}`].amount_text).toBe("1.00");
+    expect(s.cells[`${LINE}:${P2}`].amount_text).toBe("2.00");
+    expect(s.cells[`${SRC}:${PERIOD}`].amount_text).toBe("3.00");
+    expect(s.cells[`${SRC}:${P2}`].amount_text).toBe("4.00");
+    expect(s.canUndo).toBe(true);
+  });
+
+  it("copySelection serializes the current selection as TSV", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    await useModelGridStore.getState().pasteBlock("1.00\t2.00\n3.00\t4.00");
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    useModelGridStore.getState().extendSelection(SRC, P2);
+    const tsv = useModelGridStore.getState().copySelection();
+    expect(tsv).toBe("1.00\t2.00\n3.00\t4.00");
+  });
+
+  it("moveActive navigates and clamps within the grid", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    useModelGridStore.getState().moveActive(1, 0);
+    expect(useModelGridStore.getState().active).toEqual({ lineId: SRC, periodId: PERIOD });
+    useModelGridStore.getState().moveActive(0, 1);
+    expect(useModelGridStore.getState().active).toEqual({ lineId: SRC, periodId: P2 });
+    useModelGridStore.getState().moveActive(-5, -5);
+    expect(useModelGridStore.getState().active).toEqual({ lineId: LINE, periodId: PERIOD });
+  });
+
+  it("selectTo extends the selection rectangle (shift+arrow)", async () => {
+    mockEdit();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActiveCell(LINE, PERIOD);
+    useModelGridStore.getState().selectTo(1, 1);
+    const sel = useModelGridStore.getState().selection;
+    expect(sel).toEqual({
+      anchor: { lineId: LINE, periodId: PERIOD },
+      focus: { lineId: SRC, periodId: P2 },
+    });
+  });
+});

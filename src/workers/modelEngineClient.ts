@@ -24,6 +24,7 @@ import { handleEngineMessage, type EngineRequest, type EngineResponse } from "./
 export interface ModelEngineClient {
   loadGrid(layout: GridLayout): Promise<void>;
   setCell(input: SetCellInput): Promise<SetCellResult>;
+  clearCell(lineId: string, periodId: string): Promise<GridCellView>;
   recalc(): Promise<EngineRecalcReport>;
   getGrid(): Promise<GridCellView[]>;
   getDerived(lineId: string): Promise<{ ytd: string | null; fy: string | null }>;
@@ -71,6 +72,9 @@ class SingleFlight implements ModelEngineClient {
   }
   setCell(input: SetCellInput): Promise<SetCellResult> {
     return this.enqueue("setCell", input);
+  }
+  clearCell(lineId: string, periodId: string): Promise<GridCellView> {
+    return this.enqueue("clearCell", { lineId, periodId });
   }
   recalc(): Promise<EngineRecalcReport> {
     return this.enqueue("recalc", undefined);

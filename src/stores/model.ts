@@ -26,6 +26,15 @@ import type {
   ModelGridPeriod,
   SetCellInput,
 } from "@/workers/modelEngine";
+import {
+  History,
+  buildFillEdits,
+  buildPasteEdits,
+  serializeSelection,
+  snapshotFromView,
+  snapshotToInput,
+  type SelectionRect,
+} from "@/stores/modelHistory";
 
 /** M3-1 working scenario (API-SPEC §3 example id). Scenario selection ships with S-050. */
 export const WORKING_SCENARIO_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
@@ -66,12 +75,41 @@ interface ModelGridState {
   scale: number;
   scenarioId: string;
   client: ModelEngineClient | null;
+  /** Active (selected) cell — drives the formula bar and paste anchoring. */
+  active: { lineId: string; periodId: string } | null;
+  /** Current selection rectangle (anchor × focus); `null` when nothing is selected. */
+  selection: SelectionRect | null;
+  /** In-memory edit history (M3-9 undo/redo). */
+  history: History;
+  canUndo: boolean;
+  canRedo: boolean;
   load: () => Promise<void>;
   setCell: (input: SetCellInput) => Promise<boolean>;
+  /** Internal core write (validate+audit via `model.cell.set.v1`, then graph) — no history. */
+  applyEdit: (input: SetCellInput) => Promise<boolean>;
   inspectCell: (lineId: string, periodId: string) => Promise<CellInspectResult>;
   recalcAll: () => Promise<void>;
   retry: () => Promise<void>;
   reset: () => void;
+  /** Select a single cell (collapse any range selection to it). */
+  setActiveCell: (lineId: string, periodId: string) => void;
+  /** Shift+click / extend: grow the selection to include `lineId:periodId`. */
+  extendSelection: (lineId: string, periodId: string) => void;
+  /** Arrow-key navigation: move the active cell by a (line, period) delta, collapse selection. */
+  moveActive: (dLine: number, dPeriod: number) => void;
+  /** Shift+arrow: extend the focus corner of the selection by a (line, period) delta. */
+  selectTo: (dLine: number, dPeriod: number) => void;
+  clearSelection: () => void;
+  /** Undo the last edit (replays the stored before-snapshot through the audited path). */
+  undo: () => Promise<void>;
+  /** Redo the last undone edit. */
+  redo: () => Promise<void>;
+  /** Fill the selection down or right from its source edge (relative refs adjusted). */
+  fillSelection: (direction: "down" | "right") => Promise<void>;
+  /** Paste a TSV/CSV clipboard block anchored at the active cell (VALUE_INVALID on bad input). */
+  pasteBlock: (text: string) => Promise<boolean>;
+  /** Serialize the current selection to TSV (formula text or exact decimal per cell). */
+  copySelection: () => string;
 }
 
 let client: ModelEngineClient | null = null;
@@ -102,12 +140,27 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   scale: 2,
   scenarioId: WORKING_SCENARIO_ID,
   client: null,
+  active: null,
+  selection: null,
+  history: new History(),
+  canUndo: false,
+  canRedo: false,
 
   load: async () => {
     set({ status: "loading", error: null });
     const companyId = useSessionStore.getState().companyId;
     if (!companyId) {
-      set({ status: "empty", error: null, lines: [], periods: [] });
+      set({
+        status: "empty",
+        error: null,
+        lines: [],
+        periods: [],
+        active: null,
+        selection: null,
+        history: new History(),
+        canUndo: false,
+        canRedo: false,
+      });
       return;
     }
     try {
@@ -145,7 +198,17 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       }));
 
       if (lines.length === 0) {
-        set({ status: "empty", lines, periods, error: null });
+        set({
+          status: "empty",
+          lines,
+          periods,
+          error: null,
+          active: null,
+          selection: null,
+          history: new History(),
+          canUndo: false,
+          canRedo: false,
+        });
         return;
       }
 
@@ -157,44 +220,305 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       const derived: Record<string, { ytd: string | null; fy: string | null }> = {};
       for (const line of lines) derived[line.id] = await engine.getDerived(line.id);
 
-      set({ status: "success", lines, periods, cells, derived, error: null, client: engine });
+      set({
+        status: "success",
+        lines,
+        periods,
+        cells,
+        derived,
+        error: null,
+        client: engine,
+        active: null,
+        selection: null,
+        history: new History(),
+        canUndo: false,
+        canRedo: false,
+      });
     } catch (err) {
       set({ status: "error", error: err as BridgeError });
+    }
+  },
+
+  /**
+   * Core cell write: validate + audit through `model.cell.set.v1` (B7/B18-2), then apply to the
+   * real HyperFormula graph. Does NOT record history — callers (`setCell`, `fillSelection`,
+   * `pasteBlock`, `undo`, `redo`) own the history bookkeeping so each user action is one entry.
+   * A clear (both value & formula null) is graph-only: the catalogued command requires a value or
+   * formula, so a clear reconciles the engine without an IPC round-trip (M3-1 persistence is
+   * already PARTIAL — `model.cell.set.v1` validates + audits only).
+   */
+  applyEdit: async (input: SetCellInput): Promise<boolean> => {
+    const s = get();
+    if (!s.client) return false;
+    const isClear = input.value == null && input.formula == null;
+    try {
+      let auditId = s.auditId;
+      let recalc: EngineRecalcReport | null = s.recalc;
+      if (!isClear) {
+        const written = (await call("model.cell.set.v1", {
+          line_id: input.line_id,
+          scenario_id: s.scenarioId,
+          period_id: input.period_id,
+          value: input.value ?? null,
+          formula: input.formula ?? null,
+          manual_override: input.manual_override ?? false,
+        })) as { recalc: EngineRecalcReport; audit_id: number };
+        auditId = written.audit_id;
+        recalc = written.recalc;
+      }
+      if (isClear) await s.client.clearCell(input.line_id, input.period_id);
+      else await s.client.setCell(input);
+      const grid = await s.client.getGrid();
+      const cells: Record<string, GridCellView> = { ...s.cells };
+      for (const c of grid) cells[cellKey(c.line_id, c.period_id)] = c;
+      const derived = { ...s.derived };
+      derived[input.line_id] = await s.client.getDerived(input.line_id);
+      set({ status: "populated", cells, derived, recalc, auditId, error: null });
+      return true;
+    } catch (err) {
+      set({ status: "error", error: err as BridgeError });
+      return false;
     }
   },
 
   setCell: async (input: SetCellInput) => {
     const s = get();
     if (!s.client) return false;
-    // Audited persistence + whitelist/money validation gate (B7/B18-2), then the real graph.
-    try {
-      const written = (await call("model.cell.set.v1", {
+    const before = snapshotFromView(
+      s.cells[cellKey(input.line_id, input.period_id)] ?? {
         line_id: input.line_id,
-        scenario_id: s.scenarioId,
         period_id: input.period_id,
-        value: input.value ?? null,
-        formula: input.formula ?? null,
-        manual_override: input.manual_override ?? false,
-      })) as { recalc: EngineRecalcReport; audit_id: number };
-      await s.client.setCell(input);
-      const grid = await s.client.getGrid();
-      const cells: Record<string, GridCellView> = { ...s.cells };
-      for (const c of grid) cells[cellKey(c.line_id, c.period_id)] = c;
-      const derived = { ...s.derived };
-      derived[input.line_id] = await s.client.getDerived(input.line_id);
-      set({
-        status: "populated",
-        cells,
-        derived,
-        recalc: written.recalc,
-        error: null,
-        auditId: written.audit_id,
-      });
-      return true;
+        amount_text: null,
+        formula: null,
+        computed_text: null,
+        error_code: null,
+        manual_override: false,
+      },
+    );
+    const ok = await s.applyEdit(input);
+    if (!ok) return false;
+    const s2 = get();
+    const after = snapshotFromView(
+      s2.cells[cellKey(input.line_id, input.period_id)] ?? {
+        line_id: input.line_id,
+        period_id: input.period_id,
+        amount_text: null,
+        formula: null,
+        computed_text: null,
+        error_code: null,
+        manual_override: false,
+      },
+    );
+    s2.history.push({ label: "edit", cells: [{ before, after }] });
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo });
+    return true;
+  },
+
+  setActiveCell: (lineId, periodId) =>
+    set({
+      active: { lineId, periodId },
+      selection: { anchor: { lineId, periodId }, focus: { lineId, periodId } },
+    }),
+
+  extendSelection: (lineId, periodId) => {
+    const s = get();
+    const anchor = s.selection?.anchor ?? s.active ?? { lineId, periodId };
+    set({
+      selection: { anchor, focus: { lineId, periodId } },
+      active: { lineId, periodId },
+    });
+  },
+
+  moveActive: (dLine, dPeriod) => {
+    const s = get();
+    const cur = s.active ?? s.selection?.anchor ?? null;
+    if (!cur || s.lines.length === 0 || s.periods.length === 0) return;
+    const lineIds = s.lines.map((l) => l.id);
+    const periodIds = s.periods.map((p) => p.id);
+    const i = lineIds.indexOf(cur.lineId);
+    const j = periodIds.indexOf(cur.periodId);
+    if (i < 0 || j < 0) return;
+    const ni = Math.max(0, Math.min(lineIds.length - 1, i + dLine));
+    const nj = Math.max(0, Math.min(periodIds.length - 1, j + dPeriod));
+    const lineId = lineIds[ni];
+    const periodId = periodIds[nj];
+    set({
+      active: { lineId, periodId },
+      selection: { anchor: { lineId, periodId }, focus: { lineId, periodId } },
+    });
+  },
+
+  selectTo: (dLine, dPeriod) => {
+    const s = get();
+    const base = s.selection?.focus ?? s.active ?? s.selection?.anchor ?? null;
+    if (!base || s.lines.length === 0 || s.periods.length === 0) return;
+    const lineIds = s.lines.map((l) => l.id);
+    const periodIds = s.periods.map((p) => p.id);
+    const i = lineIds.indexOf(base.lineId);
+    const j = periodIds.indexOf(base.periodId);
+    if (i < 0 || j < 0) return;
+    const ni = Math.max(0, Math.min(lineIds.length - 1, i + dLine));
+    const nj = Math.max(0, Math.min(periodIds.length - 1, j + dPeriod));
+    const focus = { lineId: lineIds[ni], periodId: periodIds[nj] };
+    const anchor = s.selection?.anchor ?? s.active ?? base;
+    set({ selection: { anchor, focus }, active: focus });
+  },
+
+  clearSelection: () => set({ selection: null }),
+
+  undo: async () => {
+    const s = get();
+    const entry = s.history.popUndo();
+    if (!entry) return;
+    for (const c of entry.cells) {
+      const ok = await s.applyEdit(snapshotToInput(c.before));
+      if (!ok) break;
+    }
+    const s2 = get();
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo });
+  },
+
+  redo: async () => {
+    const s = get();
+    const entry = s.history.popRedo();
+    if (!entry) return;
+    for (const c of entry.cells) {
+      const ok = await s.applyEdit(snapshotToInput(c.after));
+      if (!ok) break;
+    }
+    const s2 = get();
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo });
+  },
+
+  fillSelection: async (direction) => {
+    const s = get();
+    if (!s.selection || !s.client) return;
+    const edits = buildFillEdits({
+      direction,
+      anchor: s.selection.anchor,
+      focus: s.selection.focus,
+      lines: s.lines,
+      periods: s.periods,
+      getCell: (lineId, periodId) => s.cells[cellKey(lineId, periodId)] ?? null,
+    });
+    if (edits.length === 0) return;
+    const items = edits.map((e) => ({
+      before: snapshotFromView(
+        s.cells[cellKey(e.line_id, e.period_id)] ?? {
+          line_id: e.line_id,
+          period_id: e.period_id,
+          amount_text: null,
+          formula: null,
+          computed_text: null,
+          error_code: null,
+          manual_override: false,
+        },
+      ),
+      input: e,
+    }));
+    for (const it of items) {
+      const ok = await s.applyEdit(it.input);
+      if (!ok) return;
+    }
+    const s2 = get();
+    const cells = items.map((it) => ({
+      before: it.before,
+      after: snapshotFromView(
+        s2.cells[cellKey(it.input.line_id, it.input.period_id)] ?? {
+          line_id: it.input.line_id,
+          period_id: it.input.period_id,
+          amount_text: null,
+          formula: null,
+          computed_text: null,
+          error_code: null,
+          manual_override: false,
+        },
+      ),
+    }));
+    s2.history.push({ label: `fill-${direction}`, cells });
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo });
+  },
+
+  pasteBlock: async (text) => {
+    const s = get();
+    if (!s.active || !s.client) return false;
+    let edits: SetCellInput[];
+    try {
+      edits = buildPasteEdits({ text, anchor: s.active, lines: s.lines, periods: s.periods });
     } catch (err) {
-      set({ status: "error", error: err as BridgeError });
+      const valueErr: BridgeError = {
+        code: "VALUE_INVALID",
+        userMessage: "Value is not valid for this cell (clipboard).",
+        httpStatus: 422,
+        retryable: false,
+        retryAfterMs: null,
+        details: { reason: (err as Error).message },
+      };
+      set({ status: "error", error: valueErr });
       return false;
     }
+    if (edits.length === 0) return false;
+    const items = edits.map((e) => ({
+      before: snapshotFromView(
+        s.cells[cellKey(e.line_id, e.period_id)] ?? {
+          line_id: e.line_id,
+          period_id: e.period_id,
+          amount_text: null,
+          formula: null,
+          computed_text: null,
+          error_code: null,
+          manual_override: false,
+        },
+      ),
+      input: e,
+    }));
+    for (const it of items) {
+      const ok = await s.applyEdit(it.input);
+      if (!ok) return false;
+    }
+    const s2 = get();
+    const cells = items.map((it) => ({
+      before: it.before,
+      after: snapshotFromView(
+        s2.cells[cellKey(it.input.line_id, it.input.period_id)] ?? {
+          line_id: it.input.line_id,
+          period_id: it.input.period_id,
+          amount_text: null,
+          formula: null,
+          computed_text: null,
+          error_code: null,
+          manual_override: false,
+        },
+      ),
+    }));
+    s2.history.push({ label: "paste", cells });
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo });
+    return true;
+  },
+
+  copySelection: () => {
+    const s = get();
+    if (!s.selection) return "";
+    const lineIds = s.lines.map((l) => l.id);
+    const periodIds = s.periods.map((p) => p.id);
+    const ai = lineIds.indexOf(s.selection.anchor.lineId);
+    const aj = periodIds.indexOf(s.selection.anchor.periodId);
+    const fi = lineIds.indexOf(s.selection.focus.lineId);
+    const fj = periodIds.indexOf(s.selection.focus.periodId);
+    if (ai < 0 || aj < 0 || fi < 0 || fj < 0) return "";
+    const minI = Math.min(ai, fi);
+    const maxI = Math.max(ai, fi);
+    const minJ = Math.min(aj, fj);
+    const maxJ = Math.max(aj, fj);
+    const matrix: (GridCellView | null)[][] = [];
+    for (let i = minI; i <= maxI; i += 1) {
+      const row: (GridCellView | null)[] = [];
+      for (let j = minJ; j <= maxJ; j += 1) {
+        row.push(s.cells[cellKey(lineIds[i], periodIds[j])] ?? null);
+      }
+      matrix.push(row);
+    }
+    return serializeSelection(matrix);
   },
 
   inspectCell: async (lineId: string, periodId: string): Promise<CellInspectResult> => {
@@ -240,6 +564,11 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       recalc: null,
       auditId: null,
       client: null,
+      active: null,
+      selection: null,
+      history: new History(),
+      canUndo: false,
+      canRedo: false,
     });
   },
 }));
