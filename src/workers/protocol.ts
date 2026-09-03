@@ -9,6 +9,7 @@
  * Ops run single-flight (the client queues setCell/recalc; the worker is single-threaded).
  */
 import type { ModelEngine } from "./modelEngine";
+import { SpreadError, spreadTotal, type SpreadRequest } from "./spreading";
 
 export type EngineOp =
   | "loadGrid"
@@ -28,7 +29,8 @@ export type EngineOp =
   | "addNamedRange"
   | "removeNamedRange"
   | "listNamedRanges"
-  | "getNamedRangeValue";
+  | "getNamedRangeValue"
+  | "spreadTotal";
 
 export interface EngineRequest {
   id: number;
@@ -42,6 +44,13 @@ export type EngineResponse =
 
 /** Split an engine `Error("CODE: message")` into the locked code + human detail (B20 — no new codes). */
 export function parseEngineError(err: unknown): { code: string; message: string } {
+  if (err instanceof SpreadError) {
+    // Structured spread failures carry the documented user text + details (SPREAD_WEIGHTS_INVALID).
+    return {
+      code: err.code,
+      message: JSON.stringify({ userMessage: err.userMessage, details: err.details }),
+    };
+  }
   const text = err instanceof Error ? err.message : String(err);
   const colon = text.indexOf(":");
   const code = (colon === -1 ? text : text.slice(0, colon)).trim() || "INTERNAL";
@@ -137,6 +146,10 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
         const { name } = req.args as { name: string };
         return { id: req.id, ok: true, data: engine.getNamedRangeValue(name) };
       }
+      case "spreadTotal":
+        // Pure computation (MODELING-METHODS-SPEC §3): the caller commits each period value through
+        // the audited `model.cell.set.v1` + `setCell` path, so the graph stays the single owner.
+        return { id: req.id, ok: true, data: spreadTotal(req.args as SpreadRequest) };
       default:
         return {
           id: req.id,

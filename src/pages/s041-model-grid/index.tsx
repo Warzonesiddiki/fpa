@@ -17,6 +17,7 @@ import {
   Sigma,
   Snowflake,
   Sheet,
+  SplitSquareHorizontal,
   Undo2,
   Redo2,
   TableProperties,
@@ -24,6 +25,7 @@ import {
 import { Button, StatePanel, MoneyCell } from "@/components/ui";
 import type { ScreenState } from "@/components/ui/StatePanel";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
+import { SpreadDialog } from "./SpreadDialog";
 import { useModelGridStore } from "@/stores/model";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
@@ -84,6 +86,9 @@ export function ModelGridPage() {
   const setActiveCell = useModelGridStore((s) => s.setActiveCell);
   const extendSelection = useModelGridStore((s) => s.extendSelection);
   const selectTo = useModelGridStore((s) => s.selectTo);
+  const spreadLine = useModelGridStore((s) => s.spreadLine);
+  const spreadError = useModelGridStore((s) => s.spreadError);
+  const clearSpreadError = useModelGridStore((s) => s.clearSpreadError);
 
   // Active (selected) cell drives the formula bar.
   const [formulaEdited, setFormulaEdited] = useState<string | null>(null);
@@ -92,6 +97,7 @@ export function ModelGridPage() {
   const [showFormulas, setShowFormulas] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [spreadOpen, setSpreadOpen] = useState(false);
 
   const formulaBarRef = useRef<HTMLInputElement | null>(null);
   const gridApiRef = useRef<GridApi | null>(null);
@@ -513,6 +519,19 @@ export function ModelGridPage() {
         >
           <ClipboardPaste aria-hidden="true" className="h-4 w-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t("gridPage.spreadAction")}
+          title={t("gridPage.spreadActionHint")}
+          onClick={() => {
+            clearSpreadError();
+            setSpreadOpen(true);
+          }}
+          disabled={!active || periods.length === 0}
+        >
+          <SplitSquareHorizontal aria-hidden="true" className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Sheet tabs — single "Model" sheet (multi-sheet is a later milestone). */}
@@ -596,6 +615,22 @@ export function ModelGridPage() {
             }}
           />
         </div>
+      )}
+
+      {spreadOpen && active && (
+        <SpreadDialog
+          lineId={active.lineId}
+          lineLabel={lines.find((l) => l.id === active.lineId)?.label ?? active.lineId}
+          periods={periods}
+          currency={currency}
+          error={spreadError}
+          onSpread={spreadLine}
+          onClose={() => {
+            clearSpreadError();
+            setSpreadOpen(false);
+          }}
+          onClearError={clearSpreadError}
+        />
       )}
 
       {pasteOpen && (

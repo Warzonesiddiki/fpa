@@ -16,8 +16,9 @@ import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
 import type { ScreenState } from "@/components/ui/StatePanel";
-import { createModelEngineClient } from "@/workers/modelEngineClient";
+import { createModelEngineClient, parseEngineOpError } from "@/workers/modelEngineClient";
 import type { ModelEngineClient } from "@/workers/modelEngineClient";
+import type { SpreadMethod, SpreadResult } from "@/workers/spreading";
 import type {
   CellInspectResult,
   EngineRecalcReport,
@@ -125,6 +126,33 @@ interface ModelGridState {
   pasteBlock: (text: string) => Promise<boolean>;
   /** Serialize the current selection to TSV (formula text or exact decimal per cell). */
   copySelection: () => string;
+  /**
+   * Period Spreading (M3-5 · F-015 · MODELING-METHODS-SPEC §3): distribute `total` across the
+   * loaded horizon for `lineId` and commit every period value through the audited path. One
+   * undo entry per spread. Returns the engine result, or `null` when the spread was rejected —
+   * `SPREAD_WEIGHTS_INVALID` is surfaced in `spreadError` (with the normalise offer), never in the
+   * page-level error state, so the grid stays usable while the user fixes the curve.
+   */
+  spreadLine: (req: SpreadLineRequest) => Promise<SpreadResult | null>;
+  /** Last spread rejection (HARD `SPREAD_WEIGHTS_INVALID` / `VALUE_INVALID`) — cleared on success. */
+  spreadError: BridgeError | null;
+  clearSpreadError: () => void;
+}
+
+export interface SpreadLineRequest {
+  lineId: string;
+  total: string;
+  method: SpreadMethod;
+  /** `seasonal` fractions per loaded period (UI converts % → fraction before calling). */
+  weights?: string[];
+  /** `custom` amounts per loaded period. */
+  amounts?: string[];
+  /** `lump` period_id → amount. */
+  lumps?: Record<string, string>;
+  /** §3.5 — W53/P13 exclusion (re-normalised, flagged). */
+  excludePeriodIds?: string[];
+  /** The user's explicit "normalize" answer to a prior SPREAD_WEIGHTS_INVALID. */
+  normalize?: boolean;
 }
 
 let client: ModelEngineClient | null = null;
@@ -160,9 +188,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   history: new History(),
   canUndo: false,
   canRedo: false,
+  spreadError: null,
 
   load: async () => {
-    set({ status: "loading", error: null });
+    set({ status: "loading", error: null, spreadError: null });
     const companyId = useSessionStore.getState().companyId;
     if (!companyId) {
       set({
@@ -536,6 +565,98 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
     return serializeSelection(matrix);
   },
 
+  clearSpreadError: () => set({ spreadError: null }),
+
+  spreadLine: async (req) => {
+    const s = get();
+    if (!s.client || s.periods.length === 0) return null;
+    if (!s.lines.some((l) => l.id === req.lineId)) {
+      set({
+        spreadError: {
+          code: "REFERENCE_BROKEN",
+          userMessage: "Reference is broken (unknown line).",
+          httpStatus: 422,
+          retryable: false,
+          retryAfterMs: null,
+          details: { line_id: req.lineId },
+        },
+      });
+      return null;
+    }
+    let result: SpreadResult;
+    try {
+      result = await s.client.spreadTotal({
+        total: req.total,
+        periodIds: s.periods.map((p) => p.id),
+        method: req.method,
+        weights: req.weights,
+        amounts: req.amounts,
+        lumps: req.lumps,
+        excludePeriodIds: req.excludePeriodIds,
+        normalize: req.normalize,
+        scale: s.scale,
+      });
+    } catch (err) {
+      // The engine's structured rejection (SPREAD_WEIGHTS_INVALID with the normalise offer, or
+      // VALUE_INVALID) — locked codes only (B20). Shown inline in the spread dialog.
+      const parsed = parseEngineOpError(err);
+      set({
+        spreadError: {
+          code: parsed.code,
+          userMessage:
+            parsed.userMessage ??
+            (parsed.code === "SPREAD_WEIGHTS_INVALID"
+              ? "Seasonality weights total — normalize to 100% or fix."
+              : "Value is not valid for this cell (spread)."),
+          httpStatus: 422,
+          retryable: false,
+          retryAfterMs: null,
+          details: parsed.details,
+        },
+      });
+      return null;
+    }
+
+    // Commit every planned period through the audited path (B7) — the same route as a typed
+    // edit, so each value is validated by the core and lands in the engine graph. Excluded
+    // periods (§3.5) are left untouched. One history entry for the whole spread.
+    const emptyView = (period_id: string): GridCellView => ({
+      line_id: req.lineId,
+      period_id,
+      amount_text: null,
+      formula: null,
+      computed_text: null,
+      error_code: null,
+      manual_override: false,
+    });
+    const items = result.values.map((v) => ({
+      before: snapshotFromView(s.cells[cellKey(req.lineId, v.period_id)] ?? emptyView(v.period_id)),
+      input: {
+        line_id: req.lineId,
+        period_id: v.period_id,
+        value: v.amount_text,
+        formula: null,
+        manual_override: false,
+      } satisfies SetCellInput,
+    }));
+    for (const it of items) {
+      const ok = await s.applyEdit(it.input);
+      if (!ok) return null;
+    }
+    const s2 = get();
+    s2.history.push({
+      label: `spread-${result.method}`,
+      cells: items.map((it) => ({
+        before: it.before,
+        after: snapshotFromView(
+          s2.cells[cellKey(it.input.line_id, it.input.period_id)] ?? emptyView(it.input.period_id),
+        ),
+      })),
+    });
+    set({ canUndo: s2.history.canUndo, canRedo: s2.history.canRedo, spreadError: null });
+    return result;
+  },
+
   inspectCell: async (lineId: string, periodId: string): Promise<CellInspectResult> => {
     const s = get();
     if (!s.client) throw new Error("MODEL_GRID_NOT_LOADED: load the grid first");
@@ -584,6 +705,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       history: new History(),
       canUndo: false,
       canRedo: false,
+      spreadError: null,
     });
   },
 }));
