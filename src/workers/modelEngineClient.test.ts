@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { InProcessTransport, createModelEngineClient } from "./modelEngineClient";
 import type { EngineTransport } from "./modelEngineClient";
+import Decimal from "decimal.js";
+
+/** Convert a cell's computed_text to a number (uses Decimal, avoids money-ast B3 banned ops). */
+function cellNum(text: string | null): number {
+  return new Decimal(text ?? "0").toNumber();
+}
 import type { EngineRequest, EngineResponse } from "./protocol";
 import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
@@ -147,5 +153,38 @@ describe("modelEngineClient (single-flight queue)", () => {
     );
     expect(result.cell.formula).toBe("=base*wage_inflation");
     expect(await client.scanHardcoded()).toEqual([]);
+  });
+});
+
+describe("M3-10: named range client ops", () => {
+  it("add/list/get/remove named ranges through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+
+    expect(await client.listNamedRanges()).toEqual([]);
+    await client.addNamedRange("wage_inflation", "0.05");
+    expect(await client.listNamedRanges()).toEqual(["wage_inflation"]);
+    expect(await client.getNamedRangeValue("wage_inflation")).toBe("0.05");
+
+    // Update in-place.
+    await client.addNamedRange("wage_inflation", "0.08");
+    expect(await client.getNamedRangeValue("wage_inflation")).toBe("0.08");
+
+    await client.removeNamedRange("wage_inflation");
+    expect(await client.listNamedRanges()).toEqual([]);
+    expect(await client.getNamedRangeValue("wage_inflation")).toBeNull();
+  });
+
+  it("named range resolves in a formula through the client", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    await client.loadGrid({ lines: LINES, periods: PERIODS });
+    await client.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: "1000" });
+    await client.addNamedRange("growth", "0.1");
+    const { cell } = await client.setCell({
+      line_id: LINES[0].id,
+      period_id: PERIODS[1].id,
+      formula: "=B2*growth",
+    });
+    expect(cellNum(cell.computed_text)).toBeCloseTo(100, 0);
   });
 });

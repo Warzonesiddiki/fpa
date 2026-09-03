@@ -7,6 +7,12 @@ import {
   MAX_FORMULA_LEN,
 } from "./modelEngine";
 import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
+import Decimal from "decimal.js";
+
+/** Convert a cell's computed_text to a number (uses Decimal, avoids money-ast B3 banned ops). */
+function cellNum(text: string | null): number {
+  return new Decimal(text ?? "0").toNumber();
+}
 
 const LINES: ModelGridLine[] = [
   { id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000010", label: "4000 · Revenue", method: "manual" },
@@ -390,6 +396,343 @@ describe("analysis functions", () => {
   });
   it("returns seasonality shares", () => {
     expect(computeAnalysisFunction("SEASONALITY", ["1", "3"])).toEqual(["0.25", "0.75"]);
+  });
+});
+
+// ── M3-10: Analysis Functions as HyperFormula custom functions ────────────────────
+
+const TWELVE_PERIODS: ModelGridPeriod[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `fp-2026-p${String(i + 1).padStart(2, "0")}`,
+  code: `P${String(i + 1).padStart(2, "0")}`,
+}));
+
+const PRIOR_YEAR_PERIODS: ModelGridPeriod[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `fp-2025-p${String(i + 1).padStart(2, "0")}`,
+  code: `P${String(i + 1).padStart(2, "0")}`,
+}));
+
+function engineWithTwelvePeriods(): ModelEngine {
+  const e = new ModelEngine();
+  e.loadGrid({ lines: LINES, periods: TWELVE_PERIODS });
+  return e;
+}
+
+describe("M3-10: Analysis Functions as HyperFormula custom functions", () => {
+  it("CAGR(start, end, periods) evaluates in the grid", () => {
+    const e = new ModelEngine(4); // scale=4 to preserve rate precision
+    e.loadGrid({ lines: LINES, periods: TWELVE_PERIODS });
+    // Put start=100 in P01, end=200 in P02, compute CAGR in P03.
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "100" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "200" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=CAGR(B2,C2,2)",
+    });
+    expect(cell.error_code).toBeNull();
+    // CAGR(100, 200, 2) = (200/100)^(1/2) - 1 ≈ 0.4142
+    const result = cellNum(cell.computed_text);
+    expect(Math.abs(result - 0.4142)).toBeLessThan(0.001);
+  });
+
+  it("CAGR returns #VALUE! when start is zero", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "0" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "100" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=CAGR(B2,C2,2)",
+    });
+    expect(cell.computed_text).toBe("#VALUE!");
+  });
+
+  it("RATIO(a, b) evaluates and returns #DIV/0! on zero denominator", () => {
+    const e = new ModelEngine(4); // scale=4 for ratio precision
+    e.loadGrid({ lines: LINES, periods: TWELVE_PERIODS });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "10" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "3" });
+    const ratio = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=RATIO(B2,C2)",
+    });
+    expect(cellNum(ratio.cell.computed_text)).toBeCloseTo(10 / 3, 3);
+
+    // Division by zero.
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "0" });
+    const zero = e.getCell(LINES[0].id, TWELVE_PERIODS[2].id);
+    expect(zero.computed_text).toBe("#DIV/0!");
+  });
+
+  it("MOVINGAVG(range, window) returns the last moving average value", () => {
+    const e = engineWithTwelvePeriods();
+    // Fill P01-P04 with 10, 20, 30, 40. MOVINGAVG(P01:P04, 2) should return avg(30,40)=35.
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "10" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "20" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[2].id, value: "30" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[3].id, value: "40" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[4].id,
+      formula: "=MOVINGAVG(B2:E2,2)",
+    });
+    expect(cellNum(cell.computed_text)).toBeCloseTo(35, 1);
+  });
+
+  it("TREND(range, points) returns the first projected value", () => {
+    const e = engineWithTwelvePeriods();
+    // Linear sequence 2, 4, 6 → next value should be 8.
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "2" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "4" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[2].id, value: "6" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[3].id,
+      formula: "=TREND(B2:D2,1)",
+    });
+    expect(cellNum(cell.computed_text)).toBeCloseTo(8, 1);
+  });
+
+  it("SEASONALITY(range) returns the last period's share", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "25" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "75" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=SEASONALITY(B2:C2)",
+    });
+    // Last seasonal index = 75/100 = 0.75.
+    expect(cellNum(cell.computed_text)).toBeCloseTo(0.75, 2);
+  });
+
+  it("SEASONALITY returns 0 when total is zero", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "0" });
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[1].id, value: "0" });
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=SEASONALITY(B2:C2)",
+    });
+    expect(cellNum(cell.computed_text)).toBe(0);
+  });
+});
+
+// ── M3-10: Named Ranges (Assumptions as Named Expressions) ────────────────────────
+
+describe("M3-10: Named Ranges (FORMULA-ENGINE-SPEC §1)", () => {
+  it("adds, lists, reads, and removes named ranges", () => {
+    const e = engineWithTwelvePeriods();
+    expect(e.listNamedRanges()).toEqual([]);
+    e.addNamedRange("wage_inflation", "0.05");
+    expect(e.listNamedRanges()).toEqual(["wage_inflation"]);
+    expect(e.getNamedRangeValue("wage_inflation")).toBe("0.05");
+
+    // Update the named range.
+    e.addNamedRange("wage_inflation", "0.08");
+    expect(e.getNamedRangeValue("wage_inflation")).toBe("0.08");
+
+    e.removeNamedRange("wage_inflation");
+    expect(e.listNamedRanges()).toEqual([]);
+    expect(e.getNamedRangeValue("wage_inflation")).toBeNull();
+  });
+
+  it("removeNamedRange is a no-op for unknown names", () => {
+    const e = engineWithTwelvePeriods();
+    e.removeNamedRange("nonexistent"); // Should not throw.
+    expect(e.listNamedRanges()).toEqual([]);
+  });
+
+  it("rejects invalid names (must be snake_case)", () => {
+    const e = engineWithTwelvePeriods();
+    expect(() => e.addNamedRange("Bad Name", "1")).toThrow(/VALUE_INVALID/);
+    expect(() => e.addNamedRange("123start", "1")).toThrow(/VALUE_INVALID/);
+    expect(() => e.addNamedRange("UPPER", "1")).toThrow(/VALUE_INVALID/);
+  });
+
+  it("named ranges resolve in formulas (assumption-driven computation)", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "1000" });
+    // wage_inflation = 0.05. Formula: B2 * wage_inflation → 1000 * 0.05 = 50.
+    e.addNamedRange("wage_inflation", "0.05");
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[1].id,
+      formula: "=B2*wage_inflation",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cellNum(cell.computed_text)).toBeCloseTo(50, 1);
+  });
+
+  it("updating a named range recomputes dependent formulas", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "1000" });
+    e.addNamedRange("growth_rate", "0.10");
+    e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[1].id,
+      formula: "=B2*growth_rate",
+    });
+    expect(cellNum(e.getCell(LINES[0].id, TWELVE_PERIODS[1].id).computed_text)).toBeCloseTo(100, 1);
+    // Change the named range value and recalc.
+    e.addNamedRange("growth_rate", "0.20");
+    e.recalc();
+    expect(cellNum(e.getCell(LINES[0].id, TWELVE_PERIODS[1].id).computed_text)).toBeCloseTo(200, 1);
+  });
+
+  it("multiple named ranges coexist", () => {
+    const e = engineWithTwelvePeriods();
+    e.addNamedRange("alpha", "2");
+    e.addNamedRange("beta", "3");
+    e.addNamedRange("gamma", "4");
+    expect(e.listNamedRanges().sort()).toEqual(["alpha", "beta", "gamma"]);
+    expect(e.getNamedRangeValue("alpha")).toBe("2");
+    expect(e.getNamedRangeValue("beta")).toBe("3");
+    expect(e.getNamedRangeValue("gamma")).toBe("4");
+  });
+
+  it("converted hardcoded assumptions resolve via named ranges", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "1000" });
+    // First convert a hardcoded literal to a named-range reference.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[1].id,
+      formula: "=B2*1.05",
+    });
+    const literals = cell.formula ? findHardcodedLiterals(cell.formula) : [];
+    expect(literals.length).toBe(1);
+    e.convertHardcoded(LINES[0].id, TWELVE_PERIODS[1].id, literals[0], "inflation_rate");
+    // Now define the named range so the reference resolves.
+    e.addNamedRange("inflation_rate", "1.05");
+    // B2 * inflation_rate = 1000 * 1.05 = 1050.
+    expect(cellNum(e.getCell(LINES[0].id, TWELVE_PERIODS[1].id).computed_text)).toBeCloseTo(
+      1050,
+      1,
+    );
+  });
+});
+
+// ── M3-10: Calendar-Aware Functions (YOY/PRIORPERIOD/PRIORYEAR) ───────────────────
+
+describe("M3-10: Calendar-Aware Functions (YOY/PRIORPERIOD/PRIORYEAR)", () => {
+  it("detects 12-period calendar from loaded periods", () => {
+    const e = engineWithTwelvePeriods();
+    expect(e.periodsPerYear).toBe(12);
+  });
+
+  it("detects 13-period calendar (4-5-4)", () => {
+    const periods13: ModelGridPeriod[] = Array.from({ length: 13 }, (_, i) => ({
+      id: `fp-2026-p${String(i + 1).padStart(2, "0")}`,
+      code: `P${String(i + 1).padStart(2, "0")}`,
+    }));
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: periods13 });
+    expect(e.periodsPerYear).toBe(13);
+  });
+
+  it("getPeriodIdForColumn resolves and returns null for unknown columns", () => {
+    const e = engineWithTwelvePeriods();
+    expect(e.getPeriodIdForColumn(1)).toBe("fp-2026-p01");
+    expect(e.getPeriodIdForColumn(12)).toBe("fp-2026-p12");
+    expect(e.getPeriodIdForColumn(99)).toBeNull();
+  });
+
+  it("getCellNumberAtPeriod reads values and returns CellError(REF) for missing periods", () => {
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "42" });
+    expect(e.getCellNumberAtPeriod(1, "fp-2026-p01")).toBe(42);
+    const missing = e.getCellNumberAtPeriod(1, "fp-2025-p01");
+    expect(typeof missing).toBe("object");
+    expect((missing as { type: string }).type).toBe("REF");
+  });
+
+  it("YOY resolves to the same period in the prior fiscal year (two-year grid)", () => {
+    // Build a 24-period grid (FY2025 + FY2026).
+    // Col layout: A=labels, B=fp-2025-p01, ..., M=fp-2025-p12, N=fp-2026-p01, ..., Y=fp-2026-p12.
+    const allPeriods = [...PRIOR_YEAR_PERIODS, ...TWELVE_PERIODS];
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: allPeriods });
+    // Put 100 in FY2025-P01 (col 1 = B2).
+    e.setCell({ line_id: LINES[0].id, period_id: PRIOR_YEAR_PERIODS[0].id, value: "100" });
+    // Put 120 in FY2026-P01 (col 13 = N2).
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "120" });
+    // YOY in FY2026-P02 (col 14 = O2) references N2 (fp-2026-p01) → resolves to B2 (fp-2025-p01).
+    // We use O2 (not N2) to avoid a self-reference cycle.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[1].id,
+      formula: "=YOY(N2)",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.computed_text).toBe("100");
+  });
+
+  it("PRIORPERIOD wraps from P01 to previous year's P12", () => {
+    const allPeriods = [...PRIOR_YEAR_PERIODS, ...TWELVE_PERIODS];
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: allPeriods });
+    // FY2025-P12 (col 12 = M2) has value 500.
+    e.setCell({ line_id: LINES[0].id, period_id: PRIOR_YEAR_PERIODS[11].id, value: "500" });
+    // PRIORPERIOD in FY2026-P02 (col 14 = O2) references N2 (fp-2026-p01).
+    // N2 → fp-2026-p01 → prior period = fp-2025-p12 → col 12 → M2 = 500.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[1].id,
+      formula: "=PRIORPERIOD(N2)",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.computed_text).toBe("500");
+  });
+
+  it("PRIORPERIOD steps back one period within the same year", () => {
+    const allPeriods = [...PRIOR_YEAR_PERIODS, ...TWELVE_PERIODS];
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: allPeriods });
+    // FY2026-P01 (col 13 = N2) has value 100.
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "100" });
+    // PRIORPERIOD in FY2026-P03 (col 15 = P2) references O2 (fp-2026-p02).
+    // O2 → fp-2026-p02 → prior period = fp-2026-p01 → col 13 → N2 = 100.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=PRIORPERIOD(O2)",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.computed_text).toBe("100");
+  });
+
+  it("PRIORYEAR is equivalent to YOY (same period, prior year)", () => {
+    const allPeriods = [...PRIOR_YEAR_PERIODS, ...TWELVE_PERIODS];
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: allPeriods });
+    // FY2025-P06 (col 6 = G2) has value 750.
+    e.setCell({ line_id: LINES[0].id, period_id: PRIOR_YEAR_PERIODS[5].id, value: "750" });
+    // PRIORYEAR in FY2026-P08 (col 20 = T2) references S2 (fp-2026-p06 = col 18).
+    // S2 → fp-2026-p06 → prior year = fp-2025-p06 → col 6 → G2 = 750.
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[7].id,
+      formula: "=PRIORYEAR(S2)",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.computed_text).toBe("750");
+  });
+
+  it("YOY returns #REF! when prior-year period is not loaded", () => {
+    // Single-year grid — no FY2025 data.
+    const e = engineWithTwelvePeriods();
+    e.setCell({ line_id: LINES[0].id, period_id: TWELVE_PERIODS[0].id, value: "100" });
+    // YOY in P03 (col 3 = D2) references C2 (fp-2026-p02).
+    // C2 → fp-2026-p02 → prior year = fp-2025-p02 → NOT LOADED → #REF!
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: TWELVE_PERIODS[2].id,
+      formula: "=YOY(C2)",
+    });
+    expect(cell.computed_text).toBe("#REF!");
   });
 });
 
