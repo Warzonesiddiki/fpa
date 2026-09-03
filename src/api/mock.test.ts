@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ImportHistoryData, ImportValidateData, SettingsDocumentKey } from "./schema";
-import { isTauriRuntime, mockInvoke, resetMockSettingsState } from "./mock";
+import { isTauriRuntime, mockInvoke, resetMockScenarioState, resetMockSettingsState } from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
   it("isTauriRuntime is false in plain webview (jsdom)", () => {
@@ -1042,5 +1042,292 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(bad.error.code).toBe("SETTINGS_SAVE_FAILED");
     expect(bad.error.userMessage).toBe("Settings could not be saved. Retry.");
     expect(bad.error.retryable).toBe(true);
+  });
+});
+
+describe("dev mock — scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–§3)", () => {
+  const MO = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+  const BASE = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
+  const LINE = "3f9f2c9e-9f8b-4e2d-9a1c-400000000010";
+
+  /** Locking mutates module state — each test seeds a fresh scenario set. */
+  beforeEach(async () => {
+    await mockInvoke("session.lock", {});
+    resetMockScenarioState();
+  });
+
+  type ScenarioListRow = {
+    id: string;
+    name: string;
+    kind: string;
+    state: string;
+    baseline: boolean;
+    versions: { version_no: number; label: string }[];
+  };
+  async function listScenarios(): Promise<ScenarioListRow[]> {
+    const out = (await mockInvoke("model.list", { company_id: MO })) as {
+      data: { id: string; scenarios: ScenarioListRow[] }[];
+    };
+    expect(out.data).toHaveLength(1);
+    return out.data[0].scenarios;
+  }
+
+  it("seeds one Base budget draft per model and lists it through model.list", async () => {
+    const scenarios = await listScenarios();
+    expect(scenarios).toHaveLength(1);
+    expect(scenarios[0]).toMatchObject({
+      id: BASE,
+      name: "Base",
+      kind: "budget",
+      state: "draft",
+      baseline: false,
+      versions: [],
+    });
+  });
+
+  it("runs Draft→Review→Approved→Locked and lock auto-writes Version v1", async () => {
+    const created = (await mockInvoke("scenario.create", {
+      model_id: MO,
+      name: "FY27 Plan",
+    })) as { data: { scenario_id: string; version_id: null } };
+    const sc = created.data.scenario_id;
+    expect(created.data.version_id).toBeNull();
+
+    for (const [cmd, from] of [
+      ["scenario.submit", "review"],
+      ["scenario.approve", "approved"],
+    ] as const) {
+      await mockInvoke(cmd, { scenario_id: sc });
+      const row = (await listScenarios()).find((s) => s.id === sc);
+      expect(row?.state).toBe(from);
+    }
+
+    const locked = (await mockInvoke("scenario.lock", { scenario_id: sc })) as {
+      data: { scenario_id: string; version_id: string | null };
+    };
+    expect(locked.data.version_id).not.toBeNull();
+    const row = (await listScenarios()).find((s) => s.id === sc);
+    expect(row?.state).toBe("locked");
+    expect(row?.versions).toHaveLength(1);
+    expect(row?.versions[0]).toMatchObject({ version_no: 1, label: "v1" });
+  });
+
+  it("rejects illegal transitions with SCENARIO_LOCK_CONFLICT 409 and the documented copy", async () => {
+    const sc = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "Guard" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+
+    // approve from draft (must submit first)
+    const early = (await mockInvoke("scenario.approve", { scenario_id: sc })) as {
+      error: { code: number | string; httpStatus: number; userMessage: string };
+    };
+    expect(early.error.code).toBe("SCENARIO_LOCK_CONFLICT");
+    expect(early.error.httpStatus).toBe(409);
+    expect(early.error.userMessage).toBe("This Scenario is already in draft — cannot transition.");
+
+    await mockInvoke("scenario.submit", { scenario_id: sc });
+    const resubmit = (await mockInvoke("scenario.submit", { scenario_id: sc })) as {
+      error: { code: string; userMessage: string };
+    };
+    expect(resubmit.error.code).toBe("SCENARIO_LOCK_CONFLICT");
+    expect(resubmit.error.userMessage).toBe(
+      "This Scenario is already in review — cannot transition.",
+    );
+  });
+
+  it("answers SCENARIO_NAME_DUP 409 with the documented copy on UNIQUE(model_id, name)", async () => {
+    await mockInvoke("scenario.create", { model_id: MO, name: "Twin" });
+    const dup = (await mockInvoke("scenario.create", { model_id: MO, name: "Twin" })) as {
+      error: { code: string; httpStatus: number; userMessage: string };
+    };
+    expect(dup.error.code).toBe("SCENARIO_NAME_DUP");
+    expect(dup.error.httpStatus).toBe(409);
+    expect(dup.error.userMessage).toBe("A Scenario with this name already exists.");
+
+    // derived duplicate names never collide
+    const c1 = (await mockInvoke("scenario.duplicate", { model_id: MO, base_id: BASE })) as {
+      data: { scenario_id: string };
+    };
+    const c2 = (await mockInvoke("scenario.duplicate", { model_id: MO, base_id: BASE })) as {
+      data: { scenario_id: string };
+    };
+    expect(c1.data.scenario_id).not.toBe(c2.data.scenario_id);
+  });
+
+  it("gates edits on the table state: locked Scenario ⇒ MODEL_CELL_LOCKED on cell and driver writes", async () => {
+    const sc = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "Frozen" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+    for (const cmd of ["scenario.submit", "scenario.approve", "scenario.lock"] as const) {
+      await mockInvoke(cmd, { scenario_id: sc });
+    }
+
+    const cell = (await mockInvoke("model.cell.set.v1", {
+      line_id: LINE,
+      scenario_id: sc,
+      period_id: "fp-2027-p08",
+      value: "1.00",
+      manual_override: false,
+    })) as { error: { code: string; userMessage: string } };
+    expect(cell.error.code).toBe("MODEL_CELL_LOCKED");
+    expect(cell.error.userMessage).toBe("This scenario is locked. Create a Version to edit it.");
+
+    const up = (await mockInvoke("driver.upsert", {
+      model_id: MO,
+      driver: {
+        name: "hc-gate",
+        driver_type: "volume_x_rate",
+        unit: "units",
+        source: "global",
+        is_core: false,
+        bounds_low: "0",
+        bounds_high: "100",
+      },
+    })) as { data: { driver_id: string } };
+    const driverGate = (await mockInvoke("driver.set_value", {
+      driver_id: up.data.driver_id,
+      scenario_id: sc,
+      period_id: "fp-2027-p08",
+      value_decimal: "10",
+    })) as { error: { code: string } };
+    expect(driverGate.error.code).toBe("MODEL_CELL_LOCKED");
+
+    // the working Base (draft) still accepts writes; the synthetic "locked" dev trigger still gates
+    const okCell = (await mockInvoke("model.cell.set.v1", {
+      line_id: LINE,
+      scenario_id: BASE,
+      period_id: "fp-2027-p08",
+      value: "2.00",
+      manual_override: false,
+    })) as { data: { audit_id: number } };
+    expect(okCell.data.audit_id).toBeGreaterThan(0);
+    const legacy = (await mockInvoke("model.cell.set.v1", {
+      line_id: LINE,
+      scenario_id: "sc-locked-000",
+      period_id: "fp-2027-p08",
+      value: "1.00",
+      manual_override: false,
+    })) as { error: { code: string } };
+    expect(legacy.error.code).toBe("MODEL_CELL_LOCKED");
+  });
+
+  it("reopen requires a written reason and Locked→Draft is blocked for the Baseline", async () => {
+    const sc = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "ReopenMe" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+    for (const cmd of ["scenario.submit", "scenario.approve", "scenario.lock"] as const) {
+      await mockInvoke(cmd, { scenario_id: sc });
+    }
+
+    const noReason = (await mockInvoke("scenario.reopen", { scenario_id: sc })) as {
+      error: { code: string; httpStatus: number };
+    };
+    expect(noReason.error.code).toBe("VALUE_INVALID");
+    expect(noReason.error.httpStatus).toBe(422);
+
+    // the Baseline must be Locked — and a Locked Baseline cannot reopen
+    const bl = (await mockInvoke("baseline.set", { scenario_id: sc })) as {
+      data: { baseline_version_id: string };
+    };
+    expect(bl.data.baseline_version_id).not.toBeNull();
+    const blocked = (await mockInvoke("scenario.reopen", {
+      scenario_id: sc,
+      reason: "want to edit",
+    })) as { error: { code: string; userMessage: string } };
+    expect(blocked.error.code).toBe("SCENARIO_LOCK_CONFLICT");
+    expect(blocked.error.userMessage).toBe(
+      "This Scenario is already in locked — cannot transition.",
+    );
+
+    // a non-baseline Locked scenario reopens with a reason
+    const other = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "ReopenOther" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+    for (const cmd of ["scenario.submit", "scenario.approve", "scenario.lock"] as const) {
+      await mockInvoke(cmd, { scenario_id: other });
+    }
+    await mockInvoke("scenario.reopen", { scenario_id: other, reason: "restatement" });
+    expect((await listScenarios()).find((s) => s.id === other)?.state).toBe("draft");
+  });
+
+  it("baseline.set replaces only with a reason (BASELINE_REPLACE_REASON_REQUIRED 422)", async () => {
+    const lockIt = async (name: string) => {
+      const id = (
+        (await mockInvoke("scenario.create", { model_id: MO, name })) as {
+          data: { scenario_id: string };
+        }
+      ).data.scenario_id;
+      for (const cmd of ["scenario.submit", "scenario.approve", "scenario.lock"] as const) {
+        await mockInvoke(cmd, { scenario_id: id });
+      }
+      return id;
+    };
+
+    const first = await lockIt("Budget A");
+    const firstVersion = (
+      (await mockInvoke("baseline.set", { scenario_id: first })) as {
+        data: { baseline_version_id: string };
+      }
+    ).data.baseline_version_id;
+    expect(firstVersion).not.toBeNull();
+
+    // replacing the baseline needs a written reason
+    const second = await lockIt("Budget B");
+    const noReason = (await mockInvoke("baseline.set", { scenario_id: second })) as {
+      error: { code: string; httpStatus: number; userMessage: string };
+    };
+    expect(noReason.error.code).toBe("BASELINE_REPLACE_REASON_REQUIRED");
+    expect(noReason.error.httpStatus).toBe(422);
+    expect(noReason.error.userMessage).toBe("Replacing the baseline requires a written reason.");
+
+    const withReason = (await mockInvoke("baseline.set", {
+      scenario_id: second,
+      reason: "FY27 re-approve",
+    })) as { data: { baseline_version_id: string } };
+    expect(withReason.data.baseline_version_id).not.toBeNull();
+    const rows = await listScenarios();
+    expect(rows.find((s) => s.id === first)?.baseline).toBe(false);
+    expect(rows.find((s) => s.id === second)?.baseline).toBe(true);
+  });
+
+  it("deletes Draft-only scenarios without versions and refuses anything else", async () => {
+    const draft = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "Throwaway" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+    const gone = (await mockInvoke("scenario.delete", { scenario_id: draft })) as {
+      data: { scenario_id: string; version_id: null };
+    };
+    expect(gone.data.scenario_id).toBe(draft);
+    expect((await listScenarios()).find((s) => s.id === draft)).toBeUndefined();
+
+    // with a Version: undeletable (reopen to draft does not lift the Version reference)
+    const versioned = (
+      (await mockInvoke("scenario.create", { model_id: MO, name: "Keeper" })) as {
+        data: { scenario_id: string };
+      }
+    ).data.scenario_id;
+    for (const cmd of ["scenario.submit", "scenario.approve", "scenario.lock"] as const) {
+      await mockInvoke(cmd, { scenario_id: versioned });
+    }
+    await mockInvoke("scenario.reopen", { scenario_id: versioned, reason: "back to draft" });
+    const refused = (await mockInvoke("scenario.delete", { scenario_id: versioned })) as {
+      error: { code: string };
+    };
+    expect(refused.error.code).toBe("SCENARIO_LOCK_CONFLICT");
+
+    const unknown = (await mockInvoke("scenario.submit", {
+      scenario_id: "5c4f1a2b-9d3e-4c7a-8b2f-999999999999",
+    })) as { error: { code: string } };
+    expect(unknown.error.code).toBe("VALUE_INVALID");
   });
 });

@@ -27,6 +27,15 @@ import {
   ModelInspectData,
   ModelRecalcArgs,
   ModelRecalcData,
+  ModelListArgs,
+  ModelListData,
+  ScenarioCreateArgs,
+  ScenarioIdArgs,
+  ScenarioReopenArgs,
+  ScenarioRow,
+  ScenarioMutationData,
+  BaselineSetArgs,
+  BaselineSetData,
   DriverUpsertArgs,
   DriverSetValueArgs,
   DriverImportArgs,
@@ -1263,5 +1272,93 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
     expect(SettingsGetData.safeParse({ value: 1 }).success).toBe(false);
     expect(CommandArgs["settings.get"]).toBeDefined();
     expect(CommandArgs["settings.set"]).toBeDefined();
+  });
+});
+
+describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
+  const SC = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
+  const MO = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+
+  it("scenario.create/duplicate take {model_id, name?, base_id?} and reject unknown fields", () => {
+    expect(ScenarioCreateArgs.safeParse({ model_id: MO }).success).toBe(true);
+    expect(ScenarioCreateArgs.safeParse({ model_id: MO, name: "Plan v2" }).success).toBe(true);
+    expect(ScenarioCreateArgs.safeParse({ model_id: MO, name: "Child", base_id: SC }).success).toBe(
+      true,
+    );
+    // strict: no kind argument — the contract carries {model_id, name?, base_id?} only (Tier-3 note).
+    expect(
+      ScenarioCreateArgs.safeParse({ model_id: MO, name: "X", kind: "forecast" }).success,
+    ).toBe(false);
+    expect(ScenarioCreateArgs.safeParse({ model_id: "not-a-uuid" }).success).toBe(false);
+  });
+
+  it("scenario.submit/approve/lock/delete take {scenario_id}; reopen and baseline.set add {reason?}", () => {
+    expect(ScenarioIdArgs.safeParse({ scenario_id: SC }).success).toBe(true);
+    expect(ScenarioIdArgs.safeParse({ scenario_id: SC, reason: "x" }).success).toBe(false);
+    expect(ScenarioReopenArgs.safeParse({ scenario_id: SC }).success).toBe(true);
+    expect(ScenarioReopenArgs.safeParse({ scenario_id: SC, reason: "restatement" }).success).toBe(
+      true,
+    );
+    expect(ScenarioReopenArgs.safeParse({ scenario_id: SC, reason: "" }).success).toBe(false);
+    expect(BaselineSetArgs.safeParse({ scenario_id: SC }).success).toBe(true);
+    expect(BaselineSetArgs.safeParse({ scenario_id: SC, reason: "re-approve" }).success).toBe(true);
+  });
+
+  it("ScenarioRow carries versions[] and the {scenario_id, version_id} mutation shape", () => {
+    const row = {
+      id: SC,
+      model_id: MO,
+      name: "Base",
+      kind: "budget",
+      state: "locked",
+      parent_scenario_id: null,
+      baseline: true,
+      versions: [
+        {
+          id: "5c4f1a2b-9d3e-4c7a-8b2f-000000000001",
+          scenario_id: SC,
+          version_no: 1,
+          label: "v1",
+          reason: null,
+          created_at: "2026-09-04T00:00:00.000Z",
+        },
+      ],
+    };
+    expect(ScenarioRow.safeParse(row).success).toBe(true);
+    expect(ScenarioRow.safeParse({ ...row, state: "archived" }).success).toBe(false);
+    expect(ScenarioRow.safeParse({ ...row, kind: "annual" }).success).toBe(false);
+    expect(ScenarioMutationData.safeParse({ scenario_id: SC, version_id: null }).success).toBe(
+      true,
+    );
+    expect(BaselineSetData.safeParse({ baseline_version_id: row.versions[0].id }).success).toBe(
+      true,
+    );
+  });
+
+  it("model.list validates the recorded Model shape with nested scenarios", () => {
+    const model = {
+      id: MO,
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      name: "Working Model",
+      horizon: 1,
+      pack_id: null,
+      scenarios: [],
+    };
+    expect(ModelListArgs.safeParse({ company_id: model.company_id }).success).toBe(true);
+    expect(ModelListData.safeParse([model]).success).toBe(true);
+    expect(ModelListData.safeParse([{ ...model, horizon: 0 }]).success).toBe(false);
+    for (const c of [
+      "model.list",
+      "scenario.create",
+      "scenario.duplicate",
+      "scenario.submit",
+      "scenario.approve",
+      "scenario.lock",
+      "scenario.reopen",
+      "scenario.delete",
+      "baseline.set",
+    ]) {
+      expect(CommandArgs[c as keyof typeof CommandArgs]).toBeDefined();
+    }
   });
 });

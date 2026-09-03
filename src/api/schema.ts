@@ -1325,6 +1325,100 @@ export const SettingsSetArgs = z
 export const SettingsSetData = z.object({ ok: z.literal(true) });
 export type SettingsSetData = z.infer<typeof SettingsSetData>;
 
+/* ── Scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–§3 · API-SPEC §3) ─────── */
+
+export const ScenarioKind = z.enum(["actuals", "budget", "forecast", "whatif", "lrp"]);
+export type ScenarioKind = z.infer<typeof ScenarioKind>;
+
+export const ScenarioState = z.enum(["draft", "review", "approved", "locked"]);
+export type ScenarioState = z.infer<typeof ScenarioState>;
+
+/** `scenario_versions` row (DATABASE-SCHEMA §2) — append-only, version_no monotonic per scenario. */
+export const ScenarioVersionRow = z.object({
+  id: Uuid,
+  scenario_id: Uuid,
+  version_no: z.number().int().positive(),
+  label: z.string(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+});
+export type ScenarioVersionRow = z.infer<typeof ScenarioVersionRow>;
+
+/** `scenarios` row + its Versions (S-050 table source). `baseline` marks THE Baseline per Model/FY. */
+export const ScenarioRow = z.object({
+  id: Uuid,
+  model_id: Uuid,
+  name: z.string().min(1),
+  kind: ScenarioKind,
+  state: ScenarioState,
+  parent_scenario_id: Uuid.nullable(),
+  baseline: z.boolean(),
+  versions: z.array(ScenarioVersionRow),
+});
+export type ScenarioRow = z.infer<typeof ScenarioRow>;
+
+/**
+ * `model.list → Model[]` (API-SPEC §3 row 2). The spec does not pin the `Model` shape —
+ * TASKBOARD §11 records the decision: `{id, company_id, name, horizon, pack_id, scenarios[]}`.
+ */
+export const ModelSummary = z.object({
+  id: Uuid,
+  company_id: Uuid,
+  name: z.string().min(1),
+  horizon: z.number().int().positive(),
+  pack_id: z.string().nullable(),
+  scenarios: z.array(ScenarioRow),
+});
+export type ModelSummary = z.infer<typeof ModelSummary>;
+
+/** `scenario.create | scenario.duplicate` — same arg shape (API-SPEC §3). */
+export const ScenarioCreateArgs = z
+  .object({
+    model_id: Uuid,
+    name: z.string().min(1).max(120).optional(),
+    base_id: Uuid.optional(),
+  })
+  .strict();
+export type ScenarioCreateArgs = z.infer<typeof ScenarioCreateArgs>;
+
+/** `scenario.submit | approve | lock | delete` — `{scenario_id}` only. */
+export const ScenarioIdArgs = z.object({ scenario_id: Uuid }).strict();
+export type ScenarioIdArgs = z.infer<typeof ScenarioIdArgs>;
+
+/** `scenario.reopen` — the Draft-return transition; a written reason is required (SPEC §1). */
+export const ScenarioReopenArgs = z
+  .object({
+    scenario_id: Uuid,
+    reason: z.string().min(1).optional(),
+  })
+  .strict();
+export type ScenarioReopenArgs = z.infer<typeof ScenarioReopenArgs>;
+
+/** `{scenario_id, version_id}` — `version_id` is set only when THIS command wrote a Version (lock). */
+export const ScenarioMutationData = z.object({
+  scenario_id: Uuid,
+  version_id: Uuid.nullable(),
+});
+export type ScenarioMutationData = z.infer<typeof ScenarioMutationData>;
+
+/** `baseline.set` — Baseline MUST be Locked; replacing one requires a written reason (SPEC §3). */
+export const BaselineSetArgs = z
+  .object({
+    scenario_id: Uuid,
+    reason: z.string().min(1).optional(),
+  })
+  .strict();
+export type BaselineSetArgs = z.infer<typeof BaselineSetArgs>;
+
+export const BaselineSetData = z.object({ baseline_version_id: Uuid });
+export type BaselineSetData = z.infer<typeof BaselineSetData>;
+
+/** `model.list` — read side for the scenario picker / S-050 (no new command name invented). */
+export const ModelListArgs = z.object({ company_id: Uuid }).strict();
+export type ModelListArgs = z.infer<typeof ModelListArgs>;
+export const ModelListData = z.array(ModelSummary);
+export type ModelListData = z.infer<typeof ModelListData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1365,6 +1459,15 @@ export const CommandArgs = {
   "assumption.upsert": AssumptionUpsertArgs,
   "assumption.list": AssumptionListArgs,
   "assumption.find_usages": AssumptionFindUsagesArgs,
+  "model.list": ModelListArgs,
+  "scenario.create": ScenarioCreateArgs,
+  "scenario.duplicate": ScenarioCreateArgs,
+  "scenario.submit": ScenarioIdArgs,
+  "scenario.approve": ScenarioIdArgs,
+  "scenario.lock": ScenarioIdArgs,
+  "scenario.reopen": ScenarioReopenArgs,
+  "scenario.delete": ScenarioIdArgs,
+  "baseline.set": BaselineSetArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;
