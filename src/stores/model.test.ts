@@ -4,9 +4,12 @@ import { useModelGridStore, WORKING_SCENARIO_ID, WORKING_MODEL_ID } from "./mode
 const callMock = vi.fn();
 vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
 
-const { companyIdMock } = vi.hoisted(() => ({ companyIdMock: vi.fn() }));
+const { companyIdMock, modelIdMock } = vi.hoisted(() => ({
+  companyIdMock: vi.fn(),
+  modelIdMock: vi.fn(),
+}));
 vi.mock("@/stores/session", () => ({
-  useSessionStore: { getState: () => ({ companyId: companyIdMock() }) },
+  useSessionStore: { getState: () => ({ companyId: companyIdMock(), modelId: modelIdMock() }) },
 }));
 
 // The engine client falls back to the in-process transport where `Worker` is unavailable
@@ -45,6 +48,8 @@ describe("model grid store (S-041)", () => {
   beforeEach(() => {
     callMock.mockReset();
     companyIdMock.mockReturnValue(CO);
+    // No native model id known → the store falls back to the documented example id.
+    modelIdMock.mockReturnValue(null);
     useModelGridStore.getState().reset();
     // reset() nulls the client; the next load re-creates it via the mocked factory.
   });
@@ -153,6 +158,20 @@ describe("model grid store (S-041)", () => {
     const s = useModelGridStore.getState();
     expect(s.status).toBe("populated");
     expect(s.derived[LINE].ytd).toBe("5");
+  });
+
+  it("recalcAll addresses the session's native Model id when the core reported one", async () => {
+    const nativeModelId = "3f9f2c9e-9f8b-4e2d-9a1c-100000000001";
+    modelIdMock.mockReturnValue(nativeModelId);
+    mockLoad();
+    await useModelGridStore.getState().load();
+    callMock.mockResolvedValue({ duration_ms: 0, changed_cells: [], issues: [] });
+    await useModelGridStore.getState().recalcAll();
+    expect(callMock).toHaveBeenCalledWith("model.recalc", {
+      model_id: nativeModelId,
+      scenario_id: WORKING_SCENARIO_ID,
+    });
+    expect(useModelGridStore.getState().status).toBe("populated");
   });
 
   it("inspects a cell formula through the engine and returns the precedence/dependency trace", async () => {

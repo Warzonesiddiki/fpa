@@ -119,12 +119,15 @@ pub enum AppError {
 impl AppError {
     pub fn body(&self) -> ErrorBody {
         let (code, http_status, retryable, retry_after_ms) = match self {
-            AppError::PinInvalid => ("AUTH_PIN_INVALID", 401, true, None),
-            AppError::Locked { retry_after_ms } => ("AUTH_LOCKED", 423, false, Some(*retry_after_ms)),
+            // ERROR-HANDLING.md §A, verbatim: AUTH_PIN_INVALID 401 / retry=false (the user types a
+            // new PIN — the same call is never re-issued); AUTH_LOCKED 423 / retry=true *after* the
+            // countdown carried in `retryAfterMs`; SESSION_LOCKED 401 / retry=false (unlock first).
+            AppError::PinInvalid => ("AUTH_PIN_INVALID", 401, false, None),
+            AppError::Locked { retry_after_ms } => ("AUTH_LOCKED", 423, true, Some(*retry_after_ms)),
             // ERROR-HANDLING.md §B: key mismatch is 401 with the exact documented user text.
             AppError::DecryptFailed => ("STORAGE_DECRYPT_FAILED", 401, false, None),
             AppError::FileExists => ("STORAGE_FILE_EXISTS", 409, false, None),
-            AppError::SessionRequired => ("SESSION_LOCKED", 401, true, None),
+            AppError::SessionRequired => ("SESSION_LOCKED", 401, false, None),
             AppError::InvalidArgument(_) => ("VALUE_INVALID", 422, false, None),
             AppError::Scope(_) => ("VALUE_INVALID", 403, false, None),
             AppError::Db(_) => ("INTERNAL", 500, true, None),
@@ -627,3 +630,44 @@ impl From<rusqlite::Error> for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ERROR-HANDLING.md §A is the source of truth for the session/security envelopes
+    /// (CLAUDE.md: when docs and code disagree, the code is the bug). Pinned here so the
+    /// `retryable` flags cannot drift again (found drifted 2026-09-03).
+    #[test]
+    fn session_and_security_envelopes_match_error_handling_section_a() {
+        let pin = AppError::PinInvalid.body();
+        assert_eq!(pin.code, "AUTH_PIN_INVALID");
+        assert_eq!(pin.http_status, 401);
+        assert!(!pin.retryable, "AUTH_PIN_INVALID is not retryable (§A)");
+        assert_eq!(pin.retry_after_ms, None);
+
+        let locked = AppError::Locked { retry_after_ms: 30_000 }.body();
+        assert_eq!(locked.code, "AUTH_LOCKED");
+        assert_eq!(locked.http_status, 423);
+        assert!(locked.retryable, "AUTH_LOCKED is retryable after the countdown (§A)");
+        assert_eq!(locked.retry_after_ms, Some(30_000));
+
+        let session = AppError::SessionRequired.body();
+        assert_eq!(session.code, "SESSION_LOCKED");
+        assert_eq!(session.http_status, 401);
+        assert!(!session.retryable, "SESSION_LOCKED is not retryable — unlock first (§A)");
+        assert_eq!(session.retry_after_ms, None);
+    }
+
+    /// The IPC serializer must emit the documented camelCase field names (API-SPEC §1).
+    #[test]
+    fn serializes_the_documented_camel_case_envelope() {
+        let json = serde_json::to_value(AppError::Locked { retry_after_ms: 1_500 }).unwrap();
+        assert_eq!(json["code"], "AUTH_LOCKED");
+        assert_eq!(json["httpStatus"], 423);
+        assert_eq!(json["retryable"], true);
+        assert_eq!(json["retryAfterMs"], 1_500);
+        assert!(json.get("userMessage").is_some());
+        assert!(json.get("http_status").is_none(), "snake_case must not leak to the UI");
+    }
+}

@@ -144,7 +144,8 @@ pub fn require_company_write(state: &SessionState, company_id: &str) -> AppResul
 
 /// Commands that mutate the session Company but carry no `company_id` (the locked API catalog
 /// marks the whole `import.*` family `session` — API-SPEC §2): the target is the unlocked
-/// Company. Fails `SESSION_LOCKED` (401, retryable) when nothing is unlocked.
+/// Company. Fails `SESSION_LOCKED` (401, not retryable — unlock first; ERROR-HANDLING §A) when
+/// nothing is unlocked.
 pub fn require_unlocked(state: &SessionState) -> AppResult<String> {
     let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
     guard.as_ref().map(|s| s.company_id.clone()).ok_or(AppError::SessionRequired)

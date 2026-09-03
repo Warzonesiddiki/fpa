@@ -148,7 +148,7 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
       message: "pin mismatch",
       userMessage: "Incorrect PIN. Please try again.",
       httpStatus: 401,
-      retryable: true,
+      retryable: false,
       retryAfterMs: null,
     });
     expect(ok.success).toBe(true);

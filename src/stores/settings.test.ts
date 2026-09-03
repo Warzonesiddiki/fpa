@@ -16,7 +16,8 @@ const SESSION_LOCKED_ERROR = vi.hoisted(() => ({
   message: "session locked",
   userMessage: "The session is locked. Unlock first.",
   httpStatus: 401,
-  retryable: true,
+  // ERROR-HANDLING §A: not retryable (unlock first).
+  retryable: false,
   retryAfterMs: null,
   details: {},
 }));
