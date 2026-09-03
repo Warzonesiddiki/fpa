@@ -599,7 +599,8 @@ export async function mockInvoke<C extends CommandName>(
           error: {
             code: "AUTH_PIN_INVALID",
             message: "pin mismatch",
-            userMessage: "Incorrect PIN. Please try again.",
+            // ERROR-HANDLING §A userMessage (KI-013): "Incorrect PIN." — mirrors core/error.rs.
+            userMessage: "Incorrect PIN.",
             httpStatus: 401,
             // ERROR-HANDLING §A: not retryable — the user enters a new PIN (mirrors core/error.rs).
             retryable: false,
@@ -1635,7 +1636,7 @@ export async function mockInvoke<C extends CommandName>(
         return mockError(
           "SESSION_LOCKED",
           "session locked",
-          "The session is locked. Unlock first.",
+          "Session locked. Unlock to continue.",
           401,
         );
       }
@@ -1647,7 +1648,7 @@ export async function mockInvoke<C extends CommandName>(
         return mockError(
           "SESSION_LOCKED",
           "session locked",
-          "The session is locked. Unlock first.",
+          "Session locked. Unlock to continue.",
           401,
         );
       }

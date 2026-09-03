@@ -18,9 +18,9 @@ describe("App — Unlock → Shell → Dashboard flow (P0)", () => {
     await userEvent.type(pin, "WrongPin9!");
     await userEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
-    // mock AUTH_PIN_INVALID (120ms simulated latency)
+    // mock AUTH_PIN_INVALID (120ms simulated latency); copy per ERROR-HANDLING §A
     await waitFor(async () => {
-      expect(await screen.findByText("Incorrect PIN. Please try again.")).toBeInTheDocument();
+      expect(await screen.findByText("Incorrect PIN.")).toBeInTheDocument();
     });
     expect(pin).toHaveValue("");
   });

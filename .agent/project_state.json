@@ -4,8 +4,8 @@
   "project": {
     "name": "OneFP&A",
     "repo": "Warzonesiddiki/fpa",
-    "session_branch": "arena/01a0687a-fpa",
-    "base_commit": "5eb9d959e5e1fff53cf47ae0b9c424d30b68849c",
+    "session_branch": "arena/01a0693e-fpa",
+    "base_commit": "a3b41231aec2fe91a13fd79c4c76b9a7f4abf29e",
     "identity": "Local-first, offline, single-user FP&A desktop suite. Tauri 2.11 + Rust 1.85 (edition 2024) core owning money/calendar/audit/SQLite; React 19 / TS 5.9 strict UI; HyperFormula 3.4 in a Web Worker; typed IPC via Zod (hand-typed bridge, no tauri-specta yet).",
     "source_of_truth_order": [
       "docs/ (54 locked specs; CLAUDE.md: when docs and code conflict the bug is in the code)",
@@ -26,12 +26,12 @@
     "db_tables": 56
   },
   "baseline_gates": {
-    "verified_at": "2026-09-03",
+    "verified_at": "2026-09-04",
     "vitest": {
       "result": "PASS",
-      "files": 51,
-      "tests": 569,
-      "note": "W-3 +38"
+      "files": 52,
+      "tests": 574,
+      "note": "+5 (KI-013 S-001 page tests x4, i18n §A copy test)"
     },
     "coverage_main": {
       "statements": 89.49,
@@ -56,10 +56,10 @@
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 89.81,
-      "branches": 81.72,
-      "functions": 90.29,
-      "lines": 89.26
+      "statements": 89.86,
+      "branches": 81.85,
+      "functions": 90.33,
+      "lines": 92.24
     }
   },
   "environment": {
@@ -72,7 +72,8 @@
     "notes": [
       "node_modules is wiped between sessions: run `npm ci --no-audit --no-fund` first; verify package-lock.json unchanged afterwards",
       "never publish .github/workflows/ (gitignored; token lacks Workflows permission)",
-      "PR ritual: gh pr create --base main --head arena/01a0687a-fpa; merge with gh pr merge --merge"
+      "PR ritual: gh pr create --base main --head arena/01a0687a-fpa; merge with gh pr merge --merge",
+      "2026-09-04: origin/main = a3b4123 (synthesized shallow root; tree == 3843ae5 minus .claude/.codex/.agents ECC files). Session branch arena/01a0693e-fpa builds on it; do not merge origin/arena/01a0687a-fpa (would re-add ECC files)."
     ]
   },
   "permission_tiers": {
@@ -186,10 +187,16 @@
       "title": "KI-014 core/money.rs LRA sort order fix (spec §4b)",
       "tier": 2,
       "status": "DONE (bd7df27; native-unverified)"
+    },
+    {
+      "id": "KI-013",
+      "title": "S-001 AUTH_LOCKED seconds countdown + §A copy alignment (M1-2)",
+      "tier": 2,
+      "status": "DONE (TS) / Rust strings aligned NATIVE-UNVERIFIED (error.rs literal-only)"
     }
   ],
-  "last_updated": "2026-09-03",
-  "last_action": "Unit W-3b: core/money.rs LRA descending-remainder fix + exact spec-vector tests (KI-014 → Mitigated); docs sync follow-up",
+  "last_updated": "2026-09-04",
+  "last_action": "Unit KI-013 (M1-2): S-001 lockout seconds countdown from retryAfterMs (30s AUTH-SPEC fallback, unmount cleanup), §A user texts aligned in mock.ts + core/error.rs (NATIVE-UNVERIFIED) + e2e/App fixtures; i18n key test; gates 52f/574t, coverage 89.8/81.87/90.31/92.18",
   "pr": {
     "number": 24,
     "url": "https://github.com/Warzonesiddiki/fpa/pull/24",

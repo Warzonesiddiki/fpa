@@ -13,3 +13,8 @@ src-tauri/src
 src-tauri/Cargo.toml
 src-tauri/build.rs
 .evil
+
+# AI-agent config bundles (not product code; YAML shapes prettier cannot parse)
+.agents
+.claude
+.codex

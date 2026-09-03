@@ -169,11 +169,12 @@ impl AppError {
             AppError::CoaReferenced { .. } => ("COA_REFERENCED", 409, false, None),
         };
         let user_message = match self {
-            AppError::PinInvalid => "Incorrect PIN. Please try again.",
-            AppError::Locked { .. } => "Too many attempts. Try again later.",
+            // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
+            AppError::PinInvalid => "Incorrect PIN.",
+            AppError::Locked { .. } => "Too many attempts. Try again in {countdown}s.",
             AppError::DecryptFailed => "The Company file cannot be decrypted with this PIN.",
             AppError::FileExists => "A file already exists at that location. Choose another name.",
-            AppError::SessionRequired => "The session is locked. Unlock first.",
+            AppError::SessionRequired => "Session locked. Unlock to continue.",
             AppError::InvalidArgument(_) => "Invalid arguments.",
             AppError::Scope(_) => "This operation is not permitted.",
             AppError::Db(_) => "A database error occurred.",
