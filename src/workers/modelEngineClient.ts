@@ -47,6 +47,10 @@ export interface ModelEngineClient {
     literal: HardcodedLiteral,
     assumptionName: string,
   ): Promise<SetCellResult>;
+  addNamedRange(name: string, value: string): Promise<void>;
+  removeNamedRange(name: string): Promise<void>;
+  listNamedRanges(): Promise<string[]>;
+  getNamedRangeValue(name: string): Promise<string | null>;
   destroy(): void;
 }
 
@@ -135,6 +139,18 @@ class SingleFlight implements ModelEngineClient {
       literal,
       assumption_name: assumptionName,
     });
+  }
+  addNamedRange(name: string, value: string): Promise<void> {
+    return this.enqueue("addNamedRange", { name, value });
+  }
+  removeNamedRange(name: string): Promise<void> {
+    return this.enqueue("removeNamedRange", { name });
+  }
+  listNamedRanges(): Promise<string[]> {
+    return this.enqueue("listNamedRanges", undefined);
+  }
+  getNamedRangeValue(name: string): Promise<string | null> {
+    return this.enqueue("getNamedRangeValue", { name });
   }
   destroy(): void {
     this.transport.destroy();

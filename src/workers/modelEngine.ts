@@ -15,7 +15,17 @@
  *  * No invented error codes — only the locked ERROR-HANDLING taxonomy (B20).
  */
 
-import { HyperFormula, type DetailedCellError, type SimpleCellAddress } from "hyperformula";
+import {
+  HyperFormula,
+  FunctionPlugin,
+  FunctionArgumentType,
+  CellError,
+  ErrorType,
+  SimpleRangeValue,
+  type DetailedCellError,
+  type SimpleCellAddress,
+  type ImplementedFunctions,
+} from "hyperformula";
 import Decimal from "decimal.js";
 import { findUnsupportedFunction } from "@/api/schema";
 
@@ -179,6 +189,263 @@ export interface GridLayout {
 
 const SHEET_NAME = "Model";
 
+/* ── Analysis Functions Plugin (M3-10 · FORMULA-ENGINE-SPEC §2/§3) ─────────────────────
+ * Registers the 8 OneFP&A-declared Analysis Functions as native HyperFormula functions so they
+ * evaluate in the cell graph (`=CAGR(C2, C14, 12)` produces a value, not `#NAME?`). The calendar-
+ * aware trio (`YOY`, `PRIORPERIOD`, `PRIORYEAR`) resolves their cell reference to a fiscal period
+ * via the engine's period mapping, then reads the resolved cell value from the same sheet/row.
+ *
+ * The plugin is registered statically on the HyperFormula class (required before any HF instance
+ * is built — §5: "Dependency graph built at load"). Calendar-aware functions access the engine
+ * through a module-level reference set by the constructor; the reference is cleared on dispose.
+ *
+ * No float money at the boundary: HF cell values are IEEE-754 internally (Excel parity), but
+ * the engine's exact decimal strings stay authoritative for display/persistence (B3/B18-2).
+ */
+
+/** Module-level engine reference — set by the ModelEngine constructor, cleared on dispose. */
+let _engineRef: ModelEngine | null = null;
+
+/** Parse `fp-{year}-p{period_no}` → `{year, periodNo}`. Returns null for non-matching ids. */
+function parsePeriodId(id: string): { year: number; periodNo: number } | null {
+  const match = /^fp-(\d+)-p(\d+)$/.exec(id);
+  if (!match) return null;
+  return { year: parseInt(match[1], 10), periodNo: parseInt(match[2], 10) };
+}
+
+/** The total number of periods per fiscal year, auto-detected from the loaded period set. */
+function detectPeriodsPerYear(periods: ModelGridPeriod[]): number {
+  if (periods.length === 0) return 12;
+  const years = new Set<number>();
+  for (const p of periods) {
+    const parsed = parsePeriodId(p.id);
+    if (parsed) years.add(parsed.year);
+  }
+  if (years.size === 0) return 12;
+  // Pick a year and count its periods (works for 12- and 13-period calendars).
+  const sampleYear = years.values().next().value as number;
+  return periods.filter((p) => {
+    const parsed = parsePeriodId(p.id);
+    return parsed !== null && parsed.year === sampleYear;
+  }).length;
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- HF 3.4.0 does not export the internal
+ * `Ast`/`InterpreterState`/`InterpreterValue` types from its public entry; the plugin methods
+ * match the parent `FunctionPlugin` signatures by position and are never called by user code. */
+class OneFPAPlugin extends FunctionPlugin {
+  static implementedFunctions: ImplementedFunctions = {
+    CAGR: {
+      method: "cagr",
+      parameters: [
+        { argumentType: FunctionArgumentType.NUMBER },
+        { argumentType: FunctionArgumentType.NUMBER },
+        { argumentType: FunctionArgumentType.NUMBER, minValue: 1 },
+      ],
+    },
+    RATIO: {
+      method: "ratio",
+      parameters: [
+        { argumentType: FunctionArgumentType.NUMBER },
+        { argumentType: FunctionArgumentType.NUMBER },
+      ],
+    },
+    MOVINGAVG: {
+      method: "movingavg",
+      parameters: [
+        { argumentType: FunctionArgumentType.RANGE },
+        { argumentType: FunctionArgumentType.NUMBER, minValue: 2 },
+      ],
+    },
+    TREND: {
+      method: "trend",
+      parameters: [
+        { argumentType: FunctionArgumentType.RANGE },
+        { argumentType: FunctionArgumentType.NUMBER, minValue: 1 },
+      ],
+    },
+    SEASONALITY: {
+      method: "seasonality",
+      parameters: [{ argumentType: FunctionArgumentType.RANGE }],
+    },
+    YOY: {
+      method: "yoy",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    PRIORPERIOD: {
+      method: "priorperiod",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    PRIORYEAR: {
+      method: "prioryear",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+  };
+
+  cagr(ast: any, state: any): any {
+    return this.runFunction(
+      ast.args,
+      state,
+      this.metadata("CAGR"),
+      (start: number, end: number, periods: number) => {
+        if (start === 0) return new CellError(ErrorType.VALUE);
+        if (periods <= 0) return new CellError(ErrorType.VALUE);
+        return Math.pow(end / start, 1 / periods) - 1;
+      },
+    );
+  }
+
+  ratio(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("RATIO"), (a: number, b: number) => {
+      if (b === 0) return new CellError(ErrorType.DIV_BY_ZERO);
+      return a / b;
+    });
+  }
+
+  movingavg(ast: any, state: any): any {
+    return this.runFunction(
+      ast.args,
+      state,
+      this.metadata("MOVINGAVG"),
+      (range: SimpleRangeValue, window: number) => {
+        const raw = range.valuesFromTopLeftCorner();
+        const nums = raw.filter((v): v is number => typeof v === "number");
+        if (nums.length === 0 || window < 2) return new CellError(ErrorType.VALUE);
+        const w = Math.floor(window);
+        // Return the LAST moving average value (the most recent window).
+        const start = Math.max(0, nums.length - w);
+        const slice = nums.slice(start);
+        return slice.reduce((s, v) => s + v, 0) / slice.length;
+      },
+    );
+  }
+
+  trend(ast: any, state: any): any {
+    return this.runFunction(
+      ast.args,
+      state,
+      this.metadata("TREND"),
+      (range: SimpleRangeValue, points: number) => {
+        const raw = range.valuesFromTopLeftCorner();
+        const nums = raw.filter((v): v is number => typeof v === "number");
+        if (nums.length < 2 || points < 1) return new CellError(ErrorType.VALUE);
+        const n = nums.length;
+        const sumX = (n * (n - 1)) / 2;
+        const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+        const sumY = nums.reduce((s, v) => s + v, 0);
+        const sumXY = nums.reduce((s, v, i) => s + v * i, 0);
+        const denom = n * sumX2 - sumX * sumX;
+        if (denom === 0) return new CellError(ErrorType.VALUE);
+        const slope = (n * sumXY - sumX * sumY) / denom;
+        const intercept = (sumY - slope * sumX) / n;
+        // Return the FIRST projected point (period n+1, index = nums.length).
+        return intercept + slope * nums.length;
+      },
+    );
+  }
+
+  seasonality(ast: any, state: any): any {
+    return this.runFunction(
+      ast.args,
+      state,
+      this.metadata("SEASONALITY"),
+      (range: SimpleRangeValue) => {
+        const raw = range.valuesFromTopLeftCorner();
+        const nums = raw.filter((v): v is number => typeof v === "number");
+        if (nums.length === 0) return new CellError(ErrorType.VALUE);
+        const total = nums.reduce((s, v) => s + v, 0);
+        if (total === 0) return 0;
+        // Return the LAST seasonal index (share of the final period).
+        return nums[nums.length - 1] / total;
+      },
+    );
+  }
+
+  /**
+   * YOY(cell) — the VALUE of the cell at the same row, same period number, prior fiscal year.
+   * The engine resolves the caller's column → period → prior-year period → column, then reads
+   * the HF cell value at that address. Returns `#REF!` when the prior-year period is not loaded.
+   */
+  yoy(ast: any, state: any): any {
+    return this.runFunctionWithReferenceArgument(
+      ast.args,
+      state,
+      this.metadata("YOY"),
+      () => new CellError(ErrorType.REF),
+      (ref: SimpleCellAddress) => this.resolvePriorYearCell(ref),
+    );
+  }
+
+  priorperiod(ast: any, state: any): any {
+    return this.runFunctionWithReferenceArgument(
+      ast.args,
+      state,
+      this.metadata("PRIORPERIOD"),
+      () => new CellError(ErrorType.REF),
+      (ref: SimpleCellAddress) => this.resolvePriorPeriodCell(ref),
+    );
+  }
+
+  prioryear(ast: any, state: any): any {
+    return this.runFunctionWithReferenceArgument(
+      ast.args,
+      state,
+      this.metadata("PRIORYEAR"),
+      () => new CellError(ErrorType.REF),
+      (ref: SimpleCellAddress) => this.resolvePriorYearCell(ref),
+    );
+  }
+
+  /** Resolve the same-row, prior-year-period cell value (YOY / PRIORYEAR). */
+  private resolvePriorYearCell(ref: SimpleCellAddress): number | CellError {
+    const engine = _engineRef;
+    if (engine === null) return new CellError(ErrorType.REF);
+    const periodId = engine.getPeriodIdForColumn(ref.col);
+    if (periodId === null) return new CellError(ErrorType.REF);
+    const parsed = parsePeriodId(periodId);
+    if (parsed === null) return new CellError(ErrorType.REF);
+    const priorId = `fp-${parsed.year - 1}-p${String(parsed.periodNo).padStart(2, "0")}`;
+    return engine.getCellNumberAtPeriod(ref.row, priorId);
+  }
+
+  /** Resolve the same-row, previous-period cell value (PRIORPERIOD). */
+  private resolvePriorPeriodCell(ref: SimpleCellAddress): number | CellError {
+    const engine = _engineRef;
+    if (engine === null) return new CellError(ErrorType.REF);
+    const periodId = engine.getPeriodIdForColumn(ref.col);
+    if (periodId === null) return new CellError(ErrorType.REF);
+    const parsed = parsePeriodId(periodId);
+    if (parsed === null) return new CellError(ErrorType.REF);
+    const ppy = engine.periodsPerYear;
+    let priorYear = parsed.year;
+    let priorNo = parsed.periodNo - 1;
+    if (priorNo < 1) {
+      priorYear -= 1;
+      priorNo = ppy;
+    }
+    const priorId = `fp-${priorYear}-p${String(priorNo).padStart(2, "0")}`;
+    return engine.getCellNumberAtPeriod(ref.row, priorId);
+  }
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// Register the plugin statically with English translations — must happen before any HF instance
+// is created (§5). HF requires translations for every registered function name; without them the
+// formula parser returns `#NAME?` (the function is unknown to the language pack).
+HyperFormula.registerFunctionPlugin(OneFPAPlugin, {
+  enGB: {
+    CAGR: "CAGR",
+    RATIO: "RATIO",
+    MOVINGAVG: "MOVINGAVG",
+    TREND: "TREND",
+    SEASONALITY: "SEASONALITY",
+    YOY: "YOY",
+    PRIORPERIOD: "PRIORPERIOD",
+    PRIORYEAR: "PRIORYEAR",
+  },
+});
+
 /**
  * The M3-1 grid engine. One HyperFormula instance per engine (each Worker / store gets its own),
  * deterministic, and free of float money at the boundary.
@@ -219,15 +486,95 @@ export class ModelEngine {
   /** Periods backing the Drivers sheet (mirrors the model grid's periods; separate so the Driver
    *  table is usable even before `loadGrid` runs). */
   private driverPeriods: ModelGridPeriod[] = [];
+  /** Periods per fiscal year (12 for standard, 13 for 4-5-4; auto-detected from loaded periods). */
+  private _periodsPerYear = 12;
 
   constructor(scale = 2) {
     this.hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
     this.scale = scale;
+    // Publish the engine reference so the custom function plugin's calendar-aware functions
+    // (YOY/PRIORPERIOD/PRIORYEAR) can resolve prior-period cells (M3-10).
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- module-level ref for plugin.
+    _engineRef = this;
   }
 
   /** Number of real period columns currently loaded. */
   get periodCount(): number {
     return this.periods.length;
+  }
+
+  /** Periods per fiscal year (12 or 13), auto-detected when the grid loads (M3-10). */
+  get periodsPerYear(): number {
+    return this._periodsPerYear;
+  }
+
+  /* ── Named Ranges (M3-10 · FORMULA-ENGINE-SPEC §1) ───────────────────────────────────
+   * Named Ranges wrap HyperFormula's global named expressions. Each Assumption Register entry
+   * (e.g. `wage_inflation = 0.05`) becomes a global named expression so formulas like
+   * `=B2 * wage_inflation` resolve the name to the value without a sheet prefix.
+   * Values are exact decimal strings; the HF cell is the float mirror for formula evaluation
+   * (same commit-rounding contract as manual cell values — MONEY-ROUNDING-SPEC §3). */
+
+  /**
+   * Define or update a named range. The value is stored as the exact decimal string; HF
+   * receives the numeric equivalent for formula evaluation. Throws on invalid names
+   * (must be snake_case per the Assumption Register convention).
+   */
+  addNamedRange(name: string, value: string): void {
+    if (!isValidAssumptionName(name)) {
+      throw new Error("VALUE_INVALID: named range must be lowercase snake_case");
+    }
+    const numericValue = new Decimal(value).toNumber();
+    // Update any prior definition in-place (changeNamedExpression preserves dependent formulas
+    // and triggers a recalc). Only add when the name is entirely new.
+    const existing = this.hf.listNamedExpressions();
+    if (existing.includes(name)) {
+      this.hf.changeNamedExpression(name, numericValue);
+    } else {
+      this.hf.addNamedExpression(name, numericValue);
+    }
+  }
+
+  /** Remove a named range. No-op if the name is not defined. */
+  removeNamedRange(name: string): void {
+    const existing = this.hf.listNamedExpressions();
+    if (existing.includes(name)) {
+      this.hf.removeNamedExpression(name);
+    }
+  }
+
+  /** List all currently defined named ranges (global). */
+  listNamedRanges(): string[] {
+    return this.hf.listNamedExpressions();
+  }
+
+  /** Read a named range's current HF-evaluated value (or null when undefined). */
+  getNamedRangeValue(name: string): string | null {
+    const raw = this.hf.getNamedExpressionValue(name);
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw === "number") {
+      return new Decimal(raw).toDecimalPlaces(this.scale, Decimal.ROUND_HALF_UP).toString();
+    }
+    return String(raw);
+  }
+
+  /** The period id at a given column (for the calendar-aware custom functions). */
+  getPeriodIdForColumn(col: number): string | null {
+    return this.colPeriod.get(col) ?? null;
+  }
+
+  /**
+   * Read the HF-evaluated numeric value at a given (row, period_id) in the Model sheet.
+   * Returns the float number on success, or a `#REF!` error when the period/row is absent.
+   * Used by YOY/PRIORPERIOD/PRIORYEAR to resolve the prior-period cell.
+   */
+  getCellNumberAtPeriod(row: number, periodId: string): number | CellError {
+    if (this.sheetId === null) return new CellError(ErrorType.REF);
+    const col = this.periodCol.get(periodId);
+    if (col === undefined) return new CellError(ErrorType.REF);
+    const raw = this.hf.getCellValue({ sheet: this.sheetId, col, row });
+    if (typeof raw === "number") return raw;
+    return new CellError(ErrorType.REF);
   }
 
   /**
@@ -238,6 +585,7 @@ export class ModelEngine {
     this.lines = [...layout.lines];
     this.modelLines = [...layout.lines];
     this.periods = [...layout.periods];
+    this._periodsPerYear = detectPeriodsPerYear(this.periods);
     this.lineRow.clear();
     this.periodCol.clear();
     this.dirtyLines.clear();

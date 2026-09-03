@@ -24,7 +24,11 @@ export type EngineOp =
   | "getDrivers"
   | "getDriverImpact"
   | "scanHardcoded"
-  | "convertHardcoded";
+  | "convertHardcoded"
+  | "addNamedRange"
+  | "removeNamedRange"
+  | "listNamedRanges"
+  | "getNamedRangeValue";
 
 export interface EngineRequest {
   id: number;
@@ -116,6 +120,22 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
           ok: true,
           data: engine.convertHardcoded(line_id, period_id, literal, assumption_name),
         };
+      }
+      case "addNamedRange": {
+        const { name, value } = req.args as { name: string; value: string };
+        engine.addNamedRange(name, value);
+        return { id: req.id, ok: true, data: null };
+      }
+      case "removeNamedRange": {
+        const { name } = req.args as { name: string };
+        engine.removeNamedRange(name);
+        return { id: req.id, ok: true, data: null };
+      }
+      case "listNamedRanges":
+        return { id: req.id, ok: true, data: engine.listNamedRanges() };
+      case "getNamedRangeValue": {
+        const { name } = req.args as { name: string };
+        return { id: req.id, ok: true, data: engine.getNamedRangeValue(name) };
       }
       default:
         return {

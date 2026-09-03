@@ -208,3 +208,62 @@ describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
     }
   });
 });
+
+describe("M3-10: named range protocol ops", () => {
+  function loadedEngine(): ModelEngine {
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: PERIODS });
+    return e;
+  }
+
+  it("addNamedRange stores a named expression and listNamedRanges returns it", () => {
+    const engine = loadedEngine();
+    const add = handleEngineMessage(engine, {
+      id: 20,
+      op: "addNamedRange",
+      args: { name: "wage_inflation", value: "0.05" },
+    });
+    expect(add.ok).toBe(true);
+
+    const list = handleEngineMessage(engine, { id: 21, op: "listNamedRanges" });
+    expect(list.ok).toBe(true);
+    if (list.ok) expect(list.data).toEqual(["wage_inflation"]);
+
+    const get = handleEngineMessage(engine, {
+      id: 22,
+      op: "getNamedRangeValue",
+      args: { name: "wage_inflation" },
+    });
+    expect(get.ok).toBe(true);
+    if (get.ok) expect(get.data).toBe("0.05");
+  });
+
+  it("removeNamedRange removes the named expression", () => {
+    const engine = loadedEngine();
+    handleEngineMessage(engine, {
+      id: 23,
+      op: "addNamedRange",
+      args: { name: "alpha", value: "1" },
+    });
+    const rm = handleEngineMessage(engine, {
+      id: 24,
+      op: "removeNamedRange",
+      args: { name: "alpha" },
+    });
+    expect(rm.ok).toBe(true);
+
+    const list = handleEngineMessage(engine, { id: 25, op: "listNamedRanges" });
+    if (list.ok) expect(list.data).toEqual([]);
+  });
+
+  it("getNamedRangeValue returns null for unknown names", () => {
+    const engine = loadedEngine();
+    const get = handleEngineMessage(engine, {
+      id: 26,
+      op: "getNamedRangeValue",
+      args: { name: "nonexistent" },
+    });
+    expect(get.ok).toBe(true);
+    if (get.ok) expect(get.data).toBeNull();
+  });
+});
