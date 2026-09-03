@@ -71,7 +71,9 @@ pub fn add_decimal_strings(a: &str, b: &str, currency: &str) -> Result<MoneyValu
 /// Largest-Remainder Allocation (MONEY-ROUNDING-SPEC §4).
 /// Exact totals: `sum(displayed children) == displayed parent`, to the display unit.
 /// `unit` is the display unit as a Decimal (e.g. 1 for units, 0.1 for tenths).
-/// Tie-break is deterministic (smallest index first) — no float, no loss.
+/// Residual units go to the LARGEST fractional remainders first (§4 step 4b); the tie-break is
+/// deterministic (smallest index first) — no float, no loss. Mirrored in TS by
+/// `src/workers/spreading.ts::largestRemainderAllocate` (same spec vectors).
 pub fn largest_remainder_allocate(exact_values: &[Decimal], unit: Decimal) -> Vec<Decimal> {
     if exact_values.is_empty() {
         return vec![];
@@ -82,12 +84,14 @@ pub fn largest_remainder_allocate(exact_values: &[Decimal], unit: Decimal) -> Ve
     let floored_total: Decimal = floored.iter().sum();
     let mut residual: Decimal = total - floored_total;
 
-    // 2. rank by fractional remainder (descending); deterministic tie-break
+    // 2. rank by fractional remainder — DESCENDING (largest remainder first, §4b); deterministic
+    //    index tie-break. (KI-014: this was ascending until 2026-09-03, which handed the residual
+    //    unit to the smallest remainder — totals still tied, but on the wrong line.)
     let mut order: Vec<usize> = (0..exact_values.len()).collect();
     order.sort_by(|&i, &j| {
         let ri = exact_values[i] - floored[i];
         let rj = exact_values[j] - floored[j];
-        ri.cmp(&rj).then_with(|| i.cmp(&j))
+        rj.cmp(&ri).then_with(|| i.cmp(&j))
     });
 
     // 3. distribute residual in whole units
@@ -149,6 +153,10 @@ mod tests {
         let child_sum: Decimal = displayed.iter().sum();
         let total = values.iter().sum::<Decimal>();
         assert_eq!(child_sum, total); // 12 + 4 + 8 = 24 == 24
+        // §4b: the residual units land on the LARGEST remainders (.9 then .7), never on .4.
+        let expected: Vec<Decimal> =
+            ["12", "4", "8"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        assert_eq!(displayed, expected);
     }
 
     #[test]
@@ -164,6 +172,20 @@ mod tests {
         let sum: Decimal = displayed.iter().sum();
         assert_eq!(sum, Decimal::from_str_exact("4000.0").unwrap());
         assert!(displayed[1] > Decimal::from_str_exact("2665.5").unwrap());
+        let expected: Vec<Decimal> =
+            ["1234.4", "2665.6", "100.0"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        assert_eq!(displayed, expected);
+    }
+
+    #[test]
+    fn largest_remainder_tie_break_is_lowest_index_first() {
+        // Three equal thirds at 0.01: one residual unit → deterministic, to index 0.
+        let third = Decimal::ONE / Decimal::from(3u32);
+        let unit = Decimal::from_str_exact("0.01").unwrap();
+        let displayed = largest_remainder_allocate(&[third, third, third], unit);
+        let expected: Vec<Decimal> =
+            ["0.34", "0.33", "0.33"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        assert_eq!(displayed, expected);
     }
 
     proptest::proptest! {
