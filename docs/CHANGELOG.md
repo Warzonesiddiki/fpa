@@ -3,6 +3,10 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+### Fixed
+- **KI-013 auth copy + lockout countdown (F-001/S-001, 2026-09-04):** S-001 renders the `AUTH_LOCKED` lockout as a live **seconds** countdown driven by `retryAfterMs` (1 s interval cleared on unmount/at 0; submit disabled until expiry; AUTH-SPEC §2.2 30 s fallback), replacing the misleading whole-minute floor. The three ERROR-HANDLING §A user texts are aligned verbatim in `src/api/mock.ts` and `src-tauri/src/core/error.rs` (string literals only, NATIVE-UNVERIFIED — no cargo in sandbox) and in the i18n/e2e/App fixtures: "Incorrect PIN." / "Too many attempts. Try again in {countdown}s." / "Session locked. Unlock to continue." New S-001 page tests (countdown, 30 s fallback, unmount cleanup, axe) + i18n key test → **52 files / 574 tests**.
+- Retry flags for `AUTH_PIN_INVALID`/`AUTH_LOCKED`/`SESSION_LOCKED` now match ERROR-HANDLING §A exactly (401/false, 423/true+`retryAfterMs`, 401/false) across core, mock, and schema fixtures.
+
 ### Added
 - **M3-5 Period Spreading (F-015 · US-016, 2026-09-03):** exact `spreadTotal` engine (equal / seasonal / custom / lump, W53/P13 exclusion, HARD `SPREAD_WEIGHTS_INVALID` with an explicit Normalize/Fix choice — never silent), worker/client op, store `spreadLine` (audited per-period writes, one undo entry) and the S-041 **Spread** dialog. `Σ periods == total` at Currency Scale by construction (Largest-Remainder Allocation, residual to the last period).
 - Specification suite (54 docs/ specs) — see `docs/DOCS-INDEX.md` for the complete map.

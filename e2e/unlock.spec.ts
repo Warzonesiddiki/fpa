@@ -18,7 +18,7 @@ test("S-001 unlock: shows recent company, wrong PIN errors, correct PIN unlocks"
   await page.getByLabel("PIN").fill("wrong");
   await expect(submit).toBeEnabled();
   await submit.click();
-  await expect(page.getByText("Incorrect PIN. Please try again.")).toBeVisible();
+  await expect(page.getByText("Incorrect PIN.")).toBeVisible();
 
   // Success state: correct PIN
   await page.getByLabel("PIN").fill("1234");

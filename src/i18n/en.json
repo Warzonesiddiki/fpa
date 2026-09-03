@@ -29,8 +29,8 @@
     "submit": "Unlock",
     "forgot": "Forgot your PIN? Use your Recovery Phrase",
     "error": {
-      "invalid": "Incorrect PIN. Please try again.",
-      "locked": "Too many attempts. Try again in {{minutes}} min.",
+      "invalid": "Incorrect PIN.",
+      "locked": "Too many attempts. Try again in {{seconds}}s.",
       "decrypt": "This Company file could not be decrypted. Choose a different file or restore a backup."
     },
     "populated": {
