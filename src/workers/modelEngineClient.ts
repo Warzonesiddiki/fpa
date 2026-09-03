@@ -22,6 +22,7 @@ import type {
   SetCellResult,
 } from "./modelEngine";
 import { handleEngineMessage, type EngineRequest, type EngineResponse } from "./protocol";
+import type { SpreadRequest, SpreadResult } from "./spreading";
 
 export interface ModelEngineClient {
   loadGrid(layout: GridLayout): Promise<void>;
@@ -51,7 +52,43 @@ export interface ModelEngineClient {
   removeNamedRange(name: string): Promise<void>;
   listNamedRanges(): Promise<string[]>;
   getNamedRangeValue(name: string): Promise<string | null>;
+  /** Period Spreading (M3-5 · MODELING-METHODS-SPEC §3) — exact values, Σ == total. */
+  spreadTotal(req: SpreadRequest): Promise<SpreadResult>;
   destroy(): void;
+}
+
+/**
+ * A rejected engine op as a structured error. Spread failures arrive with a JSON payload in the
+ * message (`{userMessage, details}`) so the UI can show the documented text + the normalise offer.
+ */
+export interface EngineOpError {
+  code: string;
+  userMessage: string | null;
+  details: Record<string, unknown>;
+}
+
+/** Parse an `Error("CODE: detail")` thrown by the client into `{code, userMessage, details}`. */
+export function parseEngineOpError(err: unknown): EngineOpError {
+  const text = err instanceof Error ? err.message : String(err);
+  const colon = text.indexOf(":");
+  const code = (colon === -1 ? text : text.slice(0, colon)).trim() || "INTERNAL";
+  const rest = colon === -1 ? "" : text.slice(colon + 1).trim();
+  if (rest.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(rest) as { userMessage?: unknown; details?: unknown };
+      return {
+        code,
+        userMessage: typeof parsed.userMessage === "string" ? parsed.userMessage : null,
+        details:
+          parsed.details && typeof parsed.details === "object"
+            ? (parsed.details as Record<string, unknown>)
+            : {},
+      };
+    } catch {
+      // fall through — plain-text detail
+    }
+  }
+  return { code, userMessage: null, details: rest ? { reason: rest } : {} };
 }
 
 export interface EngineTransport {
@@ -151,6 +188,9 @@ class SingleFlight implements ModelEngineClient {
   }
   getNamedRangeValue(name: string): Promise<string | null> {
     return this.enqueue("getNamedRangeValue", { name });
+  }
+  spreadTotal(req: SpreadRequest): Promise<SpreadResult> {
+    return this.enqueue("spreadTotal", req);
   }
   destroy(): void {
     this.transport.destroy();

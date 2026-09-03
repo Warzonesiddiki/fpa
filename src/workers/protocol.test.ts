@@ -267,3 +267,54 @@ describe("M3-10: named range protocol ops", () => {
     if (get.ok) expect(get.data).toBeNull();
   });
 });
+
+describe("M3-5: spreadTotal op (MODELING-METHODS-SPEC §3)", () => {
+  // spreadTotal is a pure computation — no grid needs to be loaded.
+  const loadedEngine = () => new ModelEngine();
+  it("returns exact period values whose sum equals the total", () => {
+    const engine = loadedEngine();
+    const res = handleEngineMessage(engine, {
+      id: 30,
+      op: "spreadTotal",
+      args: {
+        total: "100.00",
+        periodIds: ["fp-2026-p01", "fp-2026-p02", "fp-2026-p03"],
+        method: "equal",
+        scale: 2,
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const data = res.data as { values: { amount_text: string }[]; sum_text: string };
+      expect(data.values.map((v) => v.amount_text)).toEqual(["33.33", "33.33", "33.34"]);
+      expect(data.sum_text).toBe("100.00");
+    }
+  });
+
+  it("surfaces SPREAD_WEIGHTS_INVALID with the documented user text and the normalise offer", () => {
+    const engine = loadedEngine();
+    const res = handleEngineMessage(engine, {
+      id: 31,
+      op: "spreadTotal",
+      args: {
+        total: "100.00",
+        periodIds: ["fp-2026-p01", "fp-2026-p02"],
+        method: "seasonal",
+        weights: ["0.6", "0.6"],
+        scale: 2,
+      },
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("SPREAD_WEIGHTS_INVALID");
+      const payload = JSON.parse(res.error.message) as {
+        userMessage: string;
+        details: { sum: string; canNormalize: boolean };
+      };
+      expect(payload.userMessage).toBe(
+        "Seasonality weights total 120% — normalize to 100% or fix.",
+      );
+      expect(payload.details).toMatchObject({ sum: "120", canNormalize: true });
+    }
+  });
+});

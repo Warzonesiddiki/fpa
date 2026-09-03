@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { InProcessTransport, createModelEngineClient } from "./modelEngineClient";
+import {
+  InProcessTransport,
+  createModelEngineClient,
+  parseEngineOpError,
+} from "./modelEngineClient";
 import type { EngineTransport } from "./modelEngineClient";
 import Decimal from "decimal.js";
 
@@ -153,6 +157,57 @@ describe("modelEngineClient (single-flight queue)", () => {
     );
     expect(result.cell.formula).toBe("=base*wage_inflation");
     expect(await client.scanHardcoded()).toEqual([]);
+  });
+});
+
+describe("M3-5: spreadTotal client op + structured error parsing", () => {
+  it("spreads through the single-flight client and parses the HARD weights error", async () => {
+    const client = createModelEngineClient(new InProcessTransport());
+    const ok = await client.spreadTotal({
+      total: "12000000.00",
+      periodIds: PERIODS.map((p) => p.id),
+      method: "equal",
+      scale: 2,
+    });
+    expect(ok.sum_text).toBe("12000000.00");
+    expect(ok.values).toHaveLength(PERIODS.length);
+
+    let caught: unknown;
+    try {
+      await client.spreadTotal({
+        total: "100.00",
+        periodIds: PERIODS.map((p) => p.id),
+        method: "seasonal",
+        weights: PERIODS.map(() => "0.6"), // 2 × 60% = 120%
+        scale: 2,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const parsed = parseEngineOpError(caught);
+    expect(parsed.code).toBe("SPREAD_WEIGHTS_INVALID");
+    expect(parsed.userMessage).toBe("Seasonality weights total 120% — normalize to 100% or fix.");
+    expect(parsed.details.canNormalize).toBe(true);
+  });
+
+  it("parseEngineOpError handles plain-text and code-only engine errors", () => {
+    expect(parseEngineOpError(new Error("REFERENCE_BROKEN: unknown line"))).toEqual({
+      code: "REFERENCE_BROKEN",
+      userMessage: null,
+      details: { reason: "unknown line" },
+    });
+    expect(parseEngineOpError(new Error("FORMULA_CYCLE"))).toEqual({
+      code: "FORMULA_CYCLE",
+      userMessage: null,
+      details: {},
+    });
+    expect(parseEngineOpError("boom")).toEqual({ code: "boom", userMessage: null, details: {} });
+    expect(parseEngineOpError(new Error("X: {not json"))).toEqual({
+      code: "X",
+      userMessage: null,
+      details: { reason: "{not json" },
+    });
   });
 });
 

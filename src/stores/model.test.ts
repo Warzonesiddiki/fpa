@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import Decimal from "decimal.js";
 import { useModelGridStore, WORKING_SCENARIO_ID, WORKING_MODEL_ID } from "./model";
 
 const callMock = vi.fn();
@@ -321,6 +322,130 @@ describe("model grid store — M3-9 Excel-parity (S-041)", () => {
     expect(sel).toEqual({
       anchor: { lineId: LINE, periodId: PERIOD },
       focus: { lineId: SRC, periodId: P2 },
+    });
+  });
+
+  describe("M3-5 Period Spreading (F-015 · MODELING-METHODS-SPEC §3 · US-016)", () => {
+    it("spreads a total across the horizon, committing every period through model.cell.set.v1", async () => {
+      mockEdit(42);
+      await useModelGridStore.getState().load();
+      callMock.mockClear();
+      const result = await useModelGridStore.getState().spreadLine({
+        lineId: LINE,
+        total: "100.00",
+        method: "equal",
+      });
+      expect(result).not.toBeNull();
+      expect(result?.values.map((v) => v.amount_text)).toEqual(["50.00", "50.00"]);
+      expect(result?.sum_text).toBe("100.00");
+      const audited = callMock.mock.calls.filter((c) => c[0] === "model.cell.set.v1");
+      expect(audited).toHaveLength(2);
+      expect(audited[0][1]).toEqual({
+        line_id: LINE,
+        scenario_id: WORKING_SCENARIO_ID,
+        period_id: "fp-2026-p01",
+        value: "50.00",
+        formula: null,
+        manual_override: false,
+      });
+      const s = useModelGridStore.getState();
+      expect(s.cells[`${LINE}:fp-2026-p01`].amount_text).toBe("50.00");
+      expect(s.cells[`${LINE}:fp-2026-p02`].amount_text).toBe("50.00");
+      // Derived FY is the engine's commit-rounded formula result (SUM) — exact 100 either way.
+      expect(new Decimal(s.derived[LINE].fy ?? "0").eq("100.00")).toBe(true);
+      expect(s.auditId).toBe(42);
+      expect(s.spreadError).toBeNull();
+      expect(s.status).toBe("populated");
+    });
+
+    it("is one undo entry for the whole spread (M3-9 history contract)", async () => {
+      mockEdit();
+      await useModelGridStore.getState().load();
+      await useModelGridStore
+        .getState()
+        .setCell({ line_id: LINE, period_id: PERIOD, value: "7.00" });
+      await useModelGridStore.getState().spreadLine({
+        lineId: LINE,
+        total: "1000.00",
+        method: "seasonal",
+        weights: ["0.25", "0.75"],
+      });
+      let s = useModelGridStore.getState();
+      expect(s.cells[`${LINE}:fp-2026-p01`].amount_text).toBe("250.00");
+      expect(s.cells[`${LINE}:fp-2026-p02`].amount_text).toBe("750.00");
+      expect(s.history.depth).toBe(2);
+      await useModelGridStore.getState().undo();
+      s = useModelGridStore.getState();
+      expect(s.cells[`${LINE}:fp-2026-p01`].amount_text).toBe("7.00");
+      expect(s.cells[`${LINE}:fp-2026-p02`].amount_text).toBeNull();
+      await useModelGridStore.getState().redo();
+      s = useModelGridStore.getState();
+      expect(s.cells[`${LINE}:fp-2026-p02`].amount_text).toBe("750.00");
+    });
+
+    it("SPREAD_WEIGHTS_INVALID is HARD, inline (not the page error), with the normalise offer; the explicit choice then succeeds", async () => {
+      mockEdit();
+      await useModelGridStore.getState().load();
+      callMock.mockClear();
+      const rejected = await useModelGridStore.getState().spreadLine({
+        lineId: LINE,
+        total: "1000.00",
+        method: "seasonal",
+        weights: ["0.5", "0.6"],
+      });
+      expect(rejected).toBeNull();
+      let s = useModelGridStore.getState();
+      expect(s.status).toBe("success"); // grid untouched, still usable
+      expect(s.error).toBeNull();
+      expect(s.spreadError?.code).toBe("SPREAD_WEIGHTS_INVALID");
+      expect(s.spreadError?.userMessage).toBe(
+        "Seasonality weights total 110% — normalize to 100% or fix.",
+      );
+      expect(s.spreadError?.details).toMatchObject({ sum: "110", canNormalize: true });
+      expect(callMock.mock.calls.filter((c) => c[0] === "model.cell.set.v1")).toHaveLength(0);
+
+      const accepted = await useModelGridStore.getState().spreadLine({
+        lineId: LINE,
+        total: "1000.00",
+        method: "seasonal",
+        weights: ["0.5", "0.6"],
+        normalize: true,
+      });
+      expect(accepted?.normalized).toBe(true);
+      expect(accepted?.values.map((v) => v.amount_text)).toEqual(["454.55", "545.45"]);
+      s = useModelGridStore.getState();
+      expect(s.spreadError).toBeNull();
+      useModelGridStore.getState().clearSpreadError();
+      expect(useModelGridStore.getState().spreadError).toBeNull();
+    });
+
+    it("rejects an unknown line (REFERENCE_BROKEN) and surfaces a core rejection mid-spread as the page error", async () => {
+      mockEdit();
+      await useModelGridStore.getState().load();
+      const unknown = await useModelGridStore
+        .getState()
+        .spreadLine({ lineId: "nope", total: "1.00", method: "equal" });
+      expect(unknown).toBeNull();
+      expect(useModelGridStore.getState().spreadError?.code).toBe("REFERENCE_BROKEN");
+
+      callMock.mockImplementation((cmd: string) => {
+        if (cmd === "model.cell.set.v1")
+          return Promise.reject({
+            code: "MODEL_CELL_LOCKED",
+            userMessage: "This cell belongs to a Locked Scenario version.",
+            httpStatus: 422,
+            retryable: false,
+            retryAfterMs: null,
+            details: {},
+          });
+        return Promise.resolve({});
+      });
+      const locked = await useModelGridStore
+        .getState()
+        .spreadLine({ lineId: LINE, total: "10.00", method: "equal" });
+      expect(locked).toBeNull();
+      expect(useModelGridStore.getState().status).toBe("error");
+      expect(useModelGridStore.getState().error?.code).toBe("MODEL_CELL_LOCKED");
     });
   });
 });
