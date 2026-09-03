@@ -146,7 +146,7 @@
     {
       "id": "KI-014",
       "tier": 2,
-      "status": "OPEN — Rust-touching, cargo-equipped runner needed",
+      "status": "FIXED in code (Unit W-3b, bd7df27) — Mitigated until cargo test on CI",
       "summary": "core/money.rs LRA tie order ascending vs spec descending (unit lands on wrong line)"
     }
   ],
@@ -180,10 +180,16 @@
       "tier": 2,
       "status": "DONE (this commit) — M3-5 Period Spreading; method persistence + bootstrap/copy remain",
       "rollback": "git revert <commit>"
+    },
+    {
+      "id": "W-3b",
+      "title": "KI-014 core/money.rs LRA sort order fix (spec §4b)",
+      "tier": 2,
+      "status": "DONE (bd7df27; native-unverified)"
     }
   ],
   "last_updated": "2026-09-03",
-  "last_action": "Unit W-3: M3-5 Period Spreading (engine spreading.ts, worker op, store spreadLine, S-041 SpreadDialog, 38 tests); KI-014 registered",
+  "last_action": "Unit W-3b: core/money.rs LRA descending-remainder fix + exact spec-vector tests (KI-014 → Mitigated); docs sync follow-up",
   "pr": {
     "number": 24,
     "url": "https://github.com/Warzonesiddiki/fpa/pull/24",
