@@ -22,7 +22,9 @@ export type EngineOp =
   | "setDriverValue"
   | "getDriverGrid"
   | "getDrivers"
-  | "getDriverImpact";
+  | "getDriverImpact"
+  | "scanHardcoded"
+  | "convertHardcoded";
 
 export interface EngineRequest {
   id: number;
@@ -99,6 +101,21 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
       case "getDriverImpact": {
         const { driver_id } = req.args as { driver_id: string };
         return { id: req.id, ok: true, data: engine.getDriverImpact(driver_id) };
+      }
+      case "scanHardcoded":
+        return { id: req.id, ok: true, data: engine.scanHardcoded() };
+      case "convertHardcoded": {
+        const { line_id, period_id, literal, assumption_name } = req.args as {
+          line_id: string;
+          period_id: string;
+          literal: Parameters<ModelEngine["convertHardcoded"]>[2];
+          assumption_name: string;
+        };
+        return {
+          id: req.id,
+          ok: true,
+          data: engine.convertHardcoded(line_id, period_id, literal, assumption_name),
+        };
       }
       default:
         return {

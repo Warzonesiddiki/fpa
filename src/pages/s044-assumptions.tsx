@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { Button, Input, StatePanel } from "@/components/ui";
 import type { AssumptionDef } from "@/api/schema";
-import { useAssumptionStore } from "@/stores/assumptions";
+import { diffAssumptionValues, hardcodeFindingKey, useAssumptionStore } from "@/stores/assumptions";
+import type { HardcodedFinding, HardcodedLiteral } from "@/workers/modelEngine";
 
 interface AssumptionDraft {
   name: string;
@@ -90,6 +91,14 @@ export function AssumptionsPage() {
   const load = useAssumptionStore((state) => state.load);
   const upsert = useAssumptionStore((state) => state.upsert);
   const findUsages = useAssumptionStore((state) => state.findUsages);
+  const hardcodeStatus = useAssumptionStore((state) => state.hardcodeStatus);
+  const hardcodeError = useAssumptionStore((state) => state.hardcodeError);
+  const findings = useAssumptionStore((state) => state.findings);
+  const waived = useAssumptionStore((state) => state.waived);
+  const scanHardcoded = useAssumptionStore((state) => state.scanHardcoded);
+  const convertHardcoded = useAssumptionStore((state) => state.convertHardcoded);
+  const waiveHardcoded = useAssumptionStore((state) => state.waiveHardcoded);
+  const unwaiveHardcoded = useAssumptionStore((state) => state.unwaiveHardcoded);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,6 +107,11 @@ export function AssumptionsPage() {
   const [saving, setSaving] = useState(false);
   const [activeUsageId, setActiveUsageId] = useState<string | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [convertSelections, setConvertSelections] = useState<Record<string, string>>({});
+  const [waivingKey, setWaivingKey] = useState<string | null>(null);
+  const [waiveReason, setWaiveReason] = useState("");
+  const [waiveError, setWaiveError] = useState<string | null>(null);
 
   useEffect(() => {
     void load();
@@ -177,6 +191,67 @@ export function AssumptionsPage() {
       setUsageLoading(false);
     },
     [findUsages],
+  );
+
+  const editingAssumption = useMemo(
+    () => assumptions.find((assumption) => assumption.id === editingId) ?? null,
+    [assumptions, editingId],
+  );
+
+  const draftDiff = useMemo(() => {
+    if (!editingAssumption) return [];
+    const parsed = parseValueEntries(draft.values);
+    if (parsed === null) return [];
+    return diffAssumptionValues(editingAssumption.values, parsed);
+  }, [draft.values, editingAssumption]);
+
+  const runScan = useCallback(async () => {
+    setScanned(true);
+    setWaiveError(null);
+    await scanHardcoded();
+  }, [scanHardcoded]);
+
+  const startWaive = useCallback((key: string) => {
+    setWaivingKey(key);
+    setWaiveReason("");
+    setWaiveError(null);
+  }, []);
+
+  const confirmWaive = useCallback(
+    (finding: HardcodedFinding, literal: HardcodedLiteral) => {
+      if (!waiveReason.trim()) {
+        setWaiveError(t("assumptionsPage.hardcode.waiveReasonRequired"));
+        return;
+      }
+      const ok = waiveHardcoded(finding, literal, waiveReason);
+      if (ok) {
+        setWaivingKey(null);
+        setWaiveReason("");
+        setWaiveError(null);
+      }
+    },
+    [t, waiveHardcoded, waiveReason],
+  );
+
+  const convertLiteral = useCallback(
+    async (finding: HardcodedFinding, literal: HardcodedLiteral) => {
+      const key = hardcodeFindingKey(finding, literal);
+      const name = convertSelections[key];
+      if (!name) return;
+      setWaiveError(null);
+      const ok = await convertHardcoded(finding, literal, name);
+      if (ok) {
+        const next = { ...convertSelections };
+        delete next[key];
+        setConvertSelections(next);
+      }
+    },
+    [convertHardcoded, convertSelections],
+  );
+
+  const assumptionNameOptions = useMemo(
+    () => assumptions.map((assumption) => assumption.name),
+    [assumptions],
   );
 
   const renderForm = () => (
@@ -268,6 +343,27 @@ export function AssumptionsPage() {
           className="rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-3 font-mono text-sm text-[var(--color-onetext)]"
         />
       </label>
+      {editingAssumption && (
+        <section aria-label={t("assumptionsPage.diff.title")} className="text-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-onetextmuted)]">
+            {t("assumptionsPage.diff.title")}
+          </h3>
+          {draftDiff.length === 0 ? (
+            <p className="mt-1 text-[var(--color-onetextmuted)]">
+              {t("assumptionsPage.diff.none")}
+            </p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1 font-mono text-xs">
+              {draftDiff.map((row) => (
+                <li key={row.period_id}>
+                  {row.period_id}: {row.before ?? t("assumptionsPage.notSet")} →{" "}
+                  {row.after ?? t("assumptionsPage.notSet")}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={closeForm} disabled={saving}>
           {t("common.cancel")}
@@ -441,6 +537,173 @@ export function AssumptionsPage() {
           </tbody>
         </table>
       </div>
+
+      <section
+        aria-label={t("assumptionsPage.hardcode.title")}
+        className="rounded-lg border border-[var(--color-oneborder)] p-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">{t("assumptionsPage.hardcode.title")}</h2>
+            <p className="text-sm text-[var(--color-onetextsecondary)]">
+              {t("assumptionsPage.hardcode.hint")}
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => void runScan()}
+            disabled={hardcodeStatus === "loading"}
+          >
+            {t(
+              hardcodeStatus === "loading"
+                ? "assumptionsPage.hardcode.scanning"
+                : "assumptionsPage.hardcode.scan",
+            )}
+          </Button>
+        </div>
+
+        {hardcodeStatus === "error" && (
+          <div className="mt-3">
+            <StatePanel
+              state="error"
+              message={hardcodeError?.userMessage ?? t("assumptionsPage.hardcode.error")}
+              errorCode={hardcodeError?.code}
+              onRetry={() => void runScan()}
+            />
+          </div>
+        )}
+
+        {scanned && hardcodeStatus !== "error" && findings.length === 0 && (
+          <StatePanel state="success" message={t("assumptionsPage.hardcode.none")} />
+        )}
+
+        {findings.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-3">
+            {findings.map((finding) => (
+              <li
+                key={`${finding.line_id}:${finding.period_id}`}
+                className="rounded border border-[var(--color-oneborder)] p-3"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-mono font-medium">
+                    {finding.line_id} · {finding.period_id}
+                  </span>
+                  <code className="whitespace-pre-wrap break-all font-mono text-xs text-[var(--color-onetextsecondary)]">
+                    {finding.formula}
+                  </code>
+                </div>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {finding.literals.map((literal) => {
+                    const key = hardcodeFindingKey(finding, literal);
+                    const isWaived = Boolean(waived[key]);
+                    const isWaiving = waivingKey === key;
+                    return (
+                      <li
+                        key={key}
+                        className={`flex flex-wrap items-center gap-2 rounded border p-2 text-sm ${
+                          isWaived
+                            ? "border-[var(--color-oneborder)] opacity-70"
+                            : "border-[var(--color-oneborder)]"
+                        }`}
+                      >
+                        <code className="rounded bg-[var(--color-onesurfacealt)] px-1.5 py-0.5 font-mono text-xs">
+                          {literal.literal}
+                        </code>
+                        {isWaived ? (
+                          <span className="text-xs text-[var(--color-onetextmuted)]">
+                            {t("assumptionsPage.hardcode.waivedBadge", {
+                              reason: waived[key]?.reason ?? "",
+                            })}
+                            <Button variant="ghost" size="sm" onClick={() => unwaiveHardcoded(key)}>
+                              {t("assumptionsPage.hardcode.unwaive")}
+                            </Button>
+                          </span>
+                        ) : isWaiving ? (
+                          <>
+                            <Input
+                              id={`waive-reason-${key}`}
+                              label={t("assumptionsPage.hardcode.waiveReasonLabel")}
+                              value={waiveReason}
+                              onChange={(event) => setWaiveReason(event.target.value)}
+                              className="min-w-56"
+                            />
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => confirmWaive(finding, literal)}
+                            >
+                              {t("assumptionsPage.hardcode.waiveConfirm")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setWaivingKey(null);
+                                setWaiveError(null);
+                              }}
+                            >
+                              {t("common.cancel")}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <label className="flex items-center gap-2">
+                              <span className="sr-only">
+                                {t("assumptionsPage.hardcode.convertLabel")}
+                              </span>
+                              <select
+                                aria-label={t("assumptionsPage.hardcode.convertAria", {
+                                  literal: literal.literal,
+                                })}
+                                value={convertSelections[key] ?? ""}
+                                onChange={(event) =>
+                                  setConvertSelections((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                                className="rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 py-1.5 text-sm"
+                              >
+                                <option value="" disabled>
+                                  {t("assumptionsPage.hardcode.chooseAssumption")}
+                                </option>
+                                {assumptionNameOptions.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={!convertSelections[key]}
+                              onClick={() => void convertLiteral(finding, literal)}
+                            >
+                              {t("assumptionsPage.hardcode.convert")}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => startWaive(key)}>
+                              {t("assumptionsPage.hardcode.waive")}
+                            </Button>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+        {waiveError && (
+          <p
+            role="alert"
+            className="mt-3 rounded-md border border-[var(--color-oneerror)] p-3 text-sm"
+          >
+            {waiveError}
+          </p>
+        )}
+      </section>
 
       {activeUsageId && (
         <section

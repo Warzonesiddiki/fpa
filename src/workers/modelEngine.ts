@@ -153,6 +153,22 @@ export interface SetCellResult {
 /** YTD/FY are derived, read-only display columns (SCREENS-SPEC S-041) computed by the engine. */
 export type DerivedColumnKind = "ytd" | "fy";
 
+/** A hardcoded numeric literal inside a formula (M3-4 · F-014 · US-015). The span indexes the
+ *  ORIGINAL formula text, so `formula.slice(start, end)` is exactly the literal to replace. */
+export interface HardcodedLiteral {
+  literal: string;
+  start: number;
+  end: number;
+}
+
+/** A formula cell that hardcodes a value instead of referencing the Assumption Register. */
+export interface HardcodedFinding {
+  line_id: string;
+  period_id: string;
+  formula: string;
+  literals: HardcodedLiteral[];
+}
+
 /** Column layout: the engine adds derived columns after the real periods. */
 export interface GridLayout {
   lines: ModelGridLine[];
@@ -542,6 +558,59 @@ export class ModelEngine {
     return rows;
   }
 
+  /* ── Hardcoded-assumption detection (M3-4 · F-014 · US-015 · GLOSSARY Assumption Register) ──
+   * A formula that hardcodes a value where an Assumption Register reference belongs is a
+   * `HARDCODED_ASSUMPTION` finding (ERROR-HANDLING §E). The scan is read-only and deterministic;
+   * `convertHardcoded` rewrites a single literal into a bare named-range reference
+   * (FORMULA-ENGINE-SPEC §1: `wage_inflation`, case-insensitive) and recomputes the graph. */
+
+  /** Scan every formula cell in the loaded grid for hardcoded numeric literals. */
+  scanHardcoded(): HardcodedFinding[] {
+    if (this.sheetId === null) return [];
+    const findings: HardcodedFinding[] = [];
+    for (const line of this.lines) {
+      for (const period of this.periods) {
+        const row = this.lineRow.get(line.id);
+        const col = this.periodCol.get(period.id);
+        if (row === undefined || col === undefined) continue;
+        const formula = this.hf.getCellFormula({ sheet: this.sheetId, col, row });
+        if (formula == null) continue;
+        const literals = findHardcodedLiterals(formula);
+        if (literals.length > 0) {
+          findings.push({ line_id: line.id, period_id: period.id, formula, literals });
+        }
+      }
+    }
+    return findings;
+  }
+
+  /**
+   * Replace one hardcoded literal in a cell's formula with an Assumption Register reference and
+   * recompute the graph. The reference is the bare named-range form (`wage_inflation`), per
+   * FORMULA-ENGINE-SPEC §1; the `@name` form is the Driver-grammar / register-UI convention only.
+   */
+  convertHardcoded(
+    line_id: string,
+    period_id: string,
+    literal: HardcodedLiteral,
+    assumption_name: string,
+  ): SetCellResult {
+    if (this.sheetId === null) {
+      throw new Error("INTERNAL: loadGrid must run before convertHardcoded");
+    }
+    const row = this.lineRow.get(line_id);
+    const col = this.periodCol.get(period_id);
+    if (row === undefined || col === undefined) {
+      throw new Error("REFERENCE_BROKEN: unknown line or period in the loaded grid");
+    }
+    const formula = this.hf.getCellFormula({ sheet: this.sheetId, col, row });
+    if (formula == null) {
+      throw new Error("REFERENCE_BROKEN: cell has no formula to convert");
+    }
+    const converted = convertHardcodedFormula(formula, literal, assumption_name);
+    return this.setCell({ line_id, period_id, formula: converted });
+  }
+
   private driverKey(driverId: string, periodId: string): string {
     return `${driverId}:${periodId}`;
   }
@@ -857,4 +926,63 @@ export function computeAnalysisFunction(
   const total = decimals.reduce((sum, value) => sum.plus(value), new Decimal(0));
   if (total.isZero()) return decimals.map(() => "0");
   return decimals.map((value) => value.div(total).toString());
+}
+
+/** Assumption names are lowercase snake_case identifiers (matches the Rust `valid_name` gate). */
+export function isValidAssumptionName(name: string): boolean {
+  return /^[a-z_][a-z0-9_]*$/.test(name);
+}
+
+/**
+ * Find hardcoded numeric literals in a formula (M3-4 · FORMULA-ENGINE-SPEC §4 · US-015).
+ *
+ * A literal is "hardcoded" when it is a decimal/percent number that is NOT part of a string
+ * literal, a cell reference (`B2`, `Drivers!B2`, `'Opex Detail'!C10`, `$A$1`, `A1:B10`), or an
+ * identifier (function / named-range name such as `SUM`, `wage_inflation`, `log10`). The returned
+ * spans index the original formula, so a caller can swap `formula.slice(start, end)` for a
+ * register reference. Purely deterministic; no float arithmetic.
+ */
+export function findHardcodedLiterals(formula: string): HardcodedLiteral[] {
+  if (formula.length === 0) return [];
+  let masked = formula;
+  // 1. Quoted string literals — their contents are data, never an assumption to convert. Each
+  //    replacement keeps the same length, so every later span still indexes the original text.
+  masked = masked.replace(/"[^"]*"/g, (m) => " ".repeat(m.length));
+  // 2. Cell references. The column letters must not be preceded by an identifier char so names
+  //    like `log10` / `wage_inflation2` stay names instead of being misread as `g10`-style refs.
+  masked = masked.replace(/(?<![A-Za-z0-9_.])\$?[A-Za-z]{1,4}\$?\d+/g, (m) => " ".repeat(m.length));
+  // 3. Identifiers (function + named-range names) — never hardcoded values.
+  masked = masked.replace(/[A-Za-z_][A-Za-z0-9_.]*/g, (m) => " ".repeat(m.length));
+  // 4. What remains as a number token is a hardcoded literal.
+  const findings: HardcodedLiteral[] = [];
+  const token = /\d+(?:\.\d+)?%?|\.\d+%?/g;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(masked)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    // Defensive: a number still glued to a leftover identifier char belongs to a name we could
+    // not fully mask (steps 2/3 should have handled it) — skip rather than misreport.
+    if (start > 0 && /[A-Za-z0-9_.]/.test(formula[start - 1])) continue;
+    findings.push({ literal: match[0], start, end });
+  }
+  return findings;
+}
+
+/**
+ * Rewrite `formula`, replacing the literal at `literal.start..end` with `assumptionName` as a
+ * bare named-range reference (FORMULA-ENGINE-SPEC §1). Never silently edits: the span must still
+ * hold the exact literal, and the name must be a valid snake_case identifier.
+ */
+export function convertHardcodedFormula(
+  formula: string,
+  literal: HardcodedLiteral,
+  assumptionName: string,
+): string {
+  if (!isValidAssumptionName(assumptionName)) {
+    throw new Error("VALUE_INVALID: assumption name must be lowercase snake_case");
+  }
+  if (formula.slice(literal.start, literal.end) !== literal.literal) {
+    throw new Error("VALUE_INVALID: literal no longer matches the cell formula");
+  }
+  return formula.slice(0, literal.start) + assumptionName + formula.slice(literal.end);
 }

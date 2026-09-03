@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeAnalysisFunction, ModelEngine, MAX_FORMULA_LEN } from "./modelEngine";
+import {
+  computeAnalysisFunction,
+  convertHardcodedFormula,
+  findHardcodedLiterals,
+  ModelEngine,
+  MAX_FORMULA_LEN,
+} from "./modelEngine";
 import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
 const LINES: ModelGridLine[] = [
@@ -384,5 +390,89 @@ describe("analysis functions", () => {
   });
   it("returns seasonality shares", () => {
     expect(computeAnalysisFunction("SEASONALITY", ["1", "3"])).toEqual(["0.25", "0.75"]);
+  });
+});
+
+describe("hardcoded-assumption detection (M3-4)", () => {
+  it("finds plain, decimal and percent literals with exact spans", () => {
+    expect(findHardcodedLiterals("=base*2")).toEqual([{ literal: "2", start: 6, end: 7 }]);
+    expect(findHardcodedLiterals("=base*(1+0.04)")).toEqual([
+      { literal: "1", start: 7, end: 8 },
+      { literal: "0.04", start: 9, end: 13 },
+    ]);
+    expect(findHardcodedLiterals("=base*4%")).toEqual([{ literal: "4%", start: 6, end: 8 }]);
+  });
+
+  it("ignores cell references, sheet-qualified refs, strings and identifiers", () => {
+    expect(findHardcodedLiterals("=SUM(B2:B10)")).toEqual([]);
+    expect(findHardcodedLiterals("='Opex Detail'!C10*2")).toEqual([
+      { literal: "2", start: 19, end: 20 },
+    ]);
+    expect(findHardcodedLiterals('=IF(B2>0,"5",B3)')).toEqual([{ literal: "0", start: 7, end: 8 }]);
+    expect(findHardcodedLiterals("=wage_inflation*2")).toEqual([
+      { literal: "2", start: 16, end: 17 },
+    ]);
+    expect(findHardcodedLiterals("=wage_inflation2*2")).toEqual([
+      { literal: "2", start: 17, end: 18 },
+    ]);
+  });
+
+  it("flags hardcoded step/ramp values in a conditional formula", () => {
+    expect(findHardcodedLiterals("=IF(period>=6,0,ramp)")).toEqual([
+      { literal: "6", start: 12, end: 13 },
+      { literal: "0", start: 14, end: 15 },
+    ]);
+  });
+
+  it("scans the loaded grid deterministically", () => {
+    const e = engineWithLayout();
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, formula: "=base*1.04" });
+    e.setCell({ line_id: LINES[0].id, period_id: PERIODS[1].id, formula: "=SUM(B2:C2)" });
+    const findings = e.scanHardcoded();
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toEqual({
+      line_id: LINES[0].id,
+      period_id: PERIODS[0].id,
+      formula: "=base*1.04",
+      literals: [{ literal: "1.04", start: 6, end: 10 }],
+    });
+  });
+
+  it("returns no findings before loadGrid", () => {
+    expect(new ModelEngine().scanHardcoded()).toEqual([]);
+  });
+
+  it("converts a hardcoded literal into a bare register reference and recomputes", () => {
+    const e = engineWithLayout();
+    const set = e.setCell({
+      line_id: LINES[0].id,
+      period_id: PERIODS[0].id,
+      formula: "=base_salary*1.04",
+    });
+    const literal = set.cell.formula ? findHardcodedLiterals(set.cell.formula)[0] : null;
+    expect(literal).toEqual({ literal: "1.04", start: 13, end: 17 });
+    const result = e.convertHardcoded(
+      LINES[0].id,
+      PERIODS[0].id,
+      literal as NonNullable<typeof literal>,
+      "wage_inflation",
+    );
+    expect(result.cell.formula).toBe("=base_salary*wage_inflation");
+  });
+
+  it("rejects an invalid assumption name or a stale literal span", () => {
+    expect(() =>
+      convertHardcodedFormula("=base*1.04", { literal: "1.04", start: 6, end: 10 }, "Bad Name"),
+    ).toThrow(/VALUE_INVALID/);
+    expect(() =>
+      convertHardcodedFormula("=base*1.04", { literal: "9", start: 6, end: 10 }, "wage_inflation"),
+    ).toThrow(/VALUE_INVALID/);
+    expect(
+      convertHardcodedFormula(
+        "=base*1.04",
+        { literal: "1.04", start: 6, end: 10 },
+        "wage_inflation",
+      ),
+    ).toBe("=base*wage_inflation");
   });
 });

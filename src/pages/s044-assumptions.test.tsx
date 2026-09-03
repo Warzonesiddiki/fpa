@@ -20,6 +20,13 @@ type TestAssumption = {
 };
 
 type TestUsage = { line_id: string; period_id: string; formula: string };
+type TestLiteral = { literal: string; start: number; end: number };
+type TestFinding = {
+  line_id: string;
+  period_id: string;
+  formula: string;
+  literals: TestLiteral[];
+};
 type TestStoreState = {
   status: string;
   error: BridgeError | null;
@@ -27,12 +34,31 @@ type TestStoreState = {
   assumptions: TestAssumption[];
   usages: Record<string, TestUsage[]>;
   history: Record<string, unknown[]>;
+  hardcodeStatus: string;
+  hardcodeError: BridgeError | null;
+  findings: TestFinding[];
+  waived: Record<string, { reason: string; waived_at: string }>;
   load: Mock<() => Promise<void>>;
   upsert: Mock<(assumption: unknown) => Promise<boolean>>;
   findUsages: Mock<(id: string) => Promise<TestUsage[]>>;
+  scanHardcoded: Mock<() => Promise<TestFinding[]>>;
+  convertHardcoded: Mock<
+    (finding: TestFinding, literal: TestLiteral, name: string) => Promise<boolean>
+  >;
+  waiveHardcoded: Mock<(finding: TestFinding, literal: TestLiteral, reason: string) => boolean>;
+  unwaiveHardcoded: Mock<(key: string) => void>;
 };
 
-const { current, setStoreState, loadMock, upsertMock, findUsagesMock } = vi.hoisted(() => {
+const {
+  current,
+  setStoreState,
+  loadMock,
+  upsertMock,
+  findUsagesMock,
+  scanHardcodedMock,
+  convertHardcodedMock,
+  waiveHardcodedMock,
+} = vi.hoisted(() => {
   const current: TestStoreState = {
     status: "populated",
     error: null,
@@ -53,6 +79,10 @@ const { current, setStoreState, loadMock, upsertMock, findUsagesMock } = vi.hois
     ],
     usages: {},
     history: {},
+    hardcodeStatus: "empty",
+    hardcodeError: null,
+    findings: [],
+    waived: {},
     load: vi.fn(async () => undefined),
     upsert: vi.fn(async () => true),
     findUsages: vi.fn(async (id: string) => {
@@ -65,6 +95,10 @@ const { current, setStoreState, loadMock, upsertMock, findUsagesMock } = vi.hois
       ];
       return current.usages[id];
     }),
+    scanHardcoded: vi.fn(async () => current.findings),
+    convertHardcoded: vi.fn(async () => true),
+    waiveHardcoded: vi.fn(() => true),
+    unwaiveHardcoded: vi.fn(),
   };
   return {
     current,
@@ -72,12 +106,19 @@ const { current, setStoreState, loadMock, upsertMock, findUsagesMock } = vi.hois
     loadMock: current.load,
     upsertMock: current.upsert,
     findUsagesMock: current.findUsages,
+    scanHardcodedMock: current.scanHardcoded,
+    convertHardcodedMock: current.convertHardcoded,
+    waiveHardcodedMock: current.waiveHardcoded,
   };
 });
 
-vi.mock("@/stores/assumptions", () => ({
-  useAssumptionStore: (selector: (state: unknown) => unknown) => selector(current),
-}));
+vi.mock("@/stores/assumptions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/assumptions")>();
+  return {
+    ...actual,
+    useAssumptionStore: (selector: (state: unknown) => unknown) => selector(current),
+  };
+});
 
 function renderPage() {
   return render(
@@ -111,10 +152,17 @@ function setPopulatedState() {
     ],
     usages: {},
     history: {},
+    hardcodeStatus: "empty",
+    hardcodeError: null,
+    findings: [],
+    waived: {},
   });
   loadMock.mockClear();
   upsertMock.mockClear();
   findUsagesMock.mockClear();
+  scanHardcodedMock.mockClear();
+  convertHardcodedMock.mockClear();
+  waiveHardcodedMock.mockClear();
 }
 
 describe("S-044 Assumption Register (F-014)", () => {
@@ -252,5 +300,110 @@ describe("S-044 Assumption Register (F-014)", () => {
     expect(await screen.findByText("wage_inflation")).toBeInTheDocument();
     const results = await axe(document.body);
     expect(results.violations).toEqual([]);
+  });
+
+  it("shows the change diff before applying an assumption edit", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Edit wage_inflation" }));
+    const values = screen.getByRole("textbox", { name: /Period values/ });
+    await userEvent.clear(values);
+    await userEvent.type(values, "fp-2026-p01=5.0");
+    expect(await screen.findByText("fp-2026-p01: 4.0 → 5.0")).toBeInTheDocument();
+  });
+
+  it("scans for hardcoded values and renders findings with convert + waive", async () => {
+    setStoreState({
+      hardcodeStatus: "populated",
+      findings: [
+        {
+          line_id: "line-salary",
+          period_id: "fp-2026-p01",
+          formula: "=base_salary*1.04",
+          literals: [{ literal: "1.04", start: 13, end: 17 }],
+        },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("line-salary · fp-2026-p01")).toBeInTheDocument();
+    expect(screen.getByText("=base_salary*1.04")).toBeInTheDocument();
+    expect(screen.getByText("1.04")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Convert" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Waive" })).toBeInTheDocument();
+  });
+
+  it("converts a hardcoded literal to a chosen register reference", async () => {
+    setStoreState({
+      hardcodeStatus: "populated",
+      findings: [
+        {
+          line_id: "line-salary",
+          period_id: "fp-2026-p01",
+          formula: "=base_salary*1.04",
+          literals: [{ literal: "1.04", start: 13, end: 17 }],
+        },
+      ],
+    });
+    renderPage();
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Assumption for hardcoded value 1.04"),
+      "wage_inflation",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Convert" }));
+    expect(convertHardcodedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ formula: "=base_salary*1.04" }),
+      { literal: "1.04", start: 13, end: 17 },
+      "wage_inflation",
+    );
+  });
+
+  it("requires a reason before waiving a hardcoded value", async () => {
+    setStoreState({
+      hardcodeStatus: "populated",
+      findings: [
+        {
+          line_id: "line-salary",
+          period_id: "fp-2026-p01",
+          formula: "=base_salary*1.04",
+          literals: [{ literal: "1.04", start: 13, end: 17 }],
+        },
+      ],
+    });
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Waive" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm waiver" }));
+    expect(await screen.findByText("Enter a waiver reason.")).toBeInTheDocument();
+    expect(waiveHardcodedMock).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText("Waiver reason"), "fixed cost baseline");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm waiver" }));
+    expect(waiveHardcodedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ formula: "=base_salary*1.04" }),
+      { literal: "1.04", start: 13, end: 17 },
+      "fixed cost baseline",
+    );
+  });
+
+  it("renders a waiver and allows undoing it", async () => {
+    setStoreState({
+      hardcodeStatus: "populated",
+      findings: [
+        {
+          line_id: "line-salary",
+          period_id: "fp-2026-p01",
+          formula: "=base_salary*1.04",
+          literals: [{ literal: "1.04", start: 13, end: 17 }],
+        },
+      ],
+      waived: {
+        "line-salary:fp-2026-p01:13:17": {
+          reason: "fixed cost baseline",
+          waived_at: "2026-09-03T00:00:00.000Z",
+        },
+      },
+    });
+    renderPage();
+    expect(await screen.findByText(/Waived: fixed cost baseline/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(current.unwaiveHardcoded).toHaveBeenCalledWith("line-salary:fp-2026-p01:13:17");
   });
 });

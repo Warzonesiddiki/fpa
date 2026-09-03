@@ -176,4 +176,35 @@ describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
     });
     expect(res).toMatchObject({ id: 14, ok: false, error: { code: "DRIVER_OUT_OF_BOUNDS" } });
   });
+
+  it("dispatches scanHardcoded and convertHardcoded", () => {
+    const engine = new ModelEngine();
+    engine.loadGrid({ lines: LINES, periods: PERIODS });
+    engine.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, formula: "=base*1.04" });
+
+    const scan = handleEngineMessage(engine, { id: 15, op: "scanHardcoded" });
+    expect(scan.ok).toBe(true);
+    if (scan.ok) {
+      const findings = scan.data as { formula: string; literals: { literal: string }[] }[];
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.literals[0]?.literal).toBe("1.04");
+    }
+
+    const convert = handleEngineMessage(engine, {
+      id: 16,
+      op: "convertHardcoded",
+      args: {
+        line_id: LINES[0].id,
+        period_id: PERIODS[0].id,
+        literal: { literal: "1.04", start: 6, end: 10 },
+        assumption_name: "wage_inflation",
+      },
+    });
+    expect(convert.ok).toBe(true);
+    if (convert.ok) {
+      expect((convert.data as { cell: { formula: string | null } }).cell.formula).toBe(
+        "=base*wage_inflation",
+      );
+    }
+  });
 });

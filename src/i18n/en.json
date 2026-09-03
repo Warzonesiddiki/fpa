@@ -1005,6 +1005,28 @@
       "save": "Save assumption",
       "saving": "Saving assumption…",
       "saveFailed": "Could not save the assumption. Review the error and retry."
+    },
+    "diff": {
+      "title": "Changes in this edit",
+      "none": "No period-value changes in this edit."
+    },
+    "hardcode": {
+      "title": "Hardcoded values",
+      "hint": "Formula cells that hardcode a value instead of referencing the Assumption Register.",
+      "scan": "Scan for hardcoded values",
+      "scanning": "Scanning formulas…",
+      "none": "No hardcoded values found.",
+      "error": "The hardcoded-value scan could not run.",
+      "convert": "Convert",
+      "convertLabel": "Assumption to reference",
+      "convertAria": "Assumption for hardcoded value {{literal}}",
+      "chooseAssumption": "Choose assumption…",
+      "waive": "Waive",
+      "waiveConfirm": "Confirm waiver",
+      "waiveReasonLabel": "Waiver reason",
+      "waiveReasonRequired": "Enter a waiver reason.",
+      "waivedBadge": "Waived: {{reason}}",
+      "unwaive": "Undo"
     }
   }
 }

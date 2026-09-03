@@ -2,8 +2,9 @@
 
 > Read this file first, then continue the next M3 task. It is written to be self-contained:
 > state, design decisions, gates, and pitfalls. Last updated by the session that shipped
-> **M3-3 Driver tables + federation + bounds — `driver.*` + S-043 (🚧 PARTIAL, TS-side green)** on
-> the `arena/01a05772-fpa` working branch. M3-2 (S-042) shipped in PR #10 → `0c0c33d`.
+> **M3-4 hardcoded-assumption detection — scan/convert/waive + effective-period + change-diff
+> (S-044, 🚧 PARTIAL, TS slice green)** on the `arena/01a065b7-fpa` working branch. M3-2 (S-042)
+> shipped in PR #10 → `0c0c33d`.
 
 ---
 
@@ -17,7 +18,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **34 files / 262 tests**. (Counts drift up as tests are added — the invariant is that
+   Expect **49 files / 498 tests**. (Counts drift up as tests are added — the invariant is that
    every gate above PASSES on a clean tree, not the exact number.)
 
 ---
@@ -198,15 +199,42 @@ recalc, value_decimal}`; `driver.import` `{file_path, mapping_id}` → `{batch_i
   **262 total** (+35). Coverage 88.6/81.1/84.3/90.9 (≥85/80/80/85) + critical 99.0/97.5/100/99.5
   (≥95/90/90/95). All gates green (lint/tsc/prettier/docs:verify/packs/money:ast/security/build).
 
+### M3-4 Assumption Register + hardcode detection (S-044) — 🚧 PARTIAL (TS hardcode slice complete & green)
+
+The register slice (persisted `assumption.upsert/list/find_usages` Rust handlers + S-044 page) was
+already landed. This session shipped the **hardcoded-value detection lifecycle** in TS (no cargo
+needed). Never mark M3-4 DONE while the Rust audited waiver event and the named-range resolution of
+converted references are unverifiable/unbuilt.
+
+- **Engine** (`src/workers/modelEngine.ts`): `findHardcodedLiterals(formula)` — deterministic scan
+  that masks quoted strings, cell refs (`B2`, `Drivers!B2`, `'Opex Detail'!C10`, `$A$1`, `A1:B10`)
+  and identifiers, then returns every remaining decimal/percent literal with spans into the original
+  formula; `scanHardcoded()` walks the loaded grid; `convertHardcoded(line_id, period_id, literal,
+name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, per FORMULA-ENGINE-SPEC
+  §1 — the `@name` form is Driver-grammar/register-UI only) and recomputes; pure `convertHardcodedFormula`
+  - `isValidAssumptionName`. Protocol ops + client methods `scanHardcoded`/`convertHardcoded` added.
+- **Store** (`src/stores/assumptions.ts`): `scanHardcoded`/`convertHardcoded` (persists the rewritten
+  formula through the audited `model.cell.set.v1` **first**, then applies to the shared engine graph, then
+  re-scans) + `waiveHardcoded`/`unwaiveHardcoded` (session-scoped; reason required — the audited waiver
+  event is a Rust-owned follow-on, never fabricated in TS) + exported pure helpers
+  `hardcodeFindingKey`, `assumptionEffectiveForPeriod`, `assumptionValueForPeriod` (effective-period
+  behavior; string-only period comparison — no `Number()`), `diffAssumptionValues` (change diff before apply).
+- **S-044 page**: hardcoded-values panel (Scan → per-literal Convert select / Waive-with-reason / Undo)
+  plus an edit-form change-diff list. i18n `assumptionsPage.diff.*` / `assumptionsPage.hardcode.*`.
+- **Tests:** engine 39, protocol 7, client 9, store hardcode 9, S-044 page 14 → **498 total**. Coverage
+  main 89.4/81.8/89.7/89.0 + critical 98.4/97.0/100/98.3. All gates green (lint/tsc/prettier/docs:verify
+  54/42/97/97/packs/money:ast/security/build).
+
 ---
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. ~~**M3-3 Driver tables + federation + bounds (S-043)**~~ **🚧 PARTIAL (TS-side green)** — see §1.
-   M3-4 Assumption Register (S-044) TS contract, dev mock, store, and route are now built; Rust persistence and
-   full editing/usage UI remain open. The next unblocked unit is **M3-4 Assumption Register (S-044)** (`assumption.*` documented, not
-   built; reuse the driver store/page shape). When a Rust toolchain appears, resume M3-1's
-   `model_values` persistence and then M3-3's `drivers`/`driver_values` persistence.
+1. ~~**M3-4 Assumption Register + hardcode detection (S-044)**~~ **🚧 PARTIAL (TS hardcode slice green)** —
+   see §1. The next unblocked unit is **M3-10 Analysis functions + named ranges** (`computeAnalysisFunction`
+   helpers are done; the remaining follow-up is HyperFormula custom-function wiring + Named Ranges so
+   `=CAGR(...)` evaluates and converted `wage_inflation` references resolve). When a Rust toolchain
+   appears, resume M3-1's `model_values` persistence, then M3-3's `drivers`/`driver_values`, then the
+   M3-4 audited waiver event.
 2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
    toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
    is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked
