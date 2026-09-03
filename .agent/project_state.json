@@ -19,7 +19,7 @@
     "mvp_progress_estimate": "~15% (TASKBOARD §0)",
     "screens_routed": "18/42",
     "rust_handlers_registered": 35,
-    "ts_schema_commands": 37,
+    "ts_schema_commands": 46,
     "ts_commands_without_rust_handler": ["model.inspect", "driver.import", "company.archive_year"],
     "error_codes_emitted": 39,
     "error_codes_locked": 97,
@@ -29,9 +29,9 @@
     "verified_at": "2026-09-04",
     "vitest": {
       "result": "PASS",
-      "files": 52,
-      "tests": 574,
-      "note": "+5 (KI-013 S-001 page tests x4, i18n §A copy test)"
+      "files": 53,
+      "tests": 586,
+      "note": "+12 (M4-2 PR A1: schema 4, mock 8); store wiring in A2"
     },
     "coverage_main": {
       "statements": 89.49,
@@ -56,10 +56,10 @@
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 89.86,
-      "branches": 81.85,
-      "functions": 90.33,
-      "lines": 92.24
+      "statements": 89.85,
+      "branches": 82.02,
+      "functions": 90.58,
+      "lines": 92.22
     }
   },
   "environment": {
@@ -193,10 +193,16 @@
       "title": "S-001 AUTH_LOCKED seconds countdown + §A copy alignment (M1-2)",
       "tier": 2,
       "status": "DONE (TS) / Rust strings aligned NATIVE-UNVERIFIED (error.rs literal-only)"
+    },
+    {
+      "id": "M4-2a1",
+      "title": "Scenario lifecycle contract + mock state machine (PR A1 of M4-2)",
+      "tier": 2,
+      "status": "DONE (TS/mock only; Rust handlers pending; stores in A2, S-050 page in PR B)"
     }
   ],
   "last_updated": "2026-09-04",
-  "last_action": "PR #27 opened+merged: fix(auth) KI-013 S-001 seconds countdown + §A copy (52f/574t)",
+  "last_action": "Unit M4-2 PR A1: 9 scenario/plan commands typed+mocked (state machine, versions, baseline, MODEL_CELL_LOCKED table gate); gates 53f/586t",
   "pr": {
     "number": 27,
     "url": "https://github.com/Warzonesiddiki/fpa/pull/27",

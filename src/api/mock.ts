@@ -411,6 +411,124 @@ function mockToMinorUnits(value: string): number {
 const modelCells = new Map<string, MockModelCell>();
 let modelAuditSeq = 100;
 
+/* ── Scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–§3 · mock shape mirror) ──────── */
+
+/** The pinned working scenario/model ids (must match `stores/model.ts` WORKING_* constants). */
+const WORKING_MODEL_ID_MOCK = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+const WORKING_SCENARIO_ID_MOCK = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
+
+type MockScenarioKind = "actuals" | "budget" | "forecast" | "whatif" | "lrp";
+type MockScenarioState = "draft" | "review" | "approved" | "locked";
+
+interface MockScenario {
+  id: string;
+  model_id: string;
+  name: string;
+  kind: MockScenarioKind;
+  state: MockScenarioState;
+  parent_scenario_id: string | null;
+  baseline: boolean;
+  created_at: string;
+}
+
+interface MockScenarioVersion {
+  id: string;
+  scenario_id: string;
+  version_no: number;
+  label: string;
+  reason: string | null;
+  created_at: string;
+}
+
+const mockScenarios = new Map<string, MockScenario>();
+const mockScenarioVersions = new Map<string, MockScenarioVersion[]>();
+const mockScenarioAudit: { seq: number; event: string; scenario_id: string }[] = [];
+let mockScenarioSeq = 0;
+let mockScenarioAuditSeq = 0;
+
+/** Deterministic shape-valid UUID for mock rows (native ids are random UUIDv4 values). */
+function mockScenarioUuid(seed: number): string {
+  return `5c4f1a2b-9d3e-4c7a-8b2f-${String(seed).padStart(12, "0")}`;
+}
+
+/** One `Base` Budget draft per Model (S-050 Empty-state rule); the working Model's Base keeps
+ * the pinned WORKING_SCENARIO_ID so every existing store/page test keeps passing. */
+function ensureBaseScenario(modelId: string): MockScenario {
+  const existing = [...mockScenarios.values()].find((s) => s.model_id === modelId);
+  if (existing) return existing;
+  const id =
+    modelId === WORKING_MODEL_ID_MOCK
+      ? WORKING_SCENARIO_ID_MOCK
+      : mockScenarioUuid(++mockScenarioSeq);
+  const scenario: MockScenario = {
+    id,
+    model_id: modelId,
+    name: "Base",
+    kind: "budget",
+    state: "draft",
+    parent_scenario_id: null,
+    baseline: false,
+    created_at: new Date().toISOString(),
+  };
+  mockScenarios.set(id, scenario);
+  mockScenarioVersions.set(id, []);
+  return scenario;
+}
+ensureBaseScenario(WORKING_MODEL_ID_MOCK);
+
+/** Dev-only lifecycle audit mirror (`scenario.*` events; SCENARIO-VERSION-SPEC §1 table). */
+function recordScenarioAudit(event: string, scenarioId: string): void {
+  mockScenarioAudit.push({ seq: ++mockScenarioAuditSeq, event, scenario_id: scenarioId });
+}
+
+function scenarioNotFound(scenarioId: string) {
+  return mockError(
+    "VALUE_INVALID",
+    `unknown scenario: ${scenarioId}`,
+    "This Scenario does not exist. Refresh the Scenario list.",
+    422,
+    false,
+    { scenario_id: scenarioId },
+  );
+}
+
+/** SCENARIO_LOCK_CONFLICT (409) — illegal transition or Locked guard (SCREENS-SPEC S-050). */
+function scenarioTransitionError(state: MockScenarioState) {
+  return mockError(
+    "SCENARIO_LOCK_CONFLICT",
+    `scenario is ${state}`,
+    `This Scenario is already in ${state} — cannot transition.`,
+    409,
+    false,
+    { state },
+  );
+}
+
+/** AUTH-SPEC §3 gate (mirror): a Locked Scenario never accepts an edit. Synthetic ids that
+ * mention "locked" stay gated (legacy dev trigger used by tests without a seeded table). */
+function lockedScenarioGate(scenarioId: string) {
+  const scenario = mockScenarios.get(scenarioId);
+  if (scenario ? scenario.state === "locked" : scenarioId.includes("locked")) {
+    return mockError(
+      "MODEL_CELL_LOCKED",
+      "scenario is locked",
+      "This scenario is locked. Create a Version to edit it.",
+      422,
+    );
+  }
+  return null;
+}
+
+/** Reset the dev scenario tables between independent test cases (re-seeds each Model's Base). */
+export function resetMockScenarioState(): void {
+  mockScenarios.clear();
+  mockScenarioVersions.clear();
+  mockScenarioAudit.length = 0;
+  mockScenarioSeq = 0;
+  mockScenarioAuditSeq = 0;
+  ensureBaseScenario(WORKING_MODEL_ID_MOCK);
+}
+
 /* ── Driver Tables (B14 shape mirror only · F-013 · M3-3) ── */
 
 /** In-memory `drivers` rows keyed by driver_id. */
@@ -1288,14 +1406,8 @@ export async function mockInvoke<C extends CommandName>(
         manual_override?: boolean;
       };
       // AUTH-SPEC §3 gate (mirror): a Locked Scenario never accepts an edit.
-      if (scenario_id.includes("locked")) {
-        return mockError(
-          "MODEL_CELL_LOCKED",
-          "scenario is locked",
-          "This scenario is locked. Create a Version to edit it.",
-          422,
-        );
-      }
+      const lockedGate = lockedScenarioGate(scenario_id);
+      if (lockedGate) return lockedGate;
       if (formula) {
         const unsupported = findUnsupportedFunction(formula);
         if (unsupported) {
@@ -1441,6 +1553,9 @@ export async function mockInvoke<C extends CommandName>(
           422,
         );
       }
+      // Same Locked-Scenario gate as `model.cell.set.v1` (driver values are scenario-scoped).
+      const driverLockedGate = lockedScenarioGate(scenario_id);
+      if (driverLockedGate) return driverLockedGate;
       // Bounds enforcement mirror (DRIVER_OUT_OF_BOUNDS · ERROR-HANDLING §E) — exact decimal, no float.
       if (def.bounds_low != null && decimalCmp(value_decimal, def.bounds_low) < 0) {
         return mockError(
@@ -1480,6 +1595,194 @@ export async function mockInvoke<C extends CommandName>(
           value_decimal,
         },
       };
+    }
+    case "model.list": {
+      // API-SPEC §3 `model.list {company_id} → Model[]` — read side for S-050 / the scenario
+      // picker. Model shape decision recorded in TASKBOARD §11 (spec leaves it unpinned).
+      const { company_id } = args as { company_id: string };
+      const modelId = mockCompanyModels.get(company_id) ?? company_id;
+      ensureBaseScenario(modelId);
+      return {
+        data: [
+          {
+            id: modelId,
+            company_id,
+            name: "Working Model",
+            horizon: 1,
+            pack_id: null,
+            scenarios: [...mockScenarios.values()]
+              .filter((s) => s.model_id === modelId)
+              .map((s) => ({
+                ...s,
+                versions: (mockScenarioVersions.get(s.id) ?? []).map((v) => ({ ...v })),
+              })),
+          },
+        ],
+      };
+    }
+    case "scenario.create":
+    case "scenario.duplicate": {
+      const { model_id, name, base_id } = args as {
+        model_id: string;
+        name?: string;
+        base_id?: string;
+      };
+      const scopeErr = modelScopeViolation(model_id);
+      if (scopeErr) return scopeErr;
+      ensureBaseScenario(model_id);
+      const base = base_id ? mockScenarios.get(base_id) : undefined;
+      if (base_id && !base) return scenarioNotFound(base_id);
+      // Kind is inherited from the Base when one is given, else `budget` (the contract args
+      // carry no `kind`; TASKBOARD M4-2 records the Tier-3 question for forecast/what-if kinds).
+      const kind: MockScenarioKind = base?.kind ?? "budget";
+      let finalName = name ?? (base ? `${base.name} (copy)` : "Base");
+      if (!name && base) {
+        // Derived duplicate names never collide: "Base (copy)", "Base (copy 2)", …
+        let n = 1;
+        const taken = new Set([...mockScenarios.values()].map((s) => `${s.model_id}:${s.name}`));
+        while (taken.has(`${model_id}:${finalName}`)) finalName = `${base.name} (copy ${++n})`;
+      } else if (
+        [...mockScenarios.values()].some((s) => s.model_id === model_id && s.name === finalName)
+      ) {
+        return mockError(
+          "SCENARIO_NAME_DUP",
+          `duplicate scenario name: ${finalName}`,
+          "A Scenario with this name already exists.",
+          409,
+          false,
+          { model_id, name: finalName },
+        );
+      }
+      const id = mockScenarioUuid(++mockScenarioSeq);
+      const scenario: MockScenario = {
+        id,
+        model_id,
+        name: finalName,
+        kind,
+        state: "draft",
+        parent_scenario_id: base?.id ?? null,
+        baseline: false,
+        created_at: new Date().toISOString(),
+      };
+      mockScenarios.set(id, scenario);
+      mockScenarioVersions.set(id, []);
+      // Duplicate copies the source's cell + driver values (scenario-scoped plan copy).
+      if (base) {
+        const prefix = `${base.id}:`;
+        for (const [key, cell] of modelCells) {
+          if (key.startsWith(prefix))
+            modelCells.set(`${id}:${key.slice(prefix.length)}`, { ...cell });
+        }
+        for (const [key, value] of mockDriverValues) {
+          const [, scenarioOfValue, rest] = key.split(":");
+          if (scenarioOfValue === base.id) {
+            mockDriverValues.set(`${key.split(":")[0]}:${id}:${rest}`, value);
+          }
+        }
+      }
+      recordScenarioAudit(
+        command === "scenario.create" ? "scenario.create" : "scenario.duplicate",
+        id,
+      );
+      return { data: { scenario_id: id, version_id: null } };
+    }
+    case "scenario.submit":
+    case "scenario.approve":
+    case "scenario.lock":
+    case "scenario.reopen":
+    case "scenario.delete": {
+      const { scenario_id, reason } = args as { scenario_id: string; reason?: string };
+      const scenario = mockScenarios.get(scenario_id);
+      if (!scenario) return scenarioNotFound(scenario_id);
+      const versions = mockScenarioVersions.get(scenario_id) ?? [];
+      const requireReason = () => {
+        if (reason && reason.trim().length > 0) return null;
+        return mockError(
+          "VALUE_INVALID",
+          "reopen requires a written reason",
+          "A written reason is required to reopen a Scenario.",
+          422,
+          false,
+          { reason_required: true },
+        );
+      };
+      switch (command) {
+        case "scenario.submit": {
+          if (scenario.state !== "draft") return scenarioTransitionError(scenario.state);
+          scenario.state = "review";
+          recordScenarioAudit("scenario.submit", scenario_id);
+          break;
+        }
+        case "scenario.approve": {
+          if (scenario.state !== "review") return scenarioTransitionError(scenario.state);
+          scenario.state = "approved";
+          recordScenarioAudit("scenario.approve", scenario_id);
+          break;
+        }
+        case "scenario.lock": {
+          if (scenario.state !== "approved") return scenarioTransitionError(scenario.state);
+          scenario.state = "locked";
+          // SCENARIO-VERSION-SPEC §2: lock auto-writes the next immutable Version (v1, v2, …).
+          const versionNo = versions.length + 1;
+          const version: MockScenarioVersion = {
+            id: mockScenarioUuid(10_000 + ++mockScenarioSeq),
+            scenario_id,
+            version_no: versionNo,
+            label: `v${versionNo}`,
+            reason: null,
+            created_at: new Date().toISOString(),
+          };
+          versions.push(version);
+          mockScenarioVersions.set(scenario_id, versions);
+          recordScenarioAudit("scenario.lock", scenario_id);
+          return { data: { scenario_id, version_id: version.id } };
+        }
+        case "scenario.reopen": {
+          if (scenario.state === "draft") return scenarioTransitionError(scenario.state);
+          const reasonErr = requireReason();
+          if (reasonErr) return reasonErr;
+          // Locked → Draft only while it is not THE Baseline (SPEC §1 invariant).
+          if (scenario.state === "locked" && scenario.baseline) {
+            return scenarioTransitionError(scenario.state);
+          }
+          scenario.state = "draft";
+          recordScenarioAudit("scenario.reopen", scenario_id);
+          break;
+        }
+        case "scenario.delete": {
+          if (scenario.state !== "draft") return scenarioTransitionError(scenario.state);
+          if (versions.length > 0) return scenarioTransitionError(scenario.state);
+          mockScenarios.delete(scenario_id);
+          mockScenarioVersions.delete(scenario_id);
+          recordScenarioAudit("scenario.delete", scenario_id);
+          return { data: { scenario_id, version_id: null } };
+        }
+      }
+      return { data: { scenario_id, version_id: null } };
+    }
+    case "baseline.set": {
+      const { scenario_id, reason } = args as { scenario_id: string; reason?: string };
+      const scenario = mockScenarios.get(scenario_id);
+      if (!scenario) return scenarioNotFound(scenario_id);
+      // SPEC §3: a Baseline MUST be Locked (it points at a Version snapshot).
+      if (scenario.state !== "locked") return scenarioTransitionError(scenario.state);
+      const current = [...mockScenarios.values()].find((s) => s.baseline && s.id !== scenario_id);
+      if (current && (!reason || reason.trim().length === 0)) {
+        return mockError(
+          "BASELINE_REPLACE_REASON_REQUIRED",
+          "baseline replacement without reason",
+          "Replacing the baseline requires a written reason.",
+          422,
+          false,
+          { current_baseline_scenario_id: current.id },
+        );
+      }
+      for (const s of mockScenarios.values()) s.baseline = false;
+      scenario.baseline = true;
+      recordScenarioAudit("baseline.set", scenario_id);
+      const versions = mockScenarioVersions.get(scenario_id) ?? [];
+      const latest = versions[versions.length - 1];
+      return { data: { baseline_version_id: latest?.id ?? scenario_id } };
     }
     case "assumption.list": {
       const { model_id } = args as { model_id: string };
