@@ -15,6 +15,26 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(out.error.code).toBe("AUTH_PIN_INVALID");
   });
 
+  it("mirrors ERROR-HANDLING §A retry semantics for AUTH_PIN_INVALID and SESSION_LOCKED", async () => {
+    // Docs are the source of truth (CLAUDE.md); Rust core/error.rs pins the same tuples.
+    const pin = (await mockInvoke("session.unlock", {
+      pin: "WrongPin9!",
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean; retryAfterMs: null } };
+    expect(pin.error.code).toBe("AUTH_PIN_INVALID");
+    expect(pin.error.httpStatus).toBe(401);
+    expect(pin.error.retryable).toBe(false);
+    expect(pin.error.retryAfterMs).toBeNull();
+
+    await mockInvoke("session.lock", {});
+    const locked = (await mockInvoke("settings.get", { key: "onefpa.preferences.v1" })) as {
+      error: { code: string; httpStatus: number; retryable: boolean };
+    };
+    expect(locked.error.code).toBe("SESSION_LOCKED");
+    expect(locked.error.httpStatus).toBe(401);
+    expect(locked.error.retryable).toBe(false);
+  });
+
   it("mirrors STORAGE_DECRYPT_FAILED for an unknown company", async () => {
     const out = (await mockInvoke("session.unlock", {
       pin: "Meridian2026",

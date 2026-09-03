@@ -601,7 +601,8 @@ export async function mockInvoke<C extends CommandName>(
             message: "pin mismatch",
             userMessage: "Incorrect PIN. Please try again.",
             httpStatus: 401,
-            retryable: true,
+            // ERROR-HANDLING §A: not retryable — the user enters a new PIN (mirrors core/error.rs).
+            retryable: false,
             retryAfterMs: null,
             details: {},
           },
@@ -1630,12 +1631,12 @@ export async function mockInvoke<C extends CommandName>(
     case "settings.get": {
       const { key } = args as { key: string };
       if (!session.unlocked) {
+        // ERROR-HANDLING §A: SESSION_LOCKED is 401 / not retryable (unlock first).
         return mockError(
           "SESSION_LOCKED",
           "session locked",
           "The session is locked. Unlock first.",
           401,
-          true,
         );
       }
       return { data: { value: mockSettings.get(key) ?? null } };
@@ -1648,7 +1649,6 @@ export async function mockInvoke<C extends CommandName>(
           "session locked",
           "The session is locked. Unlock first.",
           401,
-          true,
         );
       }
       if (session.read_only) {

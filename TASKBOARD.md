@@ -26,7 +26,7 @@
 | Error codes   | 97                                 | 39 emitted by `core/error.rs` (counted 2026-09-03; incl. COA_DUPLICATE_CODE, COA_REFERENCED, COA_TYPE_MISMATCH, ASSUMPTION_IN_USE_LOCKED)                                                                                                                                                                      | 40%                   |
 | DB tables     | 56                                 | 56 (schema complete; drift-gated by new `schema-equality-check`)                                                                                                                                                                                                                                               | 100%                  |
 | Quality gates | blocking                           | JS gates green (re-executed 2026-09-03): lint/tsc/526 tests/docs:verify 54/42/97/97/packs 12/12/money:ast/security/build/strict links 141/schema-equality 56; coverage S/B/F/L 89.43/81.67/89.82/88.90 (gate PASS); **cargo gates UNAVAILABLE** (§14)                                                          | ✅ (JS) / ⚠️ (native) |
-| Tests         | 49 files / 526 tests               | 49 files / 530 tests PASS (Unit W-1, 2026-09-03)                                                                                                                                                                                                                                                               | ✅                    |
+| Tests         | 49 files / 526 tests               | 49 files / 531 tests PASS (Units W-1/W-2, 2026-09-03)                                                                                                                                                                                                                                                          | ✅                    |
 
 **Current milestone: M2 Ingestion (F-007…F-011).** M1 native gaps remain tracked. M3 model
 **contract** (not engine) built. Nothing is half-shipped to production; `PARTIAL` rows are
@@ -208,10 +208,7 @@ Done (39 — counted from `core/error.rs` `code()` tuples, 2026-09-03): `ASSUMPT
 `SESSION_LOCKED` `SETTINGS_SAVE_FAILED` `STORAGE_DECRYPT_FAILED` `STORAGE_FILE_CORRUPT` `STORAGE_FILE_EXISTS`
 `UNIT_PERIOD_MISMATCH` `VALUE_INVALID`.
 
-**Known envelope drift (tracked, fix scheduled as Unit W-2):** `core/error.rs` returns
-`retryable=true` for `AUTH_PIN_INVALID` and `SESSION_LOCKED` and `retryable=false` for
-`AUTH_LOCKED`; ERROR-HANDLING §A locks false / false / true-after-countdown. Docs are the source of
-truth (CLAUDE.md) — the Rust tuples and the `mock.ts` mirror are the bug.
+**Envelope drift fixed (Unit W-2, 2026-09-03):** `core/error.rs` now returns exactly ERROR-HANDLING §A — `AUTH_PIN_INVALID` 401/retry=false, `AUTH_LOCKED` 423/retry=true with `retryAfterMs`, `SESSION_LOCKED` 401/retry=false (previously true/false/true). `mock.ts`, the settings/schema test fixtures and the `require_unlocked` doc comment were mirrored; a Rust unit test (`core::error::tests`) pins the three tuples + the camelCase serializer. Rust change is hand-reviewed only (brace-balance gate; `cargo test` remains CI-only — §14).
 
 **Rule:** never invent a code; reuse the 97. Add a code only through a Stage-0 docs decision + B20.
 

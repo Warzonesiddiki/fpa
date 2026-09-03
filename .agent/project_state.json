@@ -30,8 +30,8 @@
     "vitest": {
       "result": "PASS",
       "files": 49,
-      "tests": 530,
-      "note": "Unit W-1 added 4"
+      "tests": 531,
+      "note": "W-1 +4, W-2 +1"
     },
     "coverage_main": {
       "statements": 89.49,
@@ -101,7 +101,7 @@
       "tier": 2,
       "severity": "docs-vs-code",
       "summary": "retryable flags AUTH_PIN_INVALID / AUTH_LOCKED / SESSION_LOCKED differ from ERROR-HANDLING §A in core/error.rs and mock.ts",
-      "status": "scheduled Unit W-2"
+      "status": "FIXED in Unit W-2 (error.rs + mock + tests); cargo test pending CI"
     },
     {
       "id": "B6",
@@ -138,14 +138,15 @@
       "id": "W-1",
       "title": "Session-scoped model id in drivers/model stores + mock ownership gate + tests",
       "tier": 2,
-      "status": "DONE (this commit)",
-      "rollback": "git revert <commit>"
+      "status": "DONE",
+      "rollback": "git revert <commit>",
+      "commit": "dbc2e9e"
     },
     {
       "id": "W-2",
       "title": "retryable reconciliation (error.rs tuples, mock.ts mirror, schema tests)",
       "tier": 2,
-      "status": "TODO",
+      "status": "DONE (this commit; Rust part native-unverified)",
       "rollback": "git revert <commit>"
     },
     {
@@ -157,5 +158,5 @@
     }
   ],
   "last_updated": "2026-09-03",
-  "last_action": "Unit W-1: session-scoped model id in drivers/model stores; mock ownership gate; +4 tests"
+  "last_action": "Unit W-2: retryable reconciliation (error.rs tuples, mock mirror, Rust + TS tests)"
 }
