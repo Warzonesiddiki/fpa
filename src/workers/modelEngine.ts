@@ -793,3 +793,68 @@ export class ModelEngine {
     );
   }
 }
+
+/** Exact-decimal analysis helpers declared by FORMULA-ENGINE-SPEC §3.
+ * These are intentionally exposed as engine calculations rather than IPC commands; callers
+ * can use them while the HyperFormula graph remains the sole owner of cell dependencies.
+ */
+export type AnalysisFunction = "CAGR" | "MOVINGAVG" | "TREND" | "SEASONALITY";
+
+export function computeAnalysisFunction(
+  fn: AnalysisFunction,
+  values: readonly string[],
+  argument?: string,
+): string[] {
+  const decimals = values.map((value) => new Decimal(value));
+  if (decimals.length === 0) return [];
+  if (fn === "CAGR") {
+    if (decimals.length < 2 || argument === undefined)
+      throw new Error("VALUE_INVALID: CAGR requires periods");
+    const periods = new Decimal(argument);
+    if (periods.lte(0) || decimals[0].isZero())
+      throw new Error("VALUE_INVALID: invalid CAGR inputs");
+    return [
+      decimals[decimals.length - 1]
+        .div(decimals[0])
+        .pow(new Decimal(1).div(periods))
+        .sub(1)
+        .toString(),
+    ];
+  }
+  if (fn === "MOVINGAVG") {
+    const window = parseInt(argument ?? "0", 10);
+    if (window < 2) throw new Error("VALUE_INVALID: moving-average window must be at least 2");
+    return decimals.map((_, index) => {
+      const start = Math.max(0, index - window + 1);
+      const slice = decimals.slice(start, index + 1);
+      return slice
+        .reduce((sum, value) => sum.plus(value), new Decimal(0))
+        .div(slice.length)
+        .toString();
+    });
+  }
+  if (fn === "TREND") {
+    const points = parseInt(argument ?? "0", 10);
+    if (points < 1 || decimals.length < 2)
+      throw new Error("VALUE_INVALID: trend requires points and two values");
+    const n = new Decimal(decimals.length);
+    const sumX = n.mul(n.sub(1)).div(2);
+    const sumX2 = n.mul(n.sub(1)).mul(n.mul(2).sub(1)).div(6);
+    const sumY = decimals.reduce((sum, value) => sum.plus(value), new Decimal(0));
+    const sumXY = decimals.reduce(
+      (sum, value, index) => sum.plus(value.mul(index)),
+      new Decimal(0),
+    );
+    const slope = n
+      .mul(sumXY)
+      .sub(sumX.mul(sumY))
+      .div(n.mul(sumX2).sub(sumX.mul(sumX)));
+    const intercept = sumY.sub(slope.mul(sumX)).div(n);
+    return Array.from({ length: points }, (_, index) =>
+      intercept.plus(slope.mul(decimals.length + index)).toString(),
+    );
+  }
+  const total = decimals.reduce((sum, value) => sum.plus(value), new Decimal(0));
+  if (total.isZero()) return decimals.map(() => "0");
+  return decimals.map((value) => value.div(total).toString());
+}

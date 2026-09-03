@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ModelEngine, MAX_FORMULA_LEN } from "./modelEngine";
+import { computeAnalysisFunction, ModelEngine, MAX_FORMULA_LEN } from "./modelEngine";
 import type { DriverDef, ModelGridLine, ModelGridPeriod } from "./modelEngine";
 
 const LINES: ModelGridLine[] = [
@@ -369,5 +369,20 @@ describe("ModelEngine.clearCell (M3-9 undo-to-empty)", () => {
     const e = engineWithLayout();
     expect(() => e.clearCell("nope", PERIODS[0].id)).toThrow(/REFERENCE_BROKEN/);
     expect(() => e.clearCell(LINES[0].id, "nope")).toThrow(/REFERENCE_BROKEN/);
+  });
+});
+
+describe("analysis functions", () => {
+  it("computes exact CAGR", () => {
+    expect(computeAnalysisFunction("CAGR", ["100", "121"], "2")[0]).toBe("0.1");
+  });
+  it("computes partial-window moving averages", () => {
+    expect(computeAnalysisFunction("MOVINGAVG", ["2", "4", "8"], "2")).toEqual(["2", "3", "6"]);
+  });
+  it("projects a least-squares trend", () => {
+    expect(computeAnalysisFunction("TREND", ["2", "4", "6"], "2")).toEqual(["8", "10"]);
+  });
+  it("returns seasonality shares", () => {
+    expect(computeAnalysisFunction("SEASONALITY", ["1", "3"])).toEqual(["0.25", "0.75"]);
   });
 });
