@@ -11,6 +11,26 @@ import { join } from "node:path";
 const root = process.cwd();
 const problems = [];
 
+/** Offset -> `line:col` (1-based). Until now this gate printed a raw character offset for the
+ *  `.toFixed(` finding (KI-017) and NO location at all for float ops or REAL columns, so a CI
+ *  failure pointed at "line 4147" in a 429-line file and could not be acted on. Detection rules
+ *  are untouched: same patterns, same findings, same exit code — only the report is precise. */
+function makeLocator(text) {
+  const starts = [0];
+  for (let i = 0; i < text.length; i += 1) if (text[i] === "\n") starts.push(i + 1);
+  return (index) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= index) lo = mid;
+      else hi = mid - 1;
+    }
+    const src = (text.split("\n")[lo] || "").trim().slice(0, 72);
+    return { at: `${lo + 1}:${index - starts[lo] + 1}`, src };
+  };
+}
+
 function walk(dir, acc = []) {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
@@ -25,12 +45,18 @@ function walk(dir, acc = []) {
 const tsFiles = walk(join(root, "src")).filter((f) => /\.(ts|tsx)$/.test(f));
 for (const f of tsFiles) {
   const text = readFileSync(f, "utf8");
+  const locate = makeLocator(text);
   const floatOps = [...text.matchAll(/parseFloat\s*\(|Math\.round\s*\(|\bNumber\s*\(/g)];
-  for (const m of floatOps) problems.push(`${rel(f)}: financial float op '${m[0]}' (B3)`);
+  for (const m of floatOps) {
+    const { at, src } = locate(m.index);
+    problems.push(`${rel(f)}:${at}: financial float op '${m[0]}' (B3)  [${src}]`);
+  }
   const toFixed = [...text.matchAll(/\.toFixed\s*\(/g)];
   if (toFixed.length && !f.replace(/\\/g, "/").includes("utils/money.ts"))
-    for (const m of toFixed)
-      problems.push(`${rel(f)}: toFixed outside money display formatter (${m.index})`);
+    for (const m of toFixed) {
+      const { at, src } = locate(m.index);
+      problems.push(`${rel(f)}:${at}: toFixed outside money display formatter (B3)  [${src}]`);
+    }
 }
 
 const rustFiles = walk(join(root, "src-tauri/src")).filter((f) => f.endsWith(".rs"));
@@ -45,15 +71,17 @@ for (const f of rustFiles) {
     lines.forEach((l, i) => {
       const code = maskRustStrings(l);
       if (/f64|f32/.test(code) && !l.trim().startsWith("//"))
-        problems.push(`${rel(f)}:${i + 1}: float in core (B3)`);
+        problems.push(`${rel(f)}:${i + 1}: float in core (B3)  [${l.trim().slice(0, 72)}]`);
     });
   }
 }
 for (const f of walk(join(root, "src-tauri/migrations")).filter((f) => f.endsWith(".sql"))) {
   const text = readFileSync(f, "utf8");
   for (const m of text.matchAll(/^\s*([a-z_]+)\s+REAL\b/gm)) {
-    if (!/rate|weight|pct|percent/.test(m[1]))
-      problems.push(`${rel(f)}: REAL money column '${m[1]}' (I1)`);
+    if (!/rate|weight|pct|percent/.test(m[1])) {
+      const { at, src } = makeLocator(text)(m.index);
+      problems.push(`${rel(f)}:${at}: REAL money column '${m[1]}' (I1)  [${src}]`);
+    }
   }
 }
 
