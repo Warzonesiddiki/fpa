@@ -101,14 +101,26 @@ for (const line of api.split("\n")) {
        an entry that becomes defined, or stops being cited, fails the run;
      · the probe self-test proves the matcher fires, so this guard cannot go inert again. */
 const CODE_SHAPE = /\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b/g;
-const UNDEFINED_CODE_BASELINE = new Set([
-  "OPENING_ACCOUNT_DUPLICATE", // OQ-11: admit to §2 or repoint to an existing code
-  "OPENING_PERIOD_MIXED", // OQ-11
-  "IMPORT_KIND_DESTINATION_UNAVAILABLE", // OQ-11
-  "INVALID_ARGUMENT", // OQ-11: generic name, likely VALUE_INVALID
-  "ACCOUNT_MISSING", // OQ-11: cited inside a JSON example message
-  "POSTING_REF_DUPLICATE", // OQ-11: cited inside a JSON example message
-]);
+// §2B of ERROR-HANDLING.md is the ONLY exemption source: a validator message prefix is a legal
+// token in the API catalog precisely when the spec declares it and names a governing code that
+// itself exists in §2. KI-015's hand-maintained baseline list is deleted — the exemption now
+// lives in the spec, so widening the docs is the only way to widen the gate (ADR-027).
+const validatorPrefixes = new Map(
+  [
+    ...all["ERROR-HANDLING.md"].matchAll(
+      /^- `([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)` → \*\*([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)\*\*/gm,
+    ),
+  ].map((m) => [m[1], m[2]]),
+);
+for (const [prefix, governing] of validatorPrefixes)
+  if (!errDefs.has(governing))
+    err(
+      `ERROR-HANDLING 2B: prefix ${prefix} cites governing code ${governing}, which §2 does not define`,
+    );
+if (validatorPrefixes.size !== 7)
+  err(
+    `ERROR-HANDLING 2B: expected 7 validator prefixes, parsed ${validatorPrefixes.size} — the section format changed`,
+  );
 const citations = (text) => {
   const out = new Set();
   for (const line of text.split("\n")) {
@@ -122,27 +134,15 @@ const citations = (text) => {
   }
   return out;
 };
+const knownCode = (c) => errDefs.has(c) || validatorPrefixes.has(c);
 const citedCodes = citations(api);
-for (const c of [...citedCodes].sort()) {
-  if (errDefs.has(c)) {
-    if (UNDEFINED_CODE_BASELINE.has(c))
-      err(
-        `stale code baseline: ${c} is now defined in ERROR-HANDLING.md — delete it from UNDEFINED_CODE_BASELINE (KI-015 ratchet)`,
-      );
-  } else if (!UNDEFINED_CODE_BASELINE.has(c)) err(`API references undefined code: ${c}`);
-}
-for (const c of UNDEFINED_CODE_BASELINE)
-  if (!citedCodes.has(c) && !errDefs.has(c))
-    err(
-      `stale code baseline: ${c} is no longer cited in API-SPEC.md — correct the reference and delete the entry (KI-015 ratchet)`,
-    );
+for (const c of [...citedCodes].sort())
+  if (!knownCode(c)) err(`API references undefined code: ${c}`);
 {
-  // Mutation self-test, on the same path the file uses: a fake code in a real catalog row
-  // MUST be caught, or this guard is dead — that is exactly how KI-015 hid for a whole revision.
+  // Mutation self-test on the same path the file uses: a fake code in a real catalog row MUST be
+  // caught, or this guard is dead — that is exactly how KI-015 hid for a whole revision.
   const probeRow = "| `probe.fake_command` | session | `{x}` | `{ok}` | ZZ_GUARD_PROBE_CODE |";
-  const caught = [...citations(probeRow)].some(
-    (c) => !errDefs.has(c) && !UNDEFINED_CODE_BASELINE.has(c),
-  );
+  const caught = [...citations(probeRow)].some((c) => !knownCode(c));
   if (!caught)
     err("docs:verify self-test FAILED: the undefined-code guard is inert (KI-015 regression)");
 }
