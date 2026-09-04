@@ -222,12 +222,12 @@
     }
   ],
   "last_updated": "2026-09-04",
-  "last_action": "M4-2 PR B: S-050 page + S-041 picker; check 56f/628t, coverage 90.22/82.22/90.86/92.58, build+prettier PASS; docs canonicalised (MODEL_CELL_LOCKED), ADR-023..025",
+  "last_action": "M4-2 PR B #30: S-050 page + S-041 picker; check 56f/628t, coverage 90.22/82.22/90.86/92.58, build+prettier PASS; docs canonicalised, ADR-023..025",
   "pr": {
-    "number": null,
-    "url": null,
+    "number": 30,
+    "url": "https://github.com/Warzonesiddiki/fpa/pull/30",
     "base": "main",
     "head": "arena/01a06a14-fpa",
-    "commits": []
+    "commits": ["0951f6d"]
   }
 }
