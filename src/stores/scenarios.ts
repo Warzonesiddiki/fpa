@@ -51,7 +51,14 @@ async function refreshLists(
     const models = (await call("model.list", { company_id: companyId ?? "" })) as ModelSummary[];
     const activeModel = activeModelId();
     const scenarios = models.find((m) => m.id === activeModel)?.scenarios ?? [];
-    set({ models, scenarios, error: null });
+    // A mutation can move the list into/out of the empty state (first create, last delete), so
+    // recompute the screen state here — the S-050 page renders its 5 states off `status`.
+    set({
+      models,
+      scenarios,
+      status: scenarios.length > 0 ? "populated" : "empty",
+      error: null,
+    });
     return models;
   } catch {
     return null;

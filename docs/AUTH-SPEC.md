@@ -61,7 +61,7 @@ No email/phone verification exists (offline by design). Lost phrase + lost PIN =
 |---|---|---|---|---|---|
 | View Company data | ✅ | ✅ | ✅ | ✅ (never in no-session) | ❌ |
 | Edit Model cells (scenario Draft/Review/Approved) | ✅ | ❌ (must create Version) | ❌ | ✅ (read-only after expiry) | ❌ |
-| Edit locked scenario | ❌ | ❌ (SCENARIO_LOCKED) | ❌ | ❌ | ❌ |
+| Edit locked scenario | ❌ | ❌ (MODEL_CELL_LOCKED) | ❌ | ❌ | ❌ |
 | Import / commit / rollback | ✅ | ✅ (creates new Actuals batch) | ❌ | ❌ | ❌ |
 | Approve / Lock / Baseline | ✅ | ❌ (already locked) | ❌ | ❌ | ❌ |
 | Export Excel/PDF/Data Room | ✅ | ✅ (version-stamped) | ❌ | ✅ (stamped) | ❌ |

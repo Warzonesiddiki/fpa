@@ -1,10 +1,11 @@
 # OneFP&A — Session Handover
 
-> Read this file first, then continue the next M3 task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. Last updated by the session that shipped
-> **M3-4 hardcoded-assumption detection — scan/convert/waive + effective-period + change-diff
-> (S-044, 🚧 PARTIAL, TS slice green)** on the `arena/01a065b7-fpa` working branch. M3-2 (S-042)
-> shipped in PR #10 → `0c0c33d`.
+> Read this file first, then continue the next milestone task. It is written to be self-contained:
+> state, design decisions, gates, and pitfalls. Latest sessions shipped **M4-2 (F-022) scenario
+> lifecycle** — PR A (contract + mock state machine), PR A2 (scenario store + `setScenario`),
+> PR B (S-050 Scenario Manager page + S-041 Scenario picker, this session) — working branch
+> `arena/01a06a14-fpa`. Older content below is history; the authoritative tracker is the root
+> `TASKBOARD.md` (56 files / 628 tests, coverage 90.22/82.22/90.86/92.58).
 
 ---
 
@@ -18,12 +19,24 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
    `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **49 files / 498 tests**. (Counts drift up as tests are added — the invariant is that
+   Expect **56 files / 628 tests**. (Counts drift up as tests are added — the invariant is that
    every gate above PASSES on a clean tree, not the exact number.)
 
 ---
 
 ## 1. STATE OF THE WORK
+
+### Latest — M4-2 scenario lifecycle (F-022), PR A/A2/B (2026-09-04)
+
+Typed scenario contract + mock state machine (`model.list`, `scenario.create|duplicate|submit|approve|lock|
+reopen|delete`, `baseline.set`), `stores/scenarios.ts`, grid-store `setScenario` + `activeScenarioId()`, the
+**S-050 Scenario Manager** at `/app/plan/scenarios` (all 5 states, D-004 lock/delete confirm, written-reason
+reopen/baseline-replace, typed inline errors, axe-clean) and the **S-041 ScenarioPicker** (shared read side,
+state badge, Manage link, worker rebuild on switch). Gates green: `npm run check` (56 files/628 tests),
+coverage 90.22/82.22/90.86/92.58, build, prettier. **Open Tier-3 items** (need a human or a Rust toolchain):
+`scenarios.created_at` column absent from DATABASE-SCHEMA (S-050 ships without the Created column —
+DECISIONS ADR-023); scenario `kind` not in the catalogued create args; scenario Rust handlers + `model_values`
+persistence pending cargo (§6 Recovery).
 
 Merged to `main`: **M0** (`902af9d`), **PR #4** (Rust core: company/coa/calendar/session, 12
 commands, `rust_decimal`, HMAC audit chains, `src/api/schema.ts` + `mock.ts`), **PR #5**
@@ -229,12 +242,12 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. ~~**M3-4 Assumption Register + hardcode detection (S-044)**~~ **🚧 PARTIAL (TS hardcode slice green)** —
-   see §1. The next unblocked unit is **M3-10 Analysis functions + named ranges** (`computeAnalysisFunction`
-   helpers are done; the remaining follow-up is HyperFormula custom-function wiring + Named Ranges so
-   `=CAGR(...)` evaluates and converted `wage_inflation` references resolve). When a Rust toolchain
-   appears, resume M3-1's `model_values` persistence, then M3-3's `drivers`/`driver_values`, then the
-   M3-4 audited waiver event.
+1. **Next unblocked TS units** (see `TASKBOARD.md` §1 for the full matrix — M3-10 and M4-2 PR A/B are
+   done; M3-3/M3-4/M3-5/M4-2 remain PARTIAL only on native persistence): pick the first `❗ TODO` row in
+   dependency order (e.g. M4-1 Budget/Forecast/Rolling, S-051 Compare = `model.diff`, or M3-6 Headcount =
+   S-045 once its commands are documented). When a Rust toolchain appears, resume M3-1 `model_values`
+   persistence, then M3-3 `driver_values`, then M4-2 scenario handlers + the `scenarios.created_at`
+   migration, then the M3-4 audited waiver event.
 2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
    toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
    is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked

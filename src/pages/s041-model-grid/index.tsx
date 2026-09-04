@@ -25,6 +25,7 @@ import {
 import { Button, StatePanel, MoneyCell } from "@/components/ui";
 import type { ScreenState } from "@/components/ui/StatePanel";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
+import { ScenarioPicker } from "@/components/domain/ScenarioPicker";
 import { SpreadDialog } from "./SpreadDialog";
 import { useModelGridStore } from "@/stores/model";
 import { useSessionStore } from "@/stores/session";
@@ -387,8 +388,11 @@ export function ModelGridPage() {
       <h1 className="text-xl font-semibold">{t("gridPage.title")}</h1>
       <ModelSectionNav />
 
-      {/* Toolbar (undo/redo, fill, find, formula bar, formatting, freeze, sheet tabs — S-041). */}
+      {/* Toolbar (scenario switcher, undo/redo, fill, find, formula bar, freeze, sheet tabs — S-041/S-040). */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-oneborder)] p-2">
+        {/* Scenario switcher + state badge — edits stay routed to the selected Scenario. */}
+        <ScenarioPicker />
+        <span aria-hidden="true" className="h-6 w-px bg-[var(--color-oneborder)]" />
         <Button
           variant="ghost"
           size="sm"

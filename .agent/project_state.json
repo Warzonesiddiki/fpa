@@ -4,8 +4,8 @@
   "project": {
     "name": "OneFP&A",
     "repo": "Warzonesiddiki/fpa",
-    "session_branch": "arena/01a0693e-fpa",
-    "base_commit": "a3b41231aec2fe91a13fd79c4c76b9a7f4abf29e",
+    "session_branch": "arena/01a06a14-fpa",
+    "base_commit": "99e59d88ae1c95a7783ec419e4de21271a4d22fe",
     "identity": "Local-first, offline, single-user FP&A desktop suite. Tauri 2.11 + Rust 1.85 (edition 2024) core owning money/calendar/audit/SQLite; React 19 / TS 5.9 strict UI; HyperFormula 3.4 in a Web Worker; typed IPC via Zod (hand-typed bridge, no tauri-specta yet).",
     "source_of_truth_order": [
       "docs/ (54 locked specs; CLAUDE.md: when docs and code conflict the bug is in the code)",
@@ -16,8 +16,8 @@
   },
   "current_milestone": {
     "roadmap": "M2 Ingestion (F-007…F-011) declared current; M1 exit criteria open; M3 TS/contract slices shipped ahead under the native-toolchain policy",
-    "mvp_progress_estimate": "~15% (TASKBOARD §0)",
-    "screens_routed": "18/42",
+    "mvp_progress_estimate": "~15% (TASKBOARD §0); 38-feature lock unchanged",
+    "screens_routed": "19/42",
     "rust_handlers_registered": 35,
     "ts_schema_commands": 46,
     "ts_commands_without_rust_handler": ["model.inspect", "driver.import", "company.archive_year"],
@@ -29,37 +29,37 @@
     "verified_at": "2026-09-04",
     "vitest": {
       "result": "PASS",
-      "files": 53,
-      "tests": 595,
-      "note": "+21 total for M4-2 A1+A2 (schema 4, mock 8, scenarios store 6, model setScenario 3)"
+      "files": 56,
+      "tests": 628,
+      "note": "+33 for M4-2 PR B (scenario actions 6, S-050 page 17 incl. axe, ScenarioPicker 8, scenario-store status transitions 2) plus grid picker/spread-test reconciliation"
     },
     "coverage_main": {
-      "statements": 89.49,
-      "branches": 81.76,
-      "functions": 89.84,
-      "lines": 88.96,
+      "statements": 90.22,
+      "branches": 82.22,
+      "functions": 90.86,
+      "lines": 92.58,
       "thresholds": "85/80/80/85",
       "gate": "PASS"
     },
     "tsc": "PASS",
     "eslint": "PASS (--max-warnings 0)",
-    "prettier": "PASS after this commit (TASKBOARD.md was the only failing file at takeover)",
+    "prettier": "PASS — CONTINUE-PROMPT.md added to .prettierignore (generated agent-prompt bundle; box-drawing layout)",
     "docs_verify": "PASS — 54 docs / 42 screens / 97 command rows / 97 error codes",
     "docs_link_check_strict": "PASS — 141 cross-refs / 60 docs",
     "schema_equality_check": "PASS — 56 tables, no float money columns",
     "money_ast": "PASS",
     "packs_validate": "PASS — 12/12",
     "security_scans": "PASS (secret / telemetry / license)",
-    "vite_build": "PASS (2.97 s)",
+    "vite_build": "PASS (this session)",
     "rust_brace_balance_hand_gate": "PASS — 26/26 files (lifetime/char-literal-aware scan)",
     "cargo_test": "UNAVAILABLE — rustc/cargo absent; rustup + crates.io unreachable (HTTP 000)",
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 89.89,
-      "branches": 82.02,
-      "functions": 90.58,
-      "lines": 92.27
+      "statements": 90.22,
+      "branches": 82.22,
+      "functions": 90.86,
+      "lines": 92.58
     }
   },
   "environment": {
@@ -72,8 +72,8 @@
     "notes": [
       "node_modules is wiped between sessions: run `npm ci --no-audit --no-fund` first; verify package-lock.json unchanged afterwards",
       "never publish .github/workflows/ (gitignored; token lacks Workflows permission)",
-      "PR ritual: gh pr create --base main --head arena/01a0687a-fpa; merge with gh pr merge --merge",
-      "2026-09-04: origin/main = a3b4123 (synthesized shallow root; tree == 3843ae5 minus .claude/.codex/.agents ECC files). Session branch arena/01a0693e-fpa builds on it; do not merge origin/arena/01a0687a-fpa (would re-add ECC files)."
+      "PR ritual: gh pr create --base main --head arena/01a06a14-fpa; merge with gh pr merge --merge",
+      "2026-09-04: in THIS sandbox origin/main == 99e59d8 (synthesized shallow root of the post-M4-2-A2 repo); arena/01a06a14-fpa branches from it and PRs against main. Do not merge origin/arena/01a0687a-fpa or arena/01a0693e-fpa (older branches; would re-add ECC files)."
     ]
   },
   "permission_tiers": {
@@ -149,6 +149,13 @@
       "tier": 2,
       "status": "FIXED in code (Unit W-3b, bd7df27) — Mitigated until cargo test on CI",
       "summary": "core/money.rs LRA tie order ascending vs spec descending (unit lands on wrong line)"
+    },
+    {
+      "id": "B9",
+      "tier": 3,
+      "severity": "contract",
+      "summary": "SCREENS-SPEC S-050 lists a Created column but DATABASE-SCHEMA scenarios has no created_at (no migration) — S-050 ships without it; ADR-023; migrate with field+UI together",
+      "owner": "human/Tier-3"
     }
   ],
   "units": [
@@ -205,15 +212,22 @@
       "title": "Scenario store wiring (PR A2 of M4-2)",
       "tier": 2,
       "status": "DONE (TS; S-050 page + S-041 picker in PR B)"
+    },
+    {
+      "id": "M4-2b",
+      "title": "M4-2 PR B — S-050 Scenario Manager page + S-041 ScenarioPicker (page 5 states, D-004 dialogs, typed errors, axe; picker in grid toolbar) + gates + docs/TASKBOARD sync",
+      "tier": 2,
+      "status": "DONE (this commit; TS only — scenario Rust handlers + created_at migration pending)",
+      "rollback": "git revert <commit>"
     }
   ],
   "last_updated": "2026-09-04",
-  "last_action": "Unit M4-2 PR A2: stores/scenarios.ts + model.setScenario + activeScenarioId routing; gates 53f/595t",
+  "last_action": "M4-2 PR B: S-050 page + S-041 picker; check 56f/628t, coverage 90.22/82.22/90.86/92.58, build+prettier PASS; docs canonicalised (MODEL_CELL_LOCKED), ADR-023..025",
   "pr": {
-    "number": 27,
-    "url": "https://github.com/Warzonesiddiki/fpa/pull/27",
+    "number": null,
+    "url": null,
     "base": "main",
-    "head": "arena/01a0693e-fpa",
-    "commits": ["de83e02"]
+    "head": "arena/01a06a14-fpa",
+    "commits": []
   }
 }

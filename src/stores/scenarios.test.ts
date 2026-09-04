@@ -190,3 +190,71 @@ describe("scenario store (S-050 · F-022)", () => {
     expect(s.scenarios[0].state).toBe("locked");
   });
 });
+
+describe("scenario store — S-050 empty ↔ populated status (first create / last delete)", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    modelIdMock.mockReturnValue(WORKING_MODEL_ID);
+    useModelGridStore.setState({ scenarioId: WORKING_SCENARIO_ID });
+    useScenarioStore.setState({ status: "loading", error: null, models: [], scenarios: [] });
+  });
+
+  it("leaves the empty state after the first Scenario is created", async () => {
+    let rows: ReturnType<typeof scenarioRow>[] = [];
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "model.list")
+        return Promise.resolve([
+          {
+            id: WORKING_MODEL_ID,
+            company_id: CO,
+            name: "Working Model",
+            horizon: 1,
+            pack_id: null,
+            scenarios: rows,
+          },
+        ]);
+      if (cmd === "scenario.create") {
+        rows = [scenarioRow({ id: SC2, name: "Base" })];
+        return Promise.resolve({ scenario_id: SC2, version_id: null });
+      }
+      return Promise.resolve({ scenario_id: SC, version_id: null });
+    });
+    await useScenarioStore.getState().load();
+    expect(useScenarioStore.getState().status).toBe("empty");
+
+    const id = await useScenarioStore.getState().create();
+    expect(id).toBe(SC2);
+    const s = useScenarioStore.getState();
+    expect(s.status).toBe("populated");
+    expect(s.scenarios.map((x) => x.id)).toEqual([SC2]);
+  });
+
+  it("returns to the empty state after the last Scenario is deleted", async () => {
+    let rows: ReturnType<typeof scenarioRow>[] = [scenarioRow()];
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "model.list")
+        return Promise.resolve([
+          {
+            id: WORKING_MODEL_ID,
+            company_id: CO,
+            name: "Working Model",
+            horizon: 1,
+            pack_id: null,
+            scenarios: rows,
+          },
+        ]);
+      if (cmd === "scenario.delete") {
+        rows = [];
+        return Promise.resolve({ scenario_id: SC, version_id: null });
+      }
+      return Promise.resolve({ scenario_id: SC, version_id: null });
+    });
+    await useScenarioStore.getState().load();
+    expect(useScenarioStore.getState().status).toBe("populated");
+
+    const ok = await useScenarioStore.getState().remove(SC);
+    expect(ok).toBe(true);
+    expect(useScenarioStore.getState().status).toBe("empty");
+  });
+});

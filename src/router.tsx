@@ -6,6 +6,7 @@ import { ModelGridPage } from "@/pages/s041-model-grid/lazy";
 import { FormulaInspectorPage } from "@/pages/s042-formula-inspector/lazy";
 import { DriverTablesPage } from "@/pages/s043-drivers/lazy";
 import { AssumptionsPage } from "@/pages/s044-assumptions";
+import { ScenariosPage } from "@/pages/s050-scenarios";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -72,6 +73,9 @@ export const router = createBrowserRouter([
       { path: "model/coa", element: <CoaPage /> },
       { path: "model/calendar", element: <CalendarPage /> },
       { path: "model/packs", element: <PacksPage /> },
+      // S-050 (F-022) — first Planning-area screen: /plan lands on the Scenario Manager.
+      { path: "plan", element: <Navigate to="/app/plan/scenarios" replace /> },
+      { path: "plan/scenarios", element: <ScenariosPage /> },
       // S-073 (F-035): the shell's "Governance" nav target. S-074 (Backup) lands here in M2.
       { path: "governance", element: <Navigate to="/app/governance/license" replace /> },
       { path: "governance/license", element: <LicensePage /> },

@@ -123,6 +123,36 @@
 **Why:** reference's perf claims were uncountable audits (W2); "most advanced" must be measurable.
 **Consequences:** vitest/cargo bench in CI; regression >10% blocks.
 
+### ADR-023 · S-050 ships without a "Created" column until `scenarios.created_at` exists (M4-2 PR B)
+**Why:** SCREENS-SPEC S-050's table lists Created, but DATABASE-SCHEMA's `scenarios` table has no
+`created_at` column (id, model_id, name, kind, state, parent_scenario_id, baseline), and no migration is
+in this PR. Shipping a fake timestamp (e.g. mocking or reusing `version.created_at`) would break the
+money-grade "never fabricate data" rule and the docs-are-source-of-truth rule (DATABASE-SCHEMA is
+authoritative). 
+**Consequences:** the S-050 page renders name/kind/state/base/versions only; the column stays documented
+in SCREENS-SPEC as spec intent. Land it in one Tier-3 migration change: schema `ALTER` + typed row field
++ column render + date-locale tests together (the inline page comment points here).
+
+### ADR-024 · One shared scenario read side for S-050 and the S-041/S-040 switcher (M4-2 PR B)
+**Why:** S-050 (Scenario Manager) and the Scenario switcher in the model-grid toolbar show the same
+lifecycle data; keeping two stores or two fetch paths would let the toolbar badge and the manager table
+disagree about state (e.g. Draft vs Locked) after a transition.
+**Consequences:** both read `useScenarioStore` populated from `model.list` (Model shape
+`{id, company_id, name, horizon, pack_id, scenarios[]}`); the picker is a controlled widget whose active
+id comes from the grid store (`scenarioId`) and whose change calls `setScenario()` (rebuilds the
+HyperFormula worker through the audited path). `/app/plan` redirects to `/app/plan/scenarios` so the
+Planning-area navigation has one stable entry (S-051+ land as siblings later).
+
+### ADR-025 · Locked-scenario edit error is the catalog code `MODEL_CELL_LOCKED` (canonicalization, M4-2 PR B)
+**Why:** narrative docs (AUTH-SPEC, USER-FLOWS, USER-STORIES, an S-041 error list) said `SCENARIO_LOCKED`,
+but the locked error catalog (ERROR-HANDLING) defines `MODEL_CELL_LOCKED`, and the M4-2 PR A mock already
+emits it table-driven from the scenario state. Two spellings for one user-facing condition would leak into
+copy/tests and break the 97-code lock.
+**Consequences:** all four doc references rewritten to `MODEL_CELL_LOCKED`; editing a Locked Scenario stays
+possible as an *attempt* so the typed error (with its message) surfaces instead of a silent bypass; S-050
+lifecycle errors keep their own codes (`SCENARIO_NAME_DUP`, `SCENARIO_LOCK_CONFLICT`,
+`BASELINE_REPLACE_REASON_REQUIRED`).
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

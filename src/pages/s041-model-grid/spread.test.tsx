@@ -6,7 +6,7 @@ import { axe } from "vitest-axe";
 import Decimal from "decimal.js";
 import { ModelGridPage } from "./index";
 import { equalPercentCurve, percentToFraction } from "./spreadInputs";
-import { useModelGridStore } from "@/stores/model";
+import { useModelGridStore, WORKING_MODEL_ID } from "@/stores/model";
 import { createDefaultSettings, useSettingsStore } from "@/stores/settings";
 
 const callMock = vi.fn();
@@ -44,6 +44,19 @@ function mockLoad() {
   callMock.mockImplementation((cmd: string) => {
     if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
     if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+    // The S-041 toolbar's ScenarioPicker reads the same model.list read side as S-050; answer a
+    // valid (scenario-less) Model so the picker settles in its empty state instead of an error.
+    if (cmd === "model.list")
+      return Promise.resolve([
+        {
+          id: WORKING_MODEL_ID,
+          company_id: CO,
+          name: "Meridian Working Model",
+          horizon: 1,
+          pack_id: null,
+          scenarios: [],
+        },
+      ]);
     if (cmd === "model.cell.set.v1")
       return Promise.resolve({
         recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },

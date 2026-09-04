@@ -1059,5 +1059,136 @@
       "waivedBadge": "Waived: {{reason}}",
       "unwaive": "Undo"
     }
+  },
+  "scenariosPage": {
+    "title": "Scenario Manager",
+    "lead": "Lifecycle, versions, and Baseline for the active Model (Draft → Review → Approved → Locked).",
+    "modelLabel": "Active Model",
+    "horizonYears": "{{count}} fiscal year",
+    "horizonYears_plural": "{{count}} fiscal years",
+    "newScenario": "New Scenario",
+    "tableCaption": "Scenario list for the active Model",
+    "col": {
+      "name": "Scenario",
+      "kind": "Type",
+      "state": "State",
+      "base": "Base",
+      "versions": "Versions",
+      "created": "Created",
+      "actions": "Actions"
+    },
+    "baselineBadge": "Baseline",
+    "moreVersions": "+{{count}}",
+    "versionTitle": "{{label}} · created {{date}}",
+    "states": {
+      "draft": "Draft",
+      "review": "Review",
+      "approved": "Approved",
+      "locked": "Locked"
+    },
+    "kinds": {
+      "actuals": "Actuals",
+      "budget": "Budget",
+      "forecast": "Forecast",
+      "whatif": "What-if",
+      "lrp": "Long-range plan"
+    },
+    "actions": {
+      "submit": "Submit",
+      "approve": "Approve",
+      "lock": "Lock",
+      "baseline": "Set baseline",
+      "duplicate": "Duplicate",
+      "reopen": "Reopen",
+      "delete": "Delete"
+    },
+    "actionHints": {
+      "submit": "Submit this Scenario for review (Draft → Review).",
+      "approve": "Approve this Scenario (Review → Approved).",
+      "lock": "Lock this Scenario and write an immutable Version (Approved → Locked).",
+      "baseline": "Make this locked Scenario THE Baseline.",
+      "duplicate": "Copy this Scenario's values into a new Draft.",
+      "reopen": "Return this Scenario to Draft with a written reason.",
+      "delete": "Delete this Draft Scenario (no Versions)."
+    },
+    "empty": {
+      "noCompany": "Open a Company to manage Scenarios.",
+      "noScenarios": "No Scenarios yet — create the Base Budget to start planning.",
+      "createBase": "Create Base scenario"
+    },
+    "errors": {
+      "load": "Scenarios could not be loaded.",
+      "unexpected": "Something went wrong — review the error and try again."
+    },
+    "dialog": {
+      "create": {
+        "title": "New Scenario",
+        "name": "Name",
+        "nameHint": "Optional — blank creates the Base Budget (first Scenario).",
+        "nameRequired": "A name is required when no copy source is selected.",
+        "base": "Copy values from",
+        "baseHint": "Optional — inherits the type and copies values from an existing Scenario.",
+        "none": "None — start blank",
+        "submit": "Create",
+        "busy": "Creating…"
+      },
+      "duplicate": {
+        "title": "Duplicate Scenario",
+        "source": "Source: {{name}} — the copy starts as a fresh Draft.",
+        "name": "Copy name",
+        "nameHint": "Optional — blank auto-names a unique “(copy)”.",
+        "submit": "Duplicate",
+        "busy": "Duplicating…"
+      },
+      "reopen": {
+        "title": "Reopen Scenario",
+        "body": "{{name}} returns to Draft. Existing Versions stay immutable; the next Lock writes a new Version.",
+        "reason": "Reason",
+        "reasonHint": "Required — the audit record stores your written reason.",
+        "reasonRequired": "A written reason is required to reopen this Scenario.",
+        "submit": "Reopen"
+      },
+      "lock": {
+        "title": "Lock Scenario",
+        "body": "Locking {{name}} freezes its values and blocks edits (MODEL_CELL_LOCKED) until a new Version is created.",
+        "confirm": "Type the Scenario name to confirm",
+        "versionHint": "Lock writes immutable Version {{version}}.",
+        "submit": "Lock"
+      },
+      "delete": {
+        "title": "Delete Scenario",
+        "body": "Delete {{name}}? Only Drafts without Versions can be deleted. This cannot be undone.",
+        "confirm": "Type the Scenario name to confirm",
+        "submit": "Delete"
+      },
+      "baseline": {
+        "title": "Set as Baseline",
+        "body": "{{name}} becomes THE Baseline — the locked Budget reference for Variance (Commit column).",
+        "replacing": "Replacing the current Baseline “{{current}}” requires a written reason.",
+        "reason": "Reason",
+        "reasonHint": "Optional for a first Baseline.",
+        "reasonHintReplacing": "Required — a Baseline replacement is a governed action.",
+        "reasonRequired": "Replacing the baseline requires a written reason.",
+        "submit": "Set baseline"
+      },
+      "typeToConfirm": "Type {{name}} exactly to enable the button."
+    },
+    "result": {
+      "created": "Scenario “{{name}}” created.",
+      "duplicated": "Scenario “{{name}}” duplicated.",
+      "submitted": "Scenario “{{name}}” submitted for review.",
+      "approved": "Scenario “{{name}}” approved.",
+      "locked": "Scenario “{{name}}” locked — Version written.",
+      "reopened": "Scenario “{{name}}” reopened as Draft.",
+      "deleted": "Scenario “{{name}}” deleted.",
+      "baselineSet": "Scenario “{{name}}” is now the Baseline."
+    }
+  },
+  "scenarioPicker": {
+    "label": "Scenario",
+    "empty": "No scenarios",
+    "manage": "Manage scenarios",
+    "lockBadge": "Locked",
+    "stateTitle": "State: {{state}}"
   }
 }
