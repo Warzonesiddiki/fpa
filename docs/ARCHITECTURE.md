@@ -63,7 +63,7 @@ flowchart TB
 
 ```text
 fpa/
-├── docs/                      # The 54 docs/ specs (DOCS-INDEX.md = master index). Off-index docs forbidden (B8)
+├── docs/                      # The 60 docs/ specs (DOCS-INDEX.md = master index). Off-index docs forbidden (B8)
 ├── src/                       # TypeScript UI (webview)
 │   ├── main.tsx / App.tsx
 │   ├── router.tsx             # routes per SCREENS-SPEC

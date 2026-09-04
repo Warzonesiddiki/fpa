@@ -48,7 +48,7 @@
   FEATURE-TRACEABILITY-MATRIX, ERROR-HANDLING, TASKBOARD, TODO, CHANGELOG, and this handover are
   synchronized. ADR-026 deliberately admits the two headcount codes, taking the canonical catalog
   from 97 to 99; this is not a silent error-code invention.
-- **Validation:** `npm run check` (59 files/653 tests; docs 54/42/97/99), `npx vitest run --coverage`
+- **Validation:** `npm run check` (59 files/653 tests; docs 60/42/97/99), `npx vitest run --coverage`
   (89.84/81.72/90.02/92.30), `npm run test:coverage:critical` (98.49/96.98/100/98.72),
   `npm run build`, and `npx prettier --check .` all pass after the final code/docs edits. The matching
   coverage-gate proxy passes at main 89.85/81.73/90.03/89.27 and critical 98.49/96.98/100/98.41. Rust `cargo`/`rustc` are unavailable, so the native handler, SQLite persistence/calculation,
@@ -298,7 +298,7 @@ npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
 npx prettier --check .
-node scripts/docs-verify.mjs                        # 54 docs / 42 screens / 97 commands / 99 codes
+node scripts/docs-verify.mjs                        # 60 docs / 42 screens / 97 commands / 99 codes
 node scripts/money-ast.mjs
 node scripts/secret-scan.mjs
 node scripts/pack-validate.mjs                      # 12/12
@@ -385,7 +385,7 @@ EOF
 
 ## 5. STANDING RULES
 
-Zero-compromise, specs-first: the 54 docs in `docs/` are locked (start DOCS-INDEX →
+Zero-compromise, specs-first: the 60 docs in `docs/` are locked (start DOCS-INDEX →
 ARCHITECTURE → API-SPEC → ROADMAP → ZERO-COMPROMISE-RULES). Never re-open closed doc issues
 (B20). Money/calendar logic has exactly one owner: the Rust core; the UI formats only. Every
 screen needs 5 states (loading/empty/error/success/populated). All 99 error codes are defined —

@@ -171,7 +171,7 @@ Sandbox:      Node.js v22 ✅ | Rust toolchain ❌ | Browser/Playwright ❌
 
 | Milestone | Status | What's built | What's missing |
 |---|---|---|---|
-| **M0 Spec** | ✅ DONE | 54 docs, fixtures, 12 packs | — |
+| **M0 Spec** | ✅ DONE | 60 docs, fixtures, 12 packs | — |
 | **M1 Foundation** | 🚧 PARTIAL | JS-green + Rust handlers authored | cargo verification, some UI gaps |
 | **M2 Ingestion** | 🚧 PARTIAL | GL Dump pipeline (parse→commit) | connectors, Source Vault |
 | **M3 Modeling** | 🚧 PARTIAL | TS side largely complete | Rust persistence, headcount, capex |
