@@ -19,6 +19,53 @@ vi.mock("@/stores/session", () => {
   return { useSessionStore };
 });
 
+/**
+ * The toolbar ScenarioPicker reads `useScenarioStore` (scenarios of the active Model). Keep the
+ * grid tests deterministic by supplying a fixed list instead of letting the real store round-trip
+ * through the mocked bridge (its `model.list` answers are not scenario-shaped).
+ */
+const { scenarioStoreState } = vi.hoisted(() => ({
+  scenarioStoreState: {
+    status: "populated",
+    error: null,
+    scenarios: [
+      {
+        id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+        model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+        name: "Base",
+        kind: "budget",
+        state: "draft",
+        parent_scenario_id: null,
+        baseline: false,
+        versions: [],
+      },
+      {
+        id: "5c4f1a2b-9d3e-4c7a-8b2f-000000000001",
+        model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+        name: "FY26 Plan",
+        kind: "forecast",
+        state: "locked",
+        parent_scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+        baseline: true,
+        versions: [
+          {
+            id: "5c4f1a2b-9d3e-4c7a-8b2f-100000000001",
+            version_no: 1,
+            label: "v1",
+            reason: null,
+            created_at: "",
+          },
+        ],
+      },
+    ],
+    load: async () => undefined,
+    retry: async () => undefined,
+  },
+}));
+vi.mock("@/stores/scenarios", () => ({
+  useScenarioStore: (selector: (s: unknown) => unknown) => selector(scenarioStoreState),
+}));
+
 const CO = "3f9f2c9e-9f8b-4e2d-9a1c-000000000001";
 const LINE = "3f9f2c9e-9f8b-4e2d-9a1c-400000000010";
 
@@ -153,6 +200,11 @@ describe("S-041 Model Grid (F-012)", () => {
     await waitForGridCell(container);
     expect(screen.getByTestId("model-grid")).toHaveAttribute("data-density", "compact");
     expect(container.querySelector(".ag-row")).toHaveStyle({ height: "28px" });
+    // S-040/S-041 scenario switcher sits in the toolbar with the current Scenario selected.
+    expect(screen.getByRole("combobox", { name: "Scenario" })).toHaveValue(
+      "3f9f2c9e-9f8b-4e2d-9a1c-400000000003",
+    );
+    expect(screen.getByText("Draft")).toBeInTheDocument();
     // Line rows from coa.list render in the AG Grid.
     expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
     expect(screen.getByText("4100 · Software Licenses")).toBeInTheDocument();

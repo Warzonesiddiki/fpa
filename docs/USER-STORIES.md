@@ -214,7 +214,7 @@ is created until that storage path and its crash/rollback tests exist.
 **Given** Base Scenario Approved (Locked → Version v2), **When** Alex duplicates it to "Upside" and changes `reps` 6→8, **Then** Upside opens as Draft with a full copy; Base stays locked; Model Compare shows a cell-level diff (`reps +2` → revenue +₹18M → EBITDA +₹6M); Goal Seek computes "reps needed for ₹300M revenue" = 9.4.
 
 **Edge cases**
-- Editing a Locked Scenario via direct grid → edit blocked with `SCENARIO_LOCKED`; "Create Version" offered; no silent edits.
+- Editing a Locked Scenario via direct grid → edit blocked with `MODEL_CELL_LOCKED`; "Create Version" offered; no silent edits.
 - Goal Seek does not converge within 100 iterations → `GOAL_SEEK_NO_CONVERGE` with last value and target; never returns a non-converged number as if valid.
 
 ### US-024 · F-023 Input Collection · P1 · (R)

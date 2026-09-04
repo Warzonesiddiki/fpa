@@ -150,7 +150,7 @@ written.
 
 1. **S-050**: Base = Draft → drive values → Approve → Lock (Version v1 created, immutable).
 2. Duplicate → "Upside" (Draft); set reps 6 → 8.
-   - *Branch:* editing Locked Base → `SCENARIO_LOCKED`; create Version instead.
+   - *Branch:* editing Locked Base → `MODEL_CELL_LOCKED`; create Version instead.
 3. **S-052 Sensitivity**: tornado over `reps` ±25% (bounds from register) → impact chart.
    - *Branch:* out-of-range → `SENSITIVITY_OUT_OF_BOUNDS`.
 4. Goal Seek: target `Revenue P12` = ₹300M, solve `reps` → 9.4 (converged, iterations shown).

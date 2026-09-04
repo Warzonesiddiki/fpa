@@ -166,7 +166,7 @@
 **Elements:** top toolbar (undo/redo, fill, find, formula bar, formatting, sheet tabs, freeze), AG Grid (virtualized): period columns P01…P13 + YTD/FY columns, line rows with Planning Method chip (Manual/Static/Driver/Growth/YoY/Seasonal/Spread), Driver badges, Formula inspection toggle, cell editor (number/date/formula), copy/paste/paste-special, comments/annotations per cell, Drift-to-source drill.
 - **Loading:** grid with skeleton rows (or cached).
 - **Empty:** "No lines — add from Pack template or + Add line".
-- **Error:** `SCENARIO_LOCKED` (edit blocked, create version), `FORMULA_CYCLE` (red cell, path), `REFERENCE_BROKEN` (click → repair).
+- **Error:** `MODEL_CELL_LOCKED` (edit blocked, create version), `FORMULA_CYCLE` (red cell, path), `REFERENCE_BROKEN` (click → repair).
 - **Success:** grid renders w/ values.
 - **Populated:** computed values (+ formula icons on derived cells), subtotals exact (Rounding Rule).
 
