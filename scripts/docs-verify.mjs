@@ -87,11 +87,64 @@ for (const line of api.split("\n")) {
       .match(/[a-z_]+\.[a-z0-9_.]+/g)?.length ?? 0;
   for (const c of line.matchAll(/`[a-z_]+\.[a-z0-9_.]+`/g)) cmdCount += 0; // tokens (noop, kept simple)
 }
-for (const line of api.split("\n")) {
-  const codes = line.match(/\b[A-Z][A-Z0-9_]{3,}\b/g) ?? [];
-  for (const c of codes)
-    if (!errDefs.has(c) && !["AUTH_PIN_INVALID", "AUTH_LOCKED"].every((x) => x !== c))
-      err(`API references undefined code: ${c}`);
+/* 7b. Error codes cited in API-SPEC.md must exist in ERROR-HANDLING.md §2.
+   KI-015 (found 2026-09-04): the original condition `!errDefs.has(c) &&
+   !["AUTH_PIN_INVALID","AUTH_LOCKED"].every((x) => x !== c)` was unsatisfiable — the second
+   clause needs `c` to BE one of two codes that are both defined — so the rule could never
+   fire, and its loose regex was equally unusable (55 hits on API-SPEC alone: `NULL`, `JSON`,
+   section titles). Rewritten 2026-09-05 as a live check with a ratchet:
+     · a citation is one of the three shapes this suite actually uses: a code in the trailing
+       Errors cell of a catalog row, a backticked SCREAMING_SNAKE token, or a `"CODE: …"`
+       prefix inside a JSON example (≥1 underscore required, which is what excludes `NULL`,
+       `JSON` and section titles that the old regex treated as codes);
+     · UNDEFINED_CODE_BASELINE parks the drift that predates the fix and **may only shrink** —
+       an entry that becomes defined, or stops being cited, fails the run;
+     · the probe self-test proves the matcher fires, so this guard cannot go inert again. */
+const CODE_SHAPE = /\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b/g;
+const UNDEFINED_CODE_BASELINE = new Set([
+  "OPENING_ACCOUNT_DUPLICATE", // OQ-11: admit to §2 or repoint to an existing code
+  "OPENING_PERIOD_MIXED", // OQ-11
+  "IMPORT_KIND_DESTINATION_UNAVAILABLE", // OQ-11
+  "INVALID_ARGUMENT", // OQ-11: generic name, likely VALUE_INVALID
+  "ACCOUNT_MISSING", // OQ-11: cited inside a JSON example message
+  "POSTING_REF_DUPLICATE", // OQ-11: cited inside a JSON example message
+]);
+const citations = (text) => {
+  const out = new Set();
+  for (const line of text.split("\n")) {
+    if (/^\|\s*`[a-z_]+\.[a-z0-9_.]+`/.test(line)) {
+      const cells = line.split("|");
+      const errorsCell = cells[cells.length - 2] ?? ""; // the trailing Errors column
+      for (const m of errorsCell.matchAll(CODE_SHAPE)) out.add(m[0]);
+    }
+    for (const m of line.matchAll(/`([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)`/g)) out.add(m[1]);
+    for (const m of line.matchAll(/"([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+): /g)) out.add(m[1]);
+  }
+  return out;
+};
+const citedCodes = citations(api);
+for (const c of [...citedCodes].sort()) {
+  if (errDefs.has(c)) {
+    if (UNDEFINED_CODE_BASELINE.has(c))
+      err(
+        `stale code baseline: ${c} is now defined in ERROR-HANDLING.md — delete it from UNDEFINED_CODE_BASELINE (KI-015 ratchet)`,
+      );
+  } else if (!UNDEFINED_CODE_BASELINE.has(c)) err(`API references undefined code: ${c}`);
+}
+for (const c of UNDEFINED_CODE_BASELINE)
+  if (!citedCodes.has(c) && !errDefs.has(c))
+    err(
+      `stale code baseline: ${c} is no longer cited in API-SPEC.md — correct the reference and delete the entry (KI-015 ratchet)`,
+    );
+{
+  // Mutation self-test, on the same path the file uses: a fake code in a real catalog row
+  // MUST be caught, or this guard is dead — that is exactly how KI-015 hid for a whole revision.
+  const probeRow = "| `probe.fake_command` | session | `{x}` | `{ok}` | ZZ_GUARD_PROBE_CODE |";
+  const caught = [...citations(probeRow)].some(
+    (c) => !errDefs.has(c) && !UNDEFINED_CODE_BASELINE.has(c),
+  );
+  if (!caught)
+    err("docs:verify self-test FAILED: the undefined-code guard is inert (KI-015 regression)");
 }
 
 /* 8. Banned-term scan (GLOSSARY synonyms used as domain terms — context-filtered) */
@@ -124,7 +177,7 @@ const claims = [
   ["97 commands", /97 typed commands/],
   ["56 tables", /56 \(49 original/],
   ["99 errors", /99 \(ZC revision/],
-  ["54 docs", /54 docs\/ specs/],
+  ["60 docs", /60 docs\/ specs/],
 ];
 for (const [label, re] of claims) {
   const hit = files.some((f) => re.test(all[f]));
