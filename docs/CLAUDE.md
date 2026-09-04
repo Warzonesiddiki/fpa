@@ -21,7 +21,7 @@ OneFP&A replaces Excel + BI + cloud EPM for the full FP&A cycle: **import (GL Du
 src/                     # TS UI (pages/, components/ui|domain/, stores/, workers/, api/, hooks/, theme/)
 src-tauri/src/           # Rust core (commands/, core/{money,calendar,ingestion,engines,connectors,export,security}, audit.rs, storage/)
 packs/                   # Industry Packs — DATA ONLY (schema-validated JSON + SQL seeds, per INDUSTRY-PACK-SPEC.md)
-docs/                    # 54 specs — the ONLY source of truth; off-index docs fail CI (B8)
+docs/                    # 60 specs — the ONLY source of truth; off-index docs fail CI (B8)
 e2e/  scripts/  migrations/ (in src-tauri/migrations)
 ```
 
@@ -29,6 +29,10 @@ e2e/  scripts/  migrations/ (in src-tauri/migrations)
 · FORMULA-ENGINE-SPEC.md (supported functions/error values) · MODELING-METHODS-SPEC.md (methods/driver grammar)
 · SCENARIO-VERSION-SPEC.md (state machine) · INDUSTRY-PACK-SPEC.md (pack schema — B15) · GL-TEMPLATE-SPEC.md
 · CONNECTOR-DATA-DICTIONARY.md (per-provider fields) · EXPORT-FORMAT-SPEC.md (output contracts) · SCENARIO-VERSION-SPEC.md.
+**UI work also requires:** WIREFRAMES-CORE.md / WIREFRAMES-ANALYTICS.md (region geometry — this file owns layout,
+DESIGN-SYSTEM.md owns look) · COPY-GUIDELINES.md (every user-facing string; error text stays verbatim from
+ERROR-HANDLING.md) · COMPETITIVE-ANALYSIS.md (why a differentiator claim is true — never invent one).
+**Licensing / packaging work also requires:** PRICING-AND-ENTITLEMENTS.md (§7 interim rule: no code may branch on the license plan; §3 is the only sanctioned seam).
 
 ## 4. DO LIST (every task)
 

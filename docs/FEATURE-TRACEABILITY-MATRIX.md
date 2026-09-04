@@ -3,7 +3,7 @@
 > OneFP&A · Stage 3 audit artifact (doc #38) · **Every `[MVP]` feature must have a checkmark in every column.**
 > Columns: User Story (US-xxx) · Screen(s) (S-xxx) · API Commands (API-SPEC) · DB Tables (DATABASE-SCHEMA) · Test Coverage (TESTING-STRATEGY + QA items).
 > Legend: ✅ complete · ⚠️ partial (flagged in Notes) · ❌ gap (blocking — must fix before Stage 4).
-> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 97 typed commands · 56 DB tables · 99 error codes**.
+> **ZC revision note:** suite was 54 docs/specs at the ZC close (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 97 typed commands · 56 DB tables · 99 error codes**. **Updated 2026-09-04/05:** 60 docs/specs after the gap-closure revision (DOCS-INDEX §56–61; audit in `DOCUMENTATION-GAP-ANALYSIS.md`) — the four ground-truth counts above are unchanged.
 
 ---
 

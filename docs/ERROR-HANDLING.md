@@ -3,6 +3,7 @@
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
 > **Code count: 99 (ZC revision — the original 97-code catalog plus the two M3-6 headcount domain codes `HC_DATE_INVALID` and `HC_OVERLAP`, admitted by DECISIONS ADR-026).**
+> **§2B and §2C are deliberately NOT part of the 99:** §2B lists the message *prefixes* the row validators emit under an existing code, §2C lists names reserved by specs for capability that is not built. Adding a name to either is never a way to raise the count (ADR-027).
 
 ---
 
@@ -166,6 +167,48 @@
 | HELP_TOPIC_MISSING | no topic | "No help topic for '{x}' — try search." | 404 | false |
 | EXPORT_FORMULA_INJECTION_GUARD | guard | "Text cells starting with '=' were quoted (formula-injection protection) — review before export." | 200 | false |
 | INTERNAL | unexpected | "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics." | 500 | true |
+
+---
+
+---
+
+## 2B. VALIDATOR MESSAGE PREFIXES — not catalog codes (ADR-027)
+
+Row-level findings in `src-tauri/src/commands/import.rs` carry a **typed catalog code** in `RowIssue.code` and a
+machine-readable **sub-reason prefix** at the head of `message`, as `PREFIX: detail`. The prefix is not a code: it has
+no `httpStatus`, no `userMessage`, no `Retry`, and nothing maps it — the UI renders the governing code's copy. The
+prefixes are asserted verbatim by the Rust tests (`message.starts_with("OPENING_PERIOD_MIXED:")`), so renaming one is
+a breaking change to the test suite, not a free edit. `docs:verify` 7b accepts a name here only in this form, and only
+when its governing code exists in §2.
+
+- `CURRENCY_UNKNOWN` → **VALUE_INVALID** · `import.rs:1410` (hard) · unsupported currency vs `MONEY-ROUNDING-SPEC` §1
+- `PERIOD_OUT_OF_RANGE` → **PERIOD_NOT_FOUND** · `import.rs:1462` (hard) · period outside the Company calendar
+- `ACCOUNT_MISSING` → **MAP_ACCOUNT_AMBIGUOUS** · `import.rs:1596` (hard) · no COA match at all — see **KI-018**, the governing copy says "multiple Accounts" and is wrong for this branch
+- `POSTING_REF_DUPLICATE` → **VALUE_INVALID** · `import.rs:1673` (**warning**, not blocking) · reference repeats; first row cited in `details`
+- `OPENING_PERIOD_MIXED` → **OPENING_ALREADY_SET** · `import.rs:1754` (hard) · one period per opening batch
+- `OPENING_ACCOUNT_DUPLICATE` → **OPENING_ALREADY_SET** · `import.rs:1773` (hard) · account/period pair repeats
+- `IMPORT_KIND_DESTINATION_UNAVAILABLE` → **VALUE_INVALID** · `import.rs:2372` (command error) · Import kind that does not post to the GL and has no destination pipeline
+
+`INVALID_ARGUMENT` is **not** a prefix and not a code: it is the Rust variant `AppError::InvalidArgument`, which
+`core/error.rs:168` serializes as **`VALUE_INVALID` (422, not retryable)**. Specs and trackers must cite the wire code.
+
+---
+
+## 2C. RESERVED NAMES — cited by specs, not built (no copy until the feature lands)
+
+Nine names appear in an `Error:` line of a spec but are implemented nowhere (zero occurrences under `src/` and
+`src-tauri/`) and are absent from §2. They are kept visible so a build session promotes one deliberately instead of
+inventing a tenth. A reserved name has **no `userMessage`**: adding the row to §2 with copy, `httpStatus` and `Retry`
+is part of the feature's Definition of Done, alongside its `API-SPEC.md` command row and its screen state.
+
+- `DASHBOARD_QUERY_FAILED`, `FORMULA_OUT_OF_SCOPE` → `SCREENS-SPEC.md` S-050/S-052 states
+- `COVENANT_BREACH`, `DEBT_SCHEDULE_OVERDRAWN`, `POC_ESTIMATE_INVALID`, `REVREC_POLICY_MIX` → `SCREENS-SPEC.md` plan-screen states
+- `LINE_MAPPING_INCOMPLETE` → `MODELING-METHODS-SPEC.md`
+- `RECALC_IN_FLIGHT` → `STATE-MANAGEMENT.md` (recalc queue guard)
+- `CONNECTOR_SCOPE_UNAVAILABLE` → `CONNECTOR-DATA-DICTIONARY.md` (provider field out of scope)
+
+`SCENARIO_LOCKED` is **not** reserved: it was renamed to `MODEL_CELL_LOCKED` (DECISIONS ADR-025); the two occurrences
+left in `CHANGELOG.md`/`DECISIONS.md` are dated history and must not be rewritten.
 
 ---
 

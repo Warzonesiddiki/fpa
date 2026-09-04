@@ -165,6 +165,26 @@ mirrored by the TS model, mock, S-045 page, API-SPEC, and tests.
 The current TS slice remains `PARTIAL`/`NATIVE-UNVERIFIED`: its browser mock is still in the product
 path and no native SQLite persistence or cargo verification is claimed.
 
+### ADR-027 · Classify the 17 undefined code citations as prefixes, reserved names, or one wrong name — do not grow the catalog
+**Why:** reviving the dead `docs:verify` code guard (KI-015) made every cited name checkable for the first time, and
+17 had no §2 row. The obvious move — admit them all, 99 → 116 — was tested against the binary and is **wrong**: seven
+of them are never sent on the wire. `import.rs` files row findings as `RowIssue { code, message }` where `code` is an
+existing catalog code and `message` begins with a sub-reason prefix (`"CURRENCY_UNKNOWN: USD (MONEY-ROUNDING-SPEC §1)"`);
+the Rust tests assert those prefixes verbatim, so they are contract, but they are not codes. One name
+(`INVALID_ARGUMENT`) is a leaked Rust variant name whose wire code is `VALUE_INVALID` per `core/error.rs:168`. Nine are
+forward references to capability no build session has written yet. Inventing 16 rows would have made the catalog the
+least trustworthy document in the suite, and the API would have promised codes no client can receive.
+**Decision:** keep the catalog at **99**. Document the prefix convention in `ERROR-HANDLING.md` **§2B** (each prefix
+bound to its governing §2 code), park the nine unbuilt names in **§2C** as reserved-with-no-copy, correct
+`API-SPEC.md` to cite `VALUE_INVALID`, and make §2B the *only* exemption source for `docs:verify` 7b — deleting the
+hand-maintained baseline, so changing what the gate accepts requires changing a spec, and a malformed §2B row fails
+the run rather than silently loosening it.
+**Consequences:** `docs:verify` 7b now has zero hardcoded exemptions and a mutation self-test, and its pass/fail
+signal is meaningful again. Prefix renames are breaking changes to the Rust test suite, which §2B now states. The nine
+reserved names must be admitted with `userMessage`/`httpStatus`/`Retry` **as part of the owning feature's Definition of
+Done** — they cannot ship as a bare `Error:` line on a screen. The `ACCOUNT_MISSING` branch's copy defect is a real
+user-facing bug and moves to KI-018; it needs Rust + mock + test in one PR, so it is not folded into a docs revision.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

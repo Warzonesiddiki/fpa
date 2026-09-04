@@ -3,6 +3,53 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+### Added
+- **Taxonomy truth pass + the review guard (2026-09-05, ADR-027):** the 17 undefined code citations surfaced by the revived
+  `docs:verify` guard were classified **against the binary**, and the catalog turned out to be right — admitting them would have
+  been the damage. `ERROR-HANDLING.md` gains **§2B** (the seven validator *message prefixes*, each bound to the governing §2 code
+  it is sent under — `RowIssue.code` carries the real code, `message` carries `PREFIX: detail`, and the Rust tests assert the
+  prefixes verbatim) and **§2C** (nine names reserved by specs for capability that is not built, with no copy until the owning
+  feature lands). Catalog stays **99**; `DOCS-INDEX` row 19 corrected (it still said "~75-code") and row 35 (22 ADRs → 27).
+  `API-SPEC.md` `INVALID_ARGUMENT` → **`VALUE_INVALID`** (`core/error.rs:168` maps the Rust variant to it). `docs-verify` 7b
+  drops its hand-maintained baseline entirely: §2B is now its only exemption source, a prefix naming a non-existent governing
+  code fails the run, and a malformed §2B row fails the count — verified with four probes (invented code → FAIL, §2B prefix →
+  PASS, §2B malformed → FAIL, clean → PASS). `CODING-STANDARDS.md` §7 gains item 8, the anti-hallucination review step that
+  closes checklist #61. **KI-015 closed, KI-016 closed** (diagnosis in that entry explains why "admit 7 codes" was wrong),
+  **KI-018 opened**: the unknown-account branch of GL Import reuses `MAP_ACCOUNT_AMBIGUOUS`, so a code matching *nothing*
+  renders "Account code maps to multiple Accounts ()." — the fix is a new `MAP_ACCOUNT_NOT_FOUND` + core + mock + test, which
+  needs `cargo`/`vitest` and therefore not this sandbox.
+- **Documentation gap closure, round 2 (2026-09-05):** suite 59 → **60 docs/ specs** (`DOCS-INDEX.md` row 61; the
+  `docs:verify` claim, `README.md`, `HANDOVER.md`, `CONTINUE-PROMPT.md`, `ARCHITECTURE.md`, `docs/CLAUDE.md` and the
+  traceability note moved with it). New `PRICING-AND-ENTITLEMENTS.md` closes checklist #90 by separating what is
+  settled from what is a business call: §1 records the verified truth (the license `plan` field is signed, stored and
+  displayed, and **enforced nowhere** — grep-confirmed across Rust and TS), §2 the constraints any policy inherits
+  (offline Ed25519 means every entitlement change is a re-issued payload; a local gate is advisory, never a boundary;
+  the governance floor — audit, exactness, export, encryption, backup — can never be tiered), §3 the one sanctioned
+  seam (pure evaluator, no new command, no migration, deny path core-side), §4–§5 an axis sheet and a **proposed**
+  price table, §6 the five owner decisions D1–D5, §7 the interim rule that no code may branch on `plan`.
+  `DOCS-INDEX.md` row 14 also corrected: the schema summary still said 33 tables where the spec says 56.
+- **Registered, not fixed:** `KNOWN-ISSUES.md` **KI-017** — `money:ast` fails on this checkout with 4 findings that all sit on *percent/ratio* formatting (`s051-compare` `toFixed`, `model.rs` `as f64` for `delta_pct`), while `TASKBOARD.md` records the gate green; whether ratios are in B3's scope is the owner's call, and separately the gate prints a character offset where it should print `line:col`, so CI output cannot be acted on. Also **KI-016** (superseded same day by ADR-027): the 17 undefined code refs were first read as "7 shipped codes missing from the catalog"; classified against the binary they are 7 validator message prefixes, 1 leaked Rust type name, and 9 unbuilt forward references — so the catalog stays 99. See the taxonomy-truth-entry above.
+- `money-ast.mjs` **locator fixed** (KI-017's tooling half): every finding now carries `line:col` plus the source line. Float ops and `REAL` columns previously had no location at all, and the `toFixed` finding printed a raw character offset — `(4147)` in a 429-line file. Report-only, proven against the previous revision: same 4 findings, same RC=1, offsets 1421/4147 map exactly onto `33:44` / `133:49`. No pattern, exclusion or threshold was touched; the percent-vs-money scope call stays with the owner.
+- **KI-015 guard fixed (2026-09-05):** the API error-code check in `docs-verify.mjs` could never fire (unsatisfiable
+  condition) and its regex was unusable (55 all-caps hits on `API-SPEC.md` — `NULL`, `JSON`, section titles). §7b now
+  reads codes from the three shapes the suite uses (Errors cell of a catalog row, backticked token, `"CODE: "` prefix in
+  a JSON example), parks the 6 pre-existing undefined refs in `UNDEFINED_CODE_BASELINE` which **may only shrink** (an
+  entry that becomes defined or stops being cited fails the run), and aborts the gate if a planted probe code is not
+  caught — verified by three mutation probes. No spec text was changed: admitting any of the 17 suite-wide orphans is
+  a `ERROR-HANDLING.md` §2 decision (OQ-11), not a script edit. Resolved the same day by ADR-027 — see the taxonomy-truth entry above for why admitting the 7 was the wrong fix.
+- **Documentation gap closure (2026-09-04):** audited the suite against the 101-item pre-build checklist and closed
+  the four gaps that were blocking build-session quality, taking the suite from 54 to **59 docs/ specs**
+  (`DOCS-INDEX.md` rows 56–60; `docs:verify` claim updated to match). New: `COMPETITIVE-ANALYSIS.md` (checklist #4/#5 —
+  9-vendor pricing + feature matrix with sourced figures, per-vendor weaknesses, wedge, positioning statement,
+  anti-positioning), `WIREFRAMES-CORE.md` + `WIREFRAMES-ANALYTICS.md` (#20 — layout grammar R1–R8, region geometry for
+  all 42 screens + 10 dialogs; this pair owns **geometry**, DESIGN-SYSTEM still owns look, SCREENS-SPEC still owns
+  content/states), `COPY-GUIDELINES.md` (#24 — voice, string mechanics, per-slot copy formulas, locked verb/noun
+  lexicon, 33-key i18n seed registry; error `userMessage` stays owned by `ERROR-HANDLING.md`), and
+  `DOCUMENTATION-GAP-ANALYSIS.md` (#101 audit + remaining-gap register + parking lot OQ-01…OQ-11, which also closes the
+  missing Open-Questions doc). Root `CLAUDE.md` + `AGENTS.md` added as pointer-only agent entry files (no duplicated
+  rules, B9) — `.codex/AGENTS.md` referenced a root `AGENTS.md` that did not exist. Docs-only change: no product
+  behavior, schema, command or UI string in code was touched.
+
 ### Fixed
 - **M3-6 S-045 Headcount Plan TS slice (2026-09-04):** added the strict headcount specialization of
   `model.schedule.upsert` with `schedule_id`, `recalc`, and positive `audit_id`; exact Decimal-string

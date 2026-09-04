@@ -4,7 +4,7 @@
 
 ---
 
-## MASTER INDEX (54 docs/ specs + root README = 55 files; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md)
+## MASTER INDEX (60 docs/ specs + root README = 61 files; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
 
 | # | File | One-line summary | Depends on |
 |---|---|---|---|
@@ -21,12 +21,12 @@
 | 11 | `ACCESSIBILITY.md` | WCAG 2.2 AA: contrast, focus, ARIA maps, shortcuts, blocking gates | 6, 7 |
 | 12 | `TECH-STACK.md` | Exact packages/versions + why + rejected alternatives + version policy | 1 |
 | 13 | `ARCHITECTURE.md` | Mermaid system + data flow + exact folder tree + engine contracts | 12 |
-| 14 | `DATABASE-SCHEMA.md` | 33 tables: types/PK/FK/constraints/indexes + example row each | 13 |
+| 14 | `DATABASE-SCHEMA.md` | 56 tables: types/PK/FK/constraints/indexes + example row each | 13 |
 | 15 | `API-SPEC.md` | ~70 typed IPC commands incl. 4 detailed specs + error code index | 14, 31 |
 | 16 | `AUTH-SPEC.md` | Local auth: PIN/recovery/lock/license flows + permission matrix | 13, 14 |
 | 17 | `STATE-MANAGEMENT.md` | State table (scope/storage/invalidation) + race rules | 13, 15 |
 | 18 | `INTEGRATIONS.md` | 11 integrations: purpose/secrets/rate-limits/fallbacks | 13, 16 |
-| 19 | `ERROR-HANDLING.md` | Canonical error JSON + ~75-code taxonomy + UI rules | 15 |
+| 19 | `ERROR-HANDLING.md` | Canonical error JSON + 99-code taxonomy (§A–H) + §2B validator prefixes + §2C reserved names + UI rules | 15 |
 | 20 | `CLAUDE.md` | Coding-AI context: DO/DON'T/forbidden patterns/response format | 1–19 |
 | 21 | `CODING-STANDARDS.md` | Naming, imports, async patterns, templates, review checklist | 20 |
 | 22 | `GIT-STANDARDS.md` | Commits/branches/PR rules/release tags | 21 |
@@ -41,8 +41,8 @@
 | 31 | `README.md` (root) | <5-min quickstart + 60-second product path | 3, 12 |
 | 32 | `CHANGELOG.md` | Keep-a-changelog; v0.1.0 initial entry | 31 |
 | 33 | `TODO.md` | Actionable tasks by milestone (M0–M7) + V2 backlog | 35 |
-| 34 | `KNOWN-ISSUES.md` | KI-001…KI-014: severity/status/plan + entry template | 3, 19 |
-| 35 | `DECISIONS.md` | A1–A22 assumptions + 22 ADRs + superseded record | 1–34 |
+| 34 | `KNOWN-ISSUES.md` | KI-001…KI-018: severity/status/plan + entry template (KI-015 = dead `docs:verify` guard, revived with zero exemptions · KI-016 = the 17 cited names classified · KI-018 = wrong copy on the account-missing import branch) | 3, 19 |
+| 35 | `DECISIONS.md` | A1–A22 assumptions + 27 ADRs + superseded record | 1–34 |
 | 36 | `ROADMAP.md` | Dependency-ordered milestones w/ complexity + reference docs | 35 |
 | 37 | `DEFINITION-OF-DONE.md` | Feature/release doneness checklist + traps | 24, 36 |
 | 38 | `FEATURE-TRACEABILITY-MATRIX.md` | Stage 3 audit: feature ↔ story ↔ screens ↔ commands ↔ tables ↔ tests | 3–36 |
@@ -63,6 +63,12 @@
 | 53 | `RELEASE-CHECKLIST.md` | Pre-release sign-off checklist + stop conditions + release-day incident | 28, 29, 37 |
 | 54 | `ZERO-COMPROMISE-RULES.md` | Canonical B1–B20 / B18-x product rules + CI enforcement map + QA Q1–Q8 namespace note | 4, 9, 23, 37 |
 | 55 | `LICENSE-SPEC.md` | Offline Ed25519 licensing: request/response exchange, canonical payload, 60d grace, key custody, fixtures | 3, 9, 23, 40 |
+| 56 | `COMPETITIVE-ANALYSIS.md` | 9-vendor pricing/feature matrix, documented weaknesses, wedge + positioning statement | 2, 3, 5 |
+| 57 | `WIREFRAMES-CORE.md` | Layout grammar (R1–R8) + region geometry for S-001…S-048; owns geometry, DESIGN-SYSTEM owns look | 6, 7 |
+| 58 | `WIREFRAMES-ANALYTICS.md` | Region geometry S-050…S-076 + D-001…D-010 dialog rules + geometry review checks | 57 |
+| 59 | `COPY-GUIDELINES.md` | Voice, mechanics, per-slot copy formulas, locked verb/noun lexicon, 33-key i18n seed registry | 1, 6, 19 |
+| 60 | `DOCUMENTATION-GAP-ANALYSIS.md` | 101-item checklist audit + remaining-gap register + parking lot (OQ-01…OQ-11) | 1–59 |
+| 61 | `PRICING-AND-ENTITLEMENTS.md` | What license `plan` means (nothing enforced today), the never-paywalled floor, the one sanctioned seam, axis + pricing decision sheet | 3, 14, 19, 55, 56 |
 
 ## DEPENDENCY MAP (subset — build order)
 
@@ -85,5 +91,7 @@ flowchart LR
 2. **Edits to a spec require** updating this index (if title/summary changed) + a "docs synced" note in the PR.
 3. **Cross-references** must use relative markdown links + document name; CI link-checker validates.
 4. **Stage/phase status** lives in the file header (`> STATUS: …`), never only in chat.
+5. **Root pointer files** (`CLAUDE.md`, `AGENTS.md`) are agent entry points, not specs: they contain no rules of
+   their own — they route to `docs/CLAUDE.md` + this index (B9, no duplicated source of truth).
 
 *Source of truth chain: GLOSSARY → PRD → ARCHITECTURE → API-SPEC → CODE (per CLAUDE.md §1).*

@@ -59,7 +59,7 @@ cargo test               # rust unit + property + oracle tests
 
 | Path | What |
 |---|---|
-| `docs/` | The 55 documentation files (54-row docs index + README) — source of truth — start at DOCS-INDEX.md) |
+| `docs/` | The 61 documentation files (60-row docs index + README) — source of truth — start at DOCS-INDEX.md) |
 | `src/` | TypeScript UI (React 19, AG Grid, ECharts, HyperFormula) |
 | `src-tauri/` | Rust core (engines, money, calendar, ingestion, export, security) |
 | `packs/` | Industry Packs (JSON + SQL seeds — data only) |

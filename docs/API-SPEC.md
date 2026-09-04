@@ -311,7 +311,7 @@ inserted before children via a fixpoint pass so the BU/COA trees survive regardl
 source row order — plus a new default Model + Base scenario (source's horizon + pack).
 The sandbox's `company_file_path` is the source file's **directory** + `<name>.fpa`; a path
 that already holds a file is `STORAGE_FILE_EXISTS`, a taken Company name or an empty name
-is `INVALID_ARGUMENT`.
+is `VALUE_INVALID` (422, not retryable) — the Rust variant `AppError::InvalidArgument` is not a wire code; see ERROR-HANDLING §2B.
 
 **NOT copied at M1:** GL lines, scenarios, model cells, and any Models beyond the source's
 first — the sandbox starts from the source's structure and calendar and the sandboxer
