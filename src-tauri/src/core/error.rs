@@ -51,7 +51,7 @@ pub enum AppError {
     #[error("audit chain verification failed at seq {at_seq}")]
     AuditChainBreak { at_seq: i64 },
     // ── Ingestion (GL-TEMPLATE-SPEC §6 / ERROR-HANDLING §C/F) ─────────────────
-    // Only the 97 locked codes are ever emitted; row-level problems without a dedicated
+    // Native emits only its implemented subset of the locked catalog; row-level problems without a dedicated
     // code (blank column, unparseable number, unknown currency) reuse VALUE_INVALID and
     // carry the specific reason in `message`/`details` (B20: reuse, never invent).
     #[error("file could not be read: {0}")]

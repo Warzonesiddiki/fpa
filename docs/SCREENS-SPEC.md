@@ -198,13 +198,20 @@
 - **Populated:** rows + usage counts + status.
 
 ### S-045 Headcount Plan | `/model/headcount`
-**Purpose:** F-016 workforce plan (org, hires/attrition, comp).
-**Elements:** org structure tree, hire/termination schedule table (role, cost center, start, comp, benefits %, load), cost rollup preview by period, proration display, import from driver data.
-- **Loading:** skeleton.
-- **Empty:** "Add roles or import headcount".
-- **Error:** `HC_DATE_INVALID`, `HC_OVERLAP` (same role/period).
-- **Success:** plan renders.
-- **Populated:** totals + monthly cost.
+**Purpose:** F-016 workforce plan (org, hires/attrition, compensation) with an exact Decimal-string
+preview until the native schedule path is available.
+**Elements:** org structure tree grouped by cost center; hire/termination schedule table (role,
+cost center, start, termination, annual base compensation, benefits %, day-count proration, edit/remove);
+cost rollup preview by fiscal period; driver-data import hand-off.
+- **Loading:** calendar skeleton; no stale schedule controls are shown.
+- **Empty:** "Add roles or import headcount" with Add role; the form and import hand-off are available.
+- **Error:** typed `HC_DATE_INVALID` for malformed/out-of-horizon date windows or `HC_OVERLAP` for
+  same-role/cost-center activity in one fiscal period; show the locked `userMessage` and code, retain
+  form input, and offer Retry only for retryable transport errors.
+- **Success:** audited `model.schedule.upsert` returns `schedule_id`, `recalc`, and positive `audit_id`;
+  show the saved status and the updated schedule/rollup without hiding content.
+- **Populated:** totals, active FTE by fiscal period, exact active-days/period-days proration, additive
+  bonus/benefits/employer-load percentages, and optional linear ramp are visible.
 
 ### S-046 Capital, Debt & Working Capital | `/model/capital`
 **Purpose:** F-017 capex/depreciation/debt/13-week cash.

@@ -3,7 +3,7 @@
 > OneFP&A · Stage 3 audit artifact (doc #38) · **Every `[MVP]` feature must have a checkmark in every column.**
 > Columns: User Story (US-xxx) · Screen(s) (S-xxx) · API Commands (API-SPEC) · DB Tables (DATABASE-SCHEMA) · Test Coverage (TESTING-STRATEGY + QA items).
 > Legend: ✅ complete · ⚠️ partial (flagged in Notes) · ❌ gap (blocking — must fix before Stage 4).
-> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 97 typed commands · 56 DB tables · 97 error codes**.
+> **ZC revision note:** suite now = 54 docs/specs (16 supplemental docs — see DOCS-INDEX §39–54); counts corrected to ground truth: **42 screens · 97 typed commands · 56 DB tables · 99 error codes**.
 
 ---
 
@@ -26,7 +26,7 @@
 | F-013 Driver Modeling | US-014 | S-043 | driver.upsert/set_value/import | drivers, driver_values | ✅ unit+integration | — |
 | F-014 Assumption Register | US-015 | S-044 | assumption.* (`list`/`upsert`/`find_usages`) | assumptions, assumption_values, audit_events | ⚠️ unit + Rust integration pending toolchain | ✅ TS hardcode scan (`findHardcodedLiterals`/`scanHardcoded`) + convert (`convertHardcoded` → bare named-range ref, persisted via `model.cell.set.v1`) + waive-with-reason (session-scoped) + effective-period helpers + change-diff. Remaining: audited Rust waiver event; converted refs resolve once M3-10 named ranges land |
 | F-015 Methods & Spreading | US-016 | S-041 | model.cell.set.v1 (method), spread via engine | model_lines.method | ✅ unit | — |
-| F-016 Headcount Plan | US-017 | S-045 | driver.* + model.cell | drivers(headcount), driver_values | ✅ unit | — |
+| F-016 Headcount Plan | US-017 | S-045 | model.schedule.upsert, driver.import | session schedule cache → native `model_values`/driver destination follow-on | ⚠️ TS unit/store/page + axe; native integration pending | TS Decimal/day-count/overlap/typed-error slice is green; audited response includes `schedule_id`, `recalc`, positive `audit_id`; browser mock/session cache remains in product path, so M3-6 is PARTIAL |
 | F-017 Capital/Debt/WC/13w | US-018 | S-046 | model.cell + report.get (cash) | model_lines/values, gl_lines | ✅ property (roll-forward) | — |
 | F-018 Production/Backlog | US-019 | S-047 | driver.* + model.schedule | drivers, model_values | ✅ unit | — |
 | F-019 RevRec | US-020 | S-048 | model.cell (policy) | model_lines/values | ✅ unit | — |

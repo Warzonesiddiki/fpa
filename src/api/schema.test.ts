@@ -29,6 +29,8 @@ import {
   ModelRecalcData,
   ModelListArgs,
   ModelListData,
+  ModelScheduleUpsertArgs,
+  ModelScheduleUpsertData,
   ScenarioCreateArgs,
   ScenarioIdArgs,
   ScenarioReopenArgs,
@@ -1126,6 +1128,59 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
         precedents: [{ line_id: "x", period_id: "y", sheet: 0, col: 1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it("model.schedule.upsert validates the typed S-045 headcount rows and recalc envelope", () => {
+    const model_id = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+    const valid = {
+      model_id,
+      schedule_type: "headcount" as const,
+      rows: [
+        {
+          id: "hc-row-1",
+          role: "Analyst",
+          cost_center: "Finance",
+          start_date: "2026-04-01",
+          termination_date: null,
+          base_comp_decimal: "120000.00",
+          bonus_pct: "10",
+          benefits_pct: "20",
+          employer_load_pct: "5",
+          ramp_months: 2,
+        },
+      ],
+    };
+    expect(ModelScheduleUpsertArgs.safeParse(valid).success).toBe(true);
+    expect(
+      ModelScheduleUpsertArgs.safeParse({
+        ...valid,
+        rows: [{ ...valid.rows[0], start_date: "04/01/2026" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelScheduleUpsertArgs.safeParse({
+        ...valid,
+        rows: [{ ...valid.rows[0], base_comp_decimal: 120000 }],
+      }).success,
+    ).toBe(false);
+    expect(ModelScheduleUpsertArgs.safeParse({ ...valid, extra: true }).success).toBe(false);
+    expect(CommandArgs["model.schedule.upsert"]).toBeDefined();
+    const response = {
+      schedule_id: "3f9f2c9e-9f8b-4e2d-9a1c-600000000001",
+      recalc: {
+        dirty_cells: 1,
+        cycles: [],
+        changed_cells: ["hc-row-1"],
+        issues: [],
+        duration_ms: 0,
+      },
+      audit_id: 101,
+    };
+    expect(ModelScheduleUpsertData.safeParse(response).success).toBe(true);
+    expect(ModelScheduleUpsertData.safeParse({ ...response, audit_id: 0 }).success).toBe(false);
+    expect(ModelScheduleUpsertData.safeParse({ ...response, audit_id: undefined }).success).toBe(
+      false,
+    );
   });
 
   it("driver.upsert validates model_id + driver body and rejects an invalid name/type", () => {

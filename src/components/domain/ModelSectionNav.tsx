@@ -5,6 +5,7 @@ const TABS = [
   { to: "/app/model/grid", key: "grid" },
   { to: "/app/model/inspect", key: "inspect" },
   { to: "/app/model/drivers", key: "drivers" },
+  { to: "/app/model/headcount", key: "headcount" },
   { to: "/app/model/coa", key: "coa" },
   { to: "/app/model/calendar", key: "calendar" },
   { to: "/app/model/packs", key: "packs" },

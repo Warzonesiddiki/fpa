@@ -1132,6 +1132,49 @@ export const ModelInspectData = z.object({
   is_cycle: z.boolean(),
 });
 
+/* ── model.schedule.upsert (F-016 · M3-6 · S-045) ─────────────────────────────────────────
+ * The catalogued schedule command is shared by the later Capital/Production/RevRec units. This
+ * slice locks the headcount row body only; those schedule types must add their own row contract
+ * when their Tier-3 rules are ready. Compensation remains decimal text across IPC (B3). */
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "HC_DATE_INVALID: ISO date expected.");
+
+export const HeadcountScheduleRow = z
+  .object({
+    id: z
+      .string()
+      .regex(/^hc-[a-zA-Z0-9_-]+$/, "VALUE_INVALID: headcount row id is invalid.")
+      .optional(),
+    role: z.string().trim().min(1, "VALUE_INVALID: role is required.").max(120),
+    cost_center: z.string().trim().min(1, "VALUE_INVALID: cost center is required.").max(120),
+    start_date: IsoDate,
+    termination_date: IsoDate.nullable().default(null),
+    base_comp_decimal: DecimalString,
+    bonus_pct: DecimalString.default("0"),
+    benefits_pct: DecimalString.default("0"),
+    employer_load_pct: DecimalString.default("0"),
+    ramp_months: z.number().int().min(0).max(120).default(0),
+  })
+  .strict();
+export type HeadcountScheduleRow = z.infer<typeof HeadcountScheduleRow>;
+
+/** `model.schedule.upsert` currently carries the S-045 headcount schedule (API-SPEC §3). */
+export const ModelScheduleUpsertArgs = z
+  .object({
+    model_id: Uuid,
+    schedule_type: z.literal("headcount"),
+    rows: z.array(HeadcountScheduleRow).max(5000),
+  })
+  .strict();
+export type ModelScheduleUpsertArgs = z.infer<typeof ModelScheduleUpsertArgs>;
+export const ModelScheduleUpsertData = z
+  .object({
+    schedule_id: Uuid,
+    recalc: RecalcReport,
+    audit_id: z.number().int().positive(),
+  })
+  .strict();
+export type ModelScheduleUpsertData = z.infer<typeof ModelScheduleUpsertData>;
+
 /* ── driver.* (F-013 · M3-3 · MODELING-METHODS-SPEC §2, DATABASE-SCHEMA §6) ──────────────
  * Driver tables are the semantic inputs to planning lines whose `method` is `driver`. Values are
  * exact decimal strings (`value_decimal` — never a float, B3); `driver.upsert` defines a driver
@@ -1453,6 +1496,7 @@ export const CommandArgs = {
   "model.cell.set.v1": ModelCellSetArgs,
   "model.recalc": ModelRecalcArgs,
   "model.inspect": ModelInspectArgs,
+  "model.schedule.upsert": ModelScheduleUpsertArgs,
   "driver.upsert": DriverUpsertArgs,
   "driver.set_value": DriverSetValueArgs,
   "driver.import": DriverImportArgs,

@@ -6,6 +6,7 @@ import { ModelGridPage } from "@/pages/s041-model-grid/lazy";
 import { FormulaInspectorPage } from "@/pages/s042-formula-inspector/lazy";
 import { DriverTablesPage } from "@/pages/s043-drivers/lazy";
 import { AssumptionsPage } from "@/pages/s044-assumptions";
+import { HeadcountPage } from "@/pages/s045-headcount/lazy";
 import { ScenariosPage } from "@/pages/s050-scenarios";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
@@ -67,6 +68,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
             <DriverTablesPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "model/headcount",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <HeadcountPage />
           </Suspense>
         ),
       },

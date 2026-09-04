@@ -153,6 +153,18 @@ possible as an *attempt* so the typed error (with its message) surfaces instead 
 lifecycle errors keep their own codes (`SCENARIO_NAME_DUP`, `SCENARIO_LOCK_CONFLICT`,
 `BASELINE_REPLACE_REASON_REQUIRED`).
 
+### ADR-026 · Admit the two S-045 headcount validation codes to the canonical taxonomy (M3-6)
+**Why:** the headcount contract needs stable, actionable distinctions between an invalid date window
+and a same-role overlap. Reusing `VALUE_INVALID` would erase row/period details and contradict the
+screen/story/API requirement for typed errors. These are real domain errors, not implementation-only
+strings.
+**Decision:** add `HC_DATE_INVALID` and `HC_OVERLAP` to ERROR-HANDLING.md, bringing the locked catalog
+to 99 codes. Both are 422/non-retryable and preserve safe row/period details; their exact user text is
+mirrored by the TS model, mock, S-045 page, API-SPEC, and tests.
+**Consequences:** native schedule work must map these codes in its handler before M3-6 can become DONE.
+The current TS slice remains `PARTIAL`/`NATIVE-UNVERIFIED`: its browser mock is still in the product
+path and no native SQLite persistence or cargo verification is claimed.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |
