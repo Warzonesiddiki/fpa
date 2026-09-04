@@ -216,6 +216,256 @@ pub fn model_recalc(
 
 pub use crate::commands::scenario::model_list;
 
+/// `model.diff` — {scenario_a, version_a?, scenario_b, version_b?} → {diff_rows[]}
+/// (API-SPEC §2 row 50 · SCENARIO-VERSION-SPEC §4 · S-051).
+/// Two-way cell diff between Scenarios/Versions: Δ computed in Rust (Money Value),
+/// Δ% = Δ / |A| (or n/a if A = 0 — never Infinity).
+#[tauri::command(name = "model.diff", rename_all = "snake_case")]
+pub fn model_diff(
+    app: AppHandle,
+    scenario_a: String,
+    version_a: Option<String>,
+    scenario_b: String,
+    version_b: Option<String>,
+    session: State<'_, SessionState>,
+    _registry: State<'_, ModelRegistry>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_unlocked(&session)?;
+
+    let dir = app_data_dir(&app)?;
+    let conn = db::open_at(&dir)?;
+
+    // Both scenarios must exist and belong to the same company via their models.
+    let model_a: String = conn
+        .query_row(
+            "SELECT s.model_id FROM scenarios s
+             JOIN models m ON s.model_id = m.id
+             WHERE s.id = ?1 AND m.company_id = ?2",
+            rusqlite::params![scenario_a, company_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::file_corrupt)?;
+
+    let model_b: String = conn
+        .query_row(
+            "SELECT s.model_id FROM scenarios s
+             JOIN models m ON s.model_id = m.id
+             WHERE s.id = ?1 AND m.company_id = ?2",
+            rusqlite::params![scenario_b, company_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+        .ok_or_else(AppError::file_corrupt)?;
+
+    if model_a != model_b {
+        return Err(AppError::compare_incompatible());
+    }
+
+    // Collect all model_lines for this model (with sheet info).
+    let mut stmt_lines = conn
+        .prepare(
+            "SELECT ml.id, ml.sheet_id, COALESCE(ms.name, ml.sheet_id) AS sheet_name,
+                    ml.account_id, ml.driver_id, ml.sort_order
+             FROM model_lines ml
+             LEFT JOIN model_sheets ms ON ml.sheet_id = ms.id
+             WHERE ms.model_id = ?1
+             ORDER BY ms.sort_order, ml.sort_order",
+        )
+        .map_err(AppError::from)?;
+
+    struct LineInfo {
+        id: String,
+        sheet_id: String,
+        sheet_name: String,
+        account_id: Option<String>,
+        driver_id: Option<String>,
+    }
+
+    let lines: Vec<LineInfo> = stmt_lines
+        .query_map(rusqlite::params![model_a], |row| {
+            Ok(LineInfo {
+                id: row.get(0)?,
+                sheet_id: row.get(1)?,
+                sheet_name: row.get(2)?,
+                account_id: row.get(3)?,
+                driver_id: row.get(4)?,
+            })
+        })
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+
+    if lines.is_empty() {
+        return Ok(serde_json::json!({ "data": { "diff_rows": [] } }));
+    }
+
+    // Collect all fiscal periods for this model's calendar.
+    let mut stmt_periods = conn
+        .prepare(
+            "SELECT DISTINCT mv.period_id
+             FROM model_values mv
+             JOIN model_lines ml ON mv.line_id = ml.id
+             JOIN model_sheets ms ON ml.sheet_id = ms.id
+             WHERE ms.model_id = ?1
+             ORDER BY mv.period_id",
+        )
+        .map_err(AppError::from)?;
+
+    let period_ids: Vec<String> = stmt_periods
+        .query_map(rusqlite::params![model_a], |row| row.get(0))
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+
+    // Build a map: line_id → period_id → value for scenario A.
+    let mut values_a: std::collections::HashMap<String, std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>> =
+        std::collections::HashMap::new();
+
+    let mut query_a = format!(
+        "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
+         FROM model_values mv
+         WHERE mv.scenario_id = ?1"
+    );
+    if let Some(ref va) = version_a {
+        query_a.push_str(&format!(" AND mv.source_version_id = '{}'", va.replace('\'', "''")));
+    }
+
+    {
+        let mut stmt = conn.prepare(&query_a).map_err(AppError::from)?;
+        let mut rows = stmt.query(rusqlite::params![scenario_a]).map_err(AppError::from)?;
+        while let Some(row) = rows.next().map_err(AppError::from)? {
+            let line_id: String = row.get(0)?;
+            let period_id: String = row.get(1)?;
+            let amount_minor: Option<i64> = row.get(2)?;
+            let amount_text: Option<String> = row.get(3)?;
+            let formula: Option<String> = row.get(4)?;
+            values_a
+                .entry(line_id)
+                .or_default()
+                .insert(period_id, Some((amount_minor, amount_text, formula)));
+        }
+    }
+
+    // Build a map: line_id → period_id → value for scenario B.
+    let mut values_b: std::collections::HashMap<String, std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>> =
+        std::collections::HashMap::new();
+
+    let mut query_b = format!(
+        "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
+         FROM model_values mv
+         WHERE mv.scenario_id = ?1"
+    );
+    if let Some(ref vb) = version_b {
+        query_b.push_str(&format!(" AND mv.source_version_id = '{}'", vb.replace('\'', "''")));
+    }
+
+    {
+        let mut stmt = conn.prepare(&query_b).map_err(AppError::from)?;
+        let mut rows = stmt.query(rusqlite::params![scenario_b]).map_err(AppError::from)?;
+        while let Some(row) = rows.next().map_err(AppError::from)? {
+            let line_id: String = row.get(0)?;
+            let period_id: String = row.get(1)?;
+            let amount_minor: Option<i64> = row.get(2)?;
+            let amount_text: Option<String> = row.get(3)?;
+            let formula: Option<String> = row.get(4)?;
+            values_b
+                .entry(line_id)
+                .or_default()
+                .insert(period_id, Some((amount_minor, amount_text, formula)));
+        }
+    }
+
+    // Build diff rows: iterate all line × period combinations.
+    let mut diff_rows = Vec::new();
+
+    for line in &lines {
+        let periods_a = values_a.get(&line.id);
+        let periods_b = values_b.get(&line.id);
+
+        // Union of all periods across both scenarios for this line.
+        let mut all_periods: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(pa) = periods_a {
+            all_periods.extend(pa.keys().cloned());
+        }
+        if let Some(pb) = periods_b {
+            all_periods.extend(pb.keys().cloned());
+        }
+        if all_periods.is_empty() {
+            // No values in either scenario — still emit a row with nulls for each known period.
+            for pid in &period_ids {
+                all_periods.insert(pid.clone());
+            }
+        }
+
+        let mut sorted_periods: Vec<String> = all_periods.into_iter().collect();
+        sorted_periods.sort();
+
+        for pid in &sorted_periods {
+            let val_a = periods_a
+                .and_then(|pa| pa.get(pid))
+                .cloned()
+                .flatten();
+            let val_b = periods_b
+                .and_then(|pb| pb.get(pid))
+                .cloned()
+                .flatten();
+
+            let minor_a = val_a.as_ref().and_then(|v| v.0);
+            let text_a = val_a.as_ref().and_then(|v| v.1.clone());
+            let formula_a = val_a.as_ref().and_then(|v| v.2.clone());
+
+            let minor_b = val_b.as_ref().and_then(|v| v.0);
+            let text_b = val_b.as_ref().and_then(|v| v.1.clone());
+            let formula_b = val_b.as_ref().and_then(|v| v.2.clone());
+
+            let delta_minor = minor_b.unwrap_or(0) - minor_a.unwrap_or(0);
+            let is_changed = minor_a != minor_b || text_a != text_b || formula_a != formula_b;
+
+            // Δ% = Δ / |A| — None when A = 0 (never Infinity/NaN per SPEC §4).
+            let delta_pct = if minor_a.unwrap_or(0) != 0 {
+                let abs_a = minor_a.unwrap_or(0).abs() as f64;
+                Some((delta_minor as f64) / abs_a)
+            } else {
+                None
+            };
+
+            // Format delta as decimal string from minor units.
+            let delta_text = format!("{}", delta_minor);
+
+            diff_rows.push(serde_json::json!({
+                "line_id": line.id,
+                "sheet_id": line.sheet_id,
+                "sheet_name": line.sheet_name,
+                "line_name": line.id,
+                "account_id": line.account_id,
+                "driver_id": line.driver_id,
+                "driver_name": null,
+                "period_id": pid,
+                "period_label": pid,
+                "value_a": text_a,
+                "value_a_minor": minor_a,
+                "formula_a": formula_a,
+                "value_b": text_b,
+                "value_b_minor": minor_b,
+                "formula_b": formula_b,
+                "delta_minor": delta_minor,
+                "delta_text": delta_text,
+                "delta_pct": delta_pct,
+                "is_changed": is_changed,
+            }));
+        }
+    }
+
+    Ok(serde_json::json!({
+        "data": {
+            "diff_rows": diff_rows,
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

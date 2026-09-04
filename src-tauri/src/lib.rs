@@ -24,7 +24,7 @@ use commands::import::{
     import_rollback, import_tieout, import_validate,
 };
 use commands::license::{license_apply_response, license_request_file, license_verify};
-use commands::model::{ModelRegistry, model_cell_set_v1, model_recalc};
+use commands::model::{ModelRegistry, model_cell_set_v1, model_diff, model_recalc};
 use commands::pack::pack_list;
 use commands::scenario::{
     baseline_set, model_list, scenario_approve, scenario_create, scenario_delete,
@@ -86,6 +86,7 @@ pub fn run() {
             settings_set,
             model_cell_set_v1,
             model_recalc,
+            model_diff,
             driver_upsert,
             driver_set_value,
             assumption_upsert,

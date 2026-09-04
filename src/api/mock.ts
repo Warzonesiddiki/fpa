@@ -1510,6 +1510,76 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
+    case "model.diff": {
+      const { scenario_a, scenario_b } = args as {
+        scenario_a: string;
+        scenario_b: string;
+        version_a?: string | null;
+        version_b?: string | null;
+      };
+      // Both scenarios must exist and belong to the same model.
+      const scenA = mockScenarios.get(scenario_a);
+      const scenB = mockScenarios.get(scenario_b);
+      if (!scenA || !scenB) {
+        return mockError(
+          "VALUE_INVALID",
+          "scenario not found",
+          "One or both Scenarios do not exist.",
+          422,
+        );
+      }
+      if (scenA.model_id !== scenB.model_id) {
+        return mockError(
+          "COMPARE_INCOMPATIBLE",
+          "cannot compare: models or COAs differ",
+          "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model.",
+          422,
+        );
+      }
+      // Generate deterministic diff rows from mocked model cells.
+      const mockLines = [
+        { id: "ln-rev", sheet_id: "sh-rev", sheet_name: "Revenue", account_id: "00000000-0000-4000-8000-000000000001", driver_id: null },
+        { id: "ln-cogs", sheet_id: "sh-cogs", sheet_name: "Cost of Goods Sold", account_id: "00000000-0000-4000-8000-000000000003", driver_id: null },
+        { id: "ln-opex", sheet_id: "sh-opex", sheet_name: "Operating Expenses", account_id: null, driver_id: null },
+      ];
+      const mockPeriods = ["fp-2027-p01", "fp-2027-p02", "fp-2027-p03"];
+      const diffRows: unknown[] = [];
+      for (const line of mockLines) {
+        for (const pid of mockPeriods) {
+          const keyA = `${scenario_a}:${line.id}:${pid}`;
+          const keyB = `${scenario_b}:${line.id}:${pid}`;
+          const cellA = modelCells.get(keyA);
+          const cellB = modelCells.get(keyB);
+          const minorA = cellA?.valueMinor ?? null;
+          const minorB = cellB?.valueMinor ?? null;
+          const deltaMinor = (minorB ?? 0) - (minorA ?? 0);
+          const deltaPct = minorA != null && minorA !== 0 ? deltaMinor / Math.abs(minorA) : null;
+          const isChanged = minorA !== minorB || cellA?.value !== cellB?.value || cellA?.formula !== cellB?.formula;
+          diffRows.push({
+            line_id: line.id,
+            sheet_id: line.sheet_id,
+            sheet_name: line.sheet_name,
+            line_name: line.id,
+            account_id: line.account_id,
+            driver_id: line.driver_id,
+            driver_name: null,
+            period_id: pid,
+            period_label: pid,
+            value_a: cellA?.value ?? null,
+            value_a_minor: minorA,
+            formula_a: cellA?.formula ?? null,
+            value_b: cellB?.value ?? null,
+            value_b_minor: minorB,
+            formula_b: cellB?.formula ?? null,
+            delta_minor: deltaMinor,
+            delta_text: String(deltaMinor),
+            delta_pct: deltaPct,
+            is_changed: isChanged,
+          });
+        }
+      }
+      return { data: { diff_rows: diffRows } };
+    }
     case "driver.upsert": {
       const { model_id, driver } = args as {
         model_id: string;

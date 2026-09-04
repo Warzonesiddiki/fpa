@@ -146,6 +146,9 @@ pub enum AppError {
     BaselineReplaceReasonRequired {
         current_baseline_scenario_id: Option<String>,
     },
+    // ── Model Compare (F-022 / ERROR-HANDLING §E) ──────────────────────────────────────────
+    #[error("cannot compare: models or COAs differ")]
+    CompareIncompatible,
 }
 
 impl AppError {
@@ -216,6 +219,7 @@ impl AppError {
             AppError::BaselineReplaceReasonRequired { .. } => {
                 ("BASELINE_REPLACE_REASON_REQUIRED", 422, false, None)
             }
+            AppError::CompareIncompatible => ("COMPARE_INCOMPATIBLE", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -576,6 +580,9 @@ impl AppError {
                     details: serde_json::json!({ "current_baseline_scenario_id": current_baseline_scenario_id }),
                 };
             }
+            AppError::CompareIncompatible => {
+                "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -776,6 +783,10 @@ impl AppError {
             current_baseline_scenario_id,
         }
     }
+
+    pub fn compare_incompatible() -> Self {
+        AppError::CompareIncompatible
+    }
 }
 
 /// Capitalize the first char for documented user text ("revenue" → "Revenue").
@@ -946,5 +957,19 @@ mod tests {
             replace2.details["current_baseline_scenario_id"],
             serde_json::Value::Null
         );
+    }
+
+    #[test]
+    fn compare_incompatible_error_matches_contract() {
+        let err = AppError::compare_incompatible().body();
+        assert_eq!(err.code, "COMPARE_INCOMPATIBLE");
+        assert_eq!(err.http_status, 422);
+        assert!(!err.retryable);
+        assert_eq!(err.retry_after_ms, None);
+        assert_eq!(
+            err.user_message,
+            "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model."
+        );
+        assert_eq!(err.details, serde_json::json!({}));
     }
 }

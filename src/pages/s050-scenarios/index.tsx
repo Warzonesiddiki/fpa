@@ -264,6 +264,15 @@ export function ScenariosPage() {
           <Plus aria-hidden="true" className="h-4 w-4" />
           {t("scenariosPage.newScenario")}
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            window.location.href = "/app/plan/compare";
+          }}
+        >
+          {t("scenariosPage.compareScenarios")}
+        </Button>
       </div>
 
       {lastResult && (

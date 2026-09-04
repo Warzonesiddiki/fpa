@@ -28,6 +28,7 @@ describe("i18n — v1 single-UI English (LOCALIZATION-SPEC A2)", () => {
       "dashboard.title",
       "scenariosPage.title",
       "scenariosPage.actions.lock",
+      "comparePage.title",
       "scenarioPicker.label",
       "scenarioPicker.manage",
       "importHub.title",

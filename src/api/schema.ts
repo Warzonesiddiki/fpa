@@ -1462,6 +1462,48 @@ export type ModelListArgs = z.infer<typeof ModelListArgs>;
 export const ModelListData = z.array(ModelSummary);
 export type ModelListData = z.infer<typeof ModelListData>;
 
+/* ── model.diff (F-022 · M4-3 · S-051 · SCENARIO-VERSION-SPEC §4) ─────────────────────── */
+
+/** `model.diff` — two-way cell diff between Scenarios/Versions (API-SPEC §2 row 50). */
+export const ModelDiffArgs = z
+  .object({
+    scenario_a: Uuid,
+    version_a: Uuid.nullable().optional(),
+    scenario_b: Uuid,
+    version_b: Uuid.nullable().optional(),
+  })
+  .strict();
+export type ModelDiffArgs = z.infer<typeof ModelDiffArgs>;
+
+/** A single cell-level diff row (SCENARIO-VERSION-SPEC §4: Δ computed in Rust, Money Value). */
+export const ModelDiffRow = z.object({
+  line_id: Uuid,
+  sheet_id: z.string(),
+  sheet_name: z.string(),
+  line_name: z.string(),
+  account_id: Uuid.nullable(),
+  driver_id: z.string().nullable().optional(),
+  driver_name: z.string().nullable().optional(),
+  period_id: FiscalPeriodId,
+  period_label: z.string(),
+  value_a: DecimalString.nullable(),
+  value_a_minor: MoneyMinor.nullable(),
+  formula_a: z.string().nullable().optional(),
+  value_b: DecimalString.nullable(),
+  value_b_minor: MoneyMinor.nullable(),
+  formula_b: z.string().nullable().optional(),
+  delta_minor: MoneyMinor,
+  delta_text: DecimalString,
+  delta_pct: z.number().nullable(),
+  is_changed: z.boolean(),
+});
+export type ModelDiffRow = z.infer<typeof ModelDiffRow>;
+
+export const ModelDiffData = z.object({
+  diff_rows: z.array(ModelDiffRow),
+});
+export type ModelDiffData = z.infer<typeof ModelDiffData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1512,6 +1554,7 @@ export const CommandArgs = {
   "scenario.reopen": ScenarioReopenArgs,
   "scenario.delete": ScenarioIdArgs,
   "baseline.set": BaselineSetArgs,
+  "model.diff": ModelDiffArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

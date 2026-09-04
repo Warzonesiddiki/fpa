@@ -1137,6 +1137,7 @@
     "horizonYears": "{{count}} fiscal year",
     "horizonYears_plural": "{{count}} fiscal years",
     "newScenario": "New Scenario",
+    "compareScenarios": "Compare Scenarios",
     "tableCaption": "Scenario list for the active Model",
     "col": {
       "name": "Scenario",
@@ -1260,5 +1261,33 @@
     "manage": "Manage scenarios",
     "lockBadge": "Locked",
     "stateTitle": "State: {{state}}"
+  },
+  "comparePage": {
+    "title": "Model Compare",
+    "lead": "Two-way cell diff between Scenarios/Versions. Values shown in minor units.",
+    "scenarioA": "Scenario A",
+    "scenarioB": "Scenario B",
+    "versionA": "Version A",
+    "versionB": "Version B",
+    "swap": "Swap scenarios",
+    "compare": "Compare",
+    "onlyChanged": "Only changed",
+    "exportCsv": "Export CSV",
+    "empty": "Select two Scenarios to compare their cell values.",
+    "identical": "The selected Scenarios are identical — no differences found.",
+    "summary": "{{total}} rows, {{changed}} changed",
+    "tableCaption": "Cell-level diff between Scenario A and Scenario B",
+    "col": {
+      "sheet": "Sheet",
+      "line": "Line",
+      "period": "Period",
+      "valueA": "Value A",
+      "valueB": "Value B",
+      "delta": "\u0394",
+      "deltaPct": "\u0394 %"
+    },
+    "errors": {
+      "load": "Compare could not be loaded."
+    }
   }
 }
