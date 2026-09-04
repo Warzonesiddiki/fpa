@@ -14,5 +14,7 @@ docs-index.json
 .env
 .env.*
 src-tauri/target/
+target/
 src-tauri/gen/
 .github/
+

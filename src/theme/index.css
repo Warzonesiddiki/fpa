@@ -62,6 +62,16 @@ html[data-density="compact"] {
   --ag-odd-row-background-color: var(--color-onesurface);
 }
 
+/* S-041 Actual vs Forecast period column styling & boundary separator (M4-1) */
+.ag-theme-quartz .period-cell-actual {
+  background-color: var(--color-onesurfacealt);
+}
+
+.ag-theme-quartz .period-cell-boundary,
+.ag-theme-quartz .period-header-boundary {
+  border-right: 2px solid var(--color-oneprimary) !important;
+}
+
 html,
 body,
 #root {

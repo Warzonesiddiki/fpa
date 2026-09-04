@@ -53,8 +53,8 @@
 
 ## M4 — PLANNING (F-021…F-023)
 
-- [ ] **M4-1** Budget/Forecast/Rolling + hybrid labeling (S-041/053)
-- [ ] **M4-2** Scenario states + versions + baseline freeze (S-050; SCENARIO-VERSION-SPEC)
+- [x] **M4-1** Budget/Forecast/Rolling + hybrid labeling (S-041/053) — DONE: canonical hybrid period label generator (`generatePeriodLabel`, `ACTUAL`, `FORECAST`, `PLAN_ONLY`, `HYBRID (Actual P01–Pxx, Forecast Pyy–Pzz)`), reactive store tracking in `stores/model.ts`, WCAG 2.2 AA toolbar badge (`PeriodStateBadge`), and AG Grid actual/forecast column classification + boundary separator in S-041.
+- [x] **M4-2** Scenario states + versions + baseline freeze (S-050; SCENARIO-VERSION-SPEC) — DONE: scenario lifecycle commands (`scenario.create/duplicate/submit/approve/lock/reopen/delete`, `baseline.set`, `model.list`), SQLite persistence, HMAC audit chaining, S-050 Scenario Manager page, and S-041 ScenarioPicker.
 - [ ] **M4-3** Model compare (S-051)
 - [ ] **M4-4** What-if overlay + waterfall + sensitivity tornado + goal seek (S-052)
 - [ ] **M4-5** Planning cycle manager + close checklist (S-053)

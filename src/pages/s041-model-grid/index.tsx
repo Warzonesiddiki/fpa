@@ -26,6 +26,7 @@ import { Button, StatePanel, MoneyCell } from "@/components/ui";
 import type { ScreenState } from "@/components/ui/StatePanel";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { ScenarioPicker } from "@/components/domain/ScenarioPicker";
+import { PeriodStateBadge } from "@/components/domain/PeriodStateBadge";
 import { SpreadDialog } from "./SpreadDialog";
 import { useModelGridStore } from "@/stores/model";
 import { useSessionStore } from "@/stores/session";
@@ -90,6 +91,8 @@ export function ModelGridPage() {
   const spreadLine = useModelGridStore((s) => s.spreadLine);
   const spreadError = useModelGridStore((s) => s.spreadError);
   const clearSpreadError = useModelGridStore((s) => s.clearSpreadError);
+  const actualPeriods = useModelGridStore((s) => s.actualPeriods);
+  const forecastPeriods = useModelGridStore((s) => s.forecastPeriods);
 
   // Active (selected) cell drives the formula bar.
   const [formulaEdited, setFormulaEdited] = useState<string | null>(null);
@@ -206,40 +209,73 @@ export function ModelGridPage() {
         );
       },
     };
-    const periodCols: ColDef<GridRow>[] = periods.map((p) => ({
-      colId: `p-${p.id}`,
-      headerName: p.code,
-      width: 120,
-      sortable: false,
-      valueGetter: (params) => params.data?.values[p.id]?.computed_text ?? null,
-      cellStyle: (params): CellStyle | null => {
-        const keys = selectedKeysRef.current;
-        const lineId = params.data?.line_id;
-        const periodId =
-          typeof params.colDef.colId === "string"
-            ? String(params.colDef.colId).replace(/^p-/, "")
-            : null;
-        if (keys.size > 0 && lineId && periodId && keys.has(`${lineId}:${periodId}`)) {
-          return {
-            backgroundColor: "rgba(99,102,241,0.18)",
-            boxShadow: "inset 0 0 0 2px var(--color-oneprimary)",
-          };
-        }
-        return null;
-      },
-      cellRenderer: (params: { data: GridRow }) => {
-        const c = params.data.values[p.id];
-        const value = showFormulas ? c.formula : c.computed_text;
-        if (c.error_code) {
-          return (
-            <span role="alert" className="font-mono text-[var(--color-onerror)]">
-              {c.computed_text ?? c.error_code}
-            </span>
+    const actualSet = new Set(actualPeriods);
+    const lastActualId =
+      actualPeriods.length > 0 && forecastPeriods.length > 0
+        ? actualPeriods[actualPeriods.length - 1]
+        : null;
+
+    const periodCols: ColDef<GridRow>[] = periods.map((p) => {
+      const isActual = actualSet.has(p.id);
+      const isBoundary = p.id === lastActualId;
+
+      return {
+        colId: `p-${p.id}`,
+        headerName: p.code,
+        width: 120,
+        sortable: false,
+        headerClass: [
+          isActual ? "period-header-actual" : "period-header-forecast",
+          isBoundary ? "period-header-boundary border-r-2 border-r-[var(--color-oneprimary)]" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        cellClassRules: {
+          "period-cell-actual": () => isActual,
+          "period-cell-forecast": () => !isActual,
+          "period-cell-boundary": () => isBoundary,
+        },
+        valueGetter: (params) => params.data?.values[p.id]?.computed_text ?? null,
+        cellStyle: (params): CellStyle | null => {
+          const keys = selectedKeysRef.current;
+          const lineId = params.data?.line_id;
+          const periodId =
+            typeof params.colDef.colId === "string"
+              ? String(params.colDef.colId).replace(/^p-/, "")
+              : null;
+          const isSelected = Boolean(
+            keys.size > 0 && lineId && periodId && keys.has(`${lineId}:${periodId}`),
           );
-        }
-        return <MoneyCell decimal={value} currency={currency} scale={scale} />;
-      },
-    }));
+
+          const style: CellStyle = {};
+
+          if (isSelected) {
+            style.backgroundColor = "rgba(99,102,241,0.18)";
+            style.boxShadow = "inset 0 0 0 2px var(--color-oneprimary)";
+          } else if (isActual) {
+            style.backgroundColor = "var(--color-onesurfacealt)";
+          }
+
+          if (isBoundary) {
+            style.borderRight = "2px solid var(--color-oneprimary)";
+          }
+
+          return Object.keys(style).length > 0 ? style : null;
+        },
+        cellRenderer: (params: { data: GridRow }) => {
+          const c = params.data.values[p.id];
+          const value = showFormulas ? c.formula : c.computed_text;
+          if (c.error_code) {
+            return (
+              <span role="alert" className="font-mono text-[var(--color-onerror)]">
+                {c.computed_text ?? c.error_code}
+              </span>
+            );
+          }
+          return <MoneyCell decimal={value} currency={currency} scale={scale} />;
+        },
+      };
+    });
     const derivedCols: ColDef<GridRow>[] = [
       {
         colId: "ytd",
@@ -269,7 +305,7 @@ export function ModelGridPage() {
       },
     ];
     return [lineCol, ...periodCols, ...derivedCols];
-  }, [periods, frozen, showFormulas, currency, scale, t]);
+  }, [periods, actualPeriods, forecastPeriods, frozen, showFormulas, currency, scale, t]);
 
   function onCellClicked(e: CellClickedEvent) {
     const lineId = e.data?.line_id;
@@ -392,6 +428,7 @@ export function ModelGridPage() {
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-oneborder)] p-2">
         {/* Scenario switcher + state badge — edits stay routed to the selected Scenario. */}
         <ScenarioPicker />
+        {showsGrid && <PeriodStateBadge />}
         <span aria-hidden="true" className="h-6 w-px bg-[var(--color-oneborder)]" />
         <Button
           variant="ghost"

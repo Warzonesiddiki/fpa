@@ -549,3 +549,85 @@ describe("model grid store — scenario switching (S-050 · STATE-MANAGEMENT §2
     expect(s.error?.code).toBe("MODEL_CELL_LOCKED");
   });
 });
+
+describe("model grid store — period classification and hybrid labeling (M4-1 · F-021 · MODELING-METHODS-SPEC §5)", () => {
+  function localLoad() {
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") return Promise.resolve(ACCOUNTS);
+      if (cmd === "calendar.preview") return Promise.resolve(CALENDAR);
+      return Promise.resolve({});
+    });
+  }
+
+  it("initializes with PLAN_ONLY state, empty period arrays, and null hybridLabel", () => {
+    const s = useModelGridStore.getState();
+    expect(s.periodState).toBe("PLAN_ONLY");
+    expect(s.actualPeriods).toEqual([]);
+    expect(s.forecastPeriods).toEqual([]);
+    expect(s.hybridLabel).toBeNull();
+  });
+
+  it("classifies mixed periods as HYBRID with canonical hybridLabel when actuals are set", async () => {
+    localLoad();
+    await useModelGridStore.getState().load();
+    // CALENDAR fixture has 2 periods: fp-2026-p01 (P01) and fp-2026-p02 (P02)
+    useModelGridStore.getState().setActualPeriods(["fp-2026-p01"]);
+    const s = useModelGridStore.getState();
+    expect(s.actualPeriods).toEqual(["fp-2026-p01"]);
+    expect(s.forecastPeriods).toEqual(["fp-2026-p02"]);
+    expect(s.periodState).toBe("HYBRID");
+    expect(s.hybridLabel).toBe("HYBRID (Actual P01, Forecast P02)");
+  });
+
+  it("classifies as ACTUAL when all loaded periods are marked as actual", async () => {
+    localLoad();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActualPeriods(["fp-2026-p01", "fp-2026-p02"]);
+    const s = useModelGridStore.getState();
+    expect(s.actualPeriods).toEqual(["fp-2026-p01", "fp-2026-p02"]);
+    expect(s.forecastPeriods).toEqual([]);
+    expect(s.periodState).toBe("ACTUAL");
+    expect(s.hybridLabel).toBeNull();
+  });
+
+  it("classifies as FORECAST when actual periods are empty on loaded grid", async () => {
+    localLoad();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActualPeriods([]);
+    const s = useModelGridStore.getState();
+    expect(s.actualPeriods).toEqual([]);
+    expect(s.forecastPeriods).toEqual(["fp-2026-p01", "fp-2026-p02"]);
+    expect(s.periodState).toBe("FORECAST");
+    expect(s.hybridLabel).toBeNull();
+  });
+
+  it("supports explicit actual and forecast specification via updatePeriodClassification", () => {
+    useModelGridStore.getState().updatePeriodClassification([], []);
+    let s = useModelGridStore.getState();
+    expect(s.periodState).toBe("PLAN_ONLY");
+    expect(s.hybridLabel).toBeNull();
+
+    useModelGridStore.getState().updatePeriodClassification(
+      ["P01", "P02", "P03", "P04"],
+      ["P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12"],
+    );
+    s = useModelGridStore.getState();
+    expect(s.periodState).toBe("HYBRID");
+    expect(s.hybridLabel).toBe("HYBRID (Actual P01–P04, Forecast P05–P12)");
+  });
+
+  it("resets period classification back to initial PLAN_ONLY on reset()", async () => {
+    localLoad();
+    await useModelGridStore.getState().load();
+    useModelGridStore.getState().setActualPeriods(["fp-2026-p01"]);
+    expect(useModelGridStore.getState().periodState).toBe("HYBRID");
+
+    useModelGridStore.getState().reset();
+    const s = useModelGridStore.getState();
+    expect(s.periodState).toBe("PLAN_ONLY");
+    expect(s.actualPeriods).toEqual([]);
+    expect(s.forecastPeriods).toEqual([]);
+    expect(s.hybridLabel).toBeNull();
+  });
+});
+

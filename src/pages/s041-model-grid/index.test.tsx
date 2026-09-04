@@ -412,4 +412,28 @@ describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
       ),
     );
   }, 20000);
+
+  it("renders the PeriodStateBadge in the toolbar and updates when actuals are classified", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+
+    // Initial state without actuals is PLAN_ONLY
+    const badge = screen.getByTestId("period-state-badge");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute("data-period-status", "PLAN_ONLY");
+    expect(badge).toHaveTextContent("PLAN_ONLY");
+
+    // Setting actuals updates the badge to HYBRID with canonical range
+    useModelGridStore.getState().setActualPeriods(["fp-2026-p01"]);
+    await waitFor(() => {
+      expect(screen.getByTestId("period-state-badge")).toHaveAttribute(
+        "data-period-status",
+        "HYBRID",
+      );
+      expect(screen.getByTestId("period-state-badge")).toHaveTextContent(
+        "HYBRID (Actual P01, Forecast P02–P12)",
+      );
+    });
+  }, 20000);
 });

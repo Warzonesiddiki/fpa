@@ -36,6 +36,7 @@ import {
   snapshotToInput,
   type SelectionRect,
 } from "@/stores/modelHistory";
+import { generatePeriodLabel } from "@/utils/periodLabel";
 
 /** M3-1 working scenario (API-SPEC §3 example id). Scenario selection ships with S-050. */
 export const WORKING_SCENARIO_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
@@ -74,6 +75,50 @@ export const WORKING_CALENDAR = {
 const WORKING_CURRENCY = "USD";
 
 export type ModelCellKey = string;
+export type PeriodState = "ACTUAL" | "FORECAST" | "HYBRID" | "PLAN_ONLY";
+
+/** Parse 1-based period number from a period id (fp-YYYY-pNN), code (PNN), or numeric string. */
+function periodNumberFromIdOrCode(periodStr: string, periods?: ModelGridPeriod[]): number | null {
+  if (periods && periods.length > 0) {
+    const idx = periods.findIndex(
+      (p) => p.id === periodStr || p.code.toLowerCase() === periodStr.toLowerCase(),
+    );
+    if (idx >= 0) {
+      const period = periods[idx];
+      const fromCode = period.code.match(/^[pP]?(\d+)$/);
+      if (fromCode) {
+        const num = parseInt(fromCode[1], 10);
+        if (num > 0) return num;
+      }
+      const fromId = period.id.match(/[pP](\d+)$/);
+      if (fromId) {
+        const num = parseInt(fromId[1], 10);
+        if (num > 0) return num;
+      }
+      return idx + 1;
+    }
+  }
+  const pMatch = periodStr.match(/[pP](\d+)$/i);
+  if (pMatch) {
+    const num = parseInt(pMatch[1], 10);
+    if (num > 0) return num;
+  }
+  const intMatch = periodStr.match(/^\d+$/);
+  if (intMatch) {
+    const num = parseInt(intMatch[0], 10);
+    if (num > 0) return num;
+  }
+  return null;
+}
+
+function toPeriodNumbers(periodStrings: readonly string[], periods?: ModelGridPeriod[]): number[] {
+  const nums: number[] = [];
+  for (const s of periodStrings) {
+    const n = periodNumberFromIdOrCode(s, periods);
+    if (n != null && n > 0) nums.push(n);
+  }
+  return nums;
+}
 
 function cellKey(line_id: string, period_id: string): string {
   return `${line_id}:${period_id}`;
@@ -90,6 +135,17 @@ interface ModelGridState {
   error: BridgeError | null;
   lines: ModelGridLine[];
   periods: ModelGridPeriod[];
+  /** Classification of the model's periods: ACTUAL, FORECAST, HYBRID, or PLAN_ONLY (F-021 · MODELING-METHODS-SPEC §5). */
+  periodState: PeriodState;
+  /** Period ids designated as Actuals (e.g. imported from GL). */
+  actualPeriods: string[];
+  /** Period ids designated as Forecast (e.g. driver-computed remaining periods). */
+  forecastPeriods: string[];
+  /**
+   * Report marker when mixing Actuals and Forecast (e.g. `HYBRID (Actual P01–P04, Forecast P05–P12)`).
+   * Null when state is not HYBRID (GLOSSARY §11b, MODELING-METHODS-SPEC §5).
+   */
+  hybridLabel: string | null;
   /** key `${line_id}:${period_id}` → rendered cell facts. */
   cells: Record<string, GridCellView>;
   /** line_id → YTD/FY derived display values. */
@@ -152,6 +208,15 @@ interface ModelGridState {
   /** Last spread rejection (HARD `SPREAD_WEIGHTS_INVALID` / `VALUE_INVALID`) — cleared on success. */
   spreadError: BridgeError | null;
   clearSpreadError: () => void;
+  /**
+   * Designate actual period ids and update period classification / hybrid label.
+   */
+  setActualPeriods: (actualPeriods: string[]) => void;
+  /**
+   * Reclassify model periods into ACTUAL, FORECAST, HYBRID, or PLAN_ONLY,
+   * deriving forecast periods and hybridLabel accordingly.
+   */
+  updatePeriodClassification: (actualPeriods?: string[], forecastPeriods?: string[]) => void;
 }
 
 export interface SpreadLineRequest {
@@ -190,6 +255,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   error: null,
   lines: [],
   periods: [],
+  periodState: "PLAN_ONLY",
+  actualPeriods: [],
+  forecastPeriods: [],
+  hybridLabel: null,
   cells: {},
   derived: {},
   recalc: null,
@@ -214,6 +283,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
         error: null,
         lines: [],
         periods: [],
+        periodState: "PLAN_ONLY",
+        actualPeriods: [],
+        forecastPeriods: [],
+        hybridLabel: null,
         active: null,
         selection: null,
         history: new History(),
@@ -261,6 +334,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
           status: "empty",
           lines,
           periods,
+          periodState: "PLAN_ONLY",
+          actualPeriods: [],
+          forecastPeriods: [],
+          hybridLabel: null,
           error: null,
           active: null,
           selection: null,
@@ -279,6 +356,26 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       const derived: Record<string, { ytd: string | null; fy: string | null }> = {};
       for (const line of lines) derived[line.id] = await engine.getDerived(line.id);
 
+      const currentActuals = get().actualPeriods;
+      let periodState: PeriodState = get().periodState;
+      const actualPeriods = currentActuals;
+      let forecastPeriods = get().forecastPeriods;
+      let hybridLabel = get().hybridLabel;
+
+      if (currentActuals.length > 0) {
+        const actualSet = new Set(currentActuals);
+        forecastPeriods = periods
+          .filter((p) => !actualSet.has(p.id) && !actualSet.has(p.code))
+          .map((p) => p.id);
+        const actualNums = toPeriodNumbers(currentActuals, periods);
+        const forecastNums = toPeriodNumbers(forecastPeriods, periods);
+        if (actualNums.length > 0 || forecastNums.length > 0) {
+          const res = generatePeriodLabel(actualNums, forecastNums);
+          periodState = res.status;
+          hybridLabel = res.status === "HYBRID" ? res.label : null;
+        }
+      }
+
       set({
         status: "success",
         lines,
@@ -292,6 +389,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
         history: new History(),
         canUndo: false,
         canRedo: false,
+        periodState,
+        actualPeriods,
+        forecastPeriods,
+        hybridLabel,
       });
     } catch (err) {
       set({ status: "error", error: err as BridgeError });
@@ -582,6 +683,39 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
 
   clearSpreadError: () => set({ spreadError: null }),
 
+  setActualPeriods: (actualPeriods: string[]) => {
+    get().updatePeriodClassification(actualPeriods);
+  },
+
+  updatePeriodClassification: (actualPeriodsParam?: string[], forecastPeriodsParam?: string[]) => {
+    const s = get();
+    const actuals = actualPeriodsParam ?? s.actualPeriods;
+    let forecasts: string[];
+    if (forecastPeriodsParam !== undefined) {
+      forecasts = forecastPeriodsParam;
+    } else if (s.periods.length > 0) {
+      const actualSet = new Set(actuals);
+      forecasts = s.periods
+        .filter((p) => !actualSet.has(p.id) && !actualSet.has(p.code))
+        .map((p) => p.id);
+    } else {
+      forecasts = s.forecastPeriods;
+    }
+
+    const actualNums = toPeriodNumbers(actuals, s.periods);
+    const forecastNums = toPeriodNumbers(forecasts, s.periods);
+
+    let periodState: PeriodState = "PLAN_ONLY";
+    let hybridLabel: string | null = null;
+    if (actualNums.length > 0 || forecastNums.length > 0) {
+      const result = generatePeriodLabel(actualNums, forecastNums);
+      periodState = result.status;
+      hybridLabel = result.status === "HYBRID" ? result.label : null;
+    }
+
+    set({ actualPeriods: actuals, forecastPeriods: forecasts, periodState, hybridLabel });
+  },
+
   spreadLine: async (req) => {
     const s = get();
     if (!s.client || s.periods.length === 0) return null;
@@ -746,6 +880,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       canUndo: false,
       canRedo: false,
       spreadError: null,
+      periodState: "PLAN_ONLY",
+      actualPeriods: [],
+      forecastPeriods: [],
+      hybridLabel: null,
     });
   },
 }));

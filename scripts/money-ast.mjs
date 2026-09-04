@@ -28,7 +28,7 @@ for (const f of tsFiles) {
   const floatOps = [...text.matchAll(/parseFloat\s*\(|Math\.round\s*\(|\bNumber\s*\(/g)];
   for (const m of floatOps) problems.push(`${rel(f)}: financial float op '${m[0]}' (B3)`);
   const toFixed = [...text.matchAll(/\.toFixed\s*\(/g)];
-  if (toFixed.length && !f.includes("utils/money.ts"))
+  if (toFixed.length && !f.replace(/\\/g, "/").includes("utils/money.ts"))
     for (const m of toFixed)
       problems.push(`${rel(f)}: toFixed outside money display formatter (${m.index})`);
 }
