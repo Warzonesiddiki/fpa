@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ImportHistoryData, ImportValidateData, SettingsDocumentKey } from "./schema";
-import { isTauriRuntime, mockInvoke, resetMockScenarioState, resetMockSettingsState } from "./mock";
+import {
+  isTauriRuntime,
+  mockInvoke,
+  resetMockHeadcountState,
+  resetMockScenarioState,
+  resetMockSettingsState,
+} from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
   it("isTauriRuntime is false in plain webview (jsdom)", () => {
@@ -1042,6 +1048,68 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(bad.error.code).toBe("SETTINGS_SAVE_FAILED");
     expect(bad.error.userMessage).toBe("Settings could not be saved. Retry.");
     expect(bad.error.retryable).toBe(true);
+  });
+});
+
+describe("dev mock — headcount schedule mirror (F-016 · S-045)", () => {
+  const model_id = "3f9f2c9e-9f8b-4e2d-9a1c-400000000001";
+  const baseRow = {
+    id: "hc-row-1",
+    role: "Analyst",
+    cost_center: "Finance",
+    start_date: "2026-04-01",
+    termination_date: null,
+    base_comp_decimal: "120000.00",
+    bonus_pct: "10",
+    benefits_pct: "20",
+    employer_load_pct: "5",
+    ramp_months: 0,
+  };
+
+  beforeEach(async () => {
+    await mockInvoke("session.lock", {});
+    resetMockHeadcountState();
+  });
+
+  it("upserts the typed schedule and keeps the schedule id stable", async () => {
+    const first = (await mockInvoke("model.schedule.upsert", {
+      model_id,
+      schedule_type: "headcount",
+      rows: [baseRow],
+    })) as {
+      data: { schedule_id: string; recalc: { changed_cells: string[]; issues: unknown[] } };
+    };
+    const second = (await mockInvoke("model.schedule.upsert", {
+      model_id,
+      schedule_type: "headcount",
+      rows: [{ ...baseRow, base_comp_decimal: "125000.00" }],
+    })) as { data: { schedule_id: string; recalc: { changed_cells: string[] } } };
+
+    expect(first.data.schedule_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second.data.schedule_id).toBe(first.data.schedule_id);
+    expect(first.data.recalc).toMatchObject({ changed_cells: ["hc-row-1"], issues: [] });
+    expect((first.data as { audit_id?: number }).audit_id).toBeGreaterThan(0);
+  });
+
+  it("returns typed date and overlap errors instead of accepting invalid rows", async () => {
+    const badDate = (await mockInvoke("model.schedule.upsert", {
+      model_id,
+      schedule_type: "headcount",
+      rows: [{ ...baseRow, start_date: "2026-02-30" }],
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(badDate.error).toMatchObject({
+      code: "HC_DATE_INVALID",
+      httpStatus: 422,
+      retryable: false,
+    });
+
+    const overlap = (await mockInvoke("model.schedule.upsert", {
+      model_id,
+      schedule_type: "headcount",
+      rows: [baseRow, { ...baseRow, id: "hc-row-2", start_date: "2026-04-15" }],
+    })) as { error: { code: string; details: { row_ids: string[] } } };
+    expect(overlap.error.code).toBe("HC_OVERLAP");
+    expect(overlap.error.details.row_ids).toEqual(["hc-row-1", "hc-row-2"]);
   });
 });
 

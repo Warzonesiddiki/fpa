@@ -34,6 +34,7 @@ const SCREEN_INDEX: { id: string; path: string }[] = [
   { id: "coa", path: "/app/model/coa" },
   { id: "calendar", path: "/app/model/calendar" },
   { id: "packs", path: "/app/model/packs" },
+  { id: "headcount", path: "/app/model/headcount" },
   { id: "settings", path: "/app/settings" },
   { id: "wizard", path: "/wizard" },
 ];

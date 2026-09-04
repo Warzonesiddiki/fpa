@@ -2,7 +2,7 @@
 
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
-> **Code count: 97 (ZC revision — added 15 codes: FORMULA_UNSUPPORTED_FUNCTION, PACK_VERSION_EXISTS, PACK_IN_USE_LOCKED, CYCLE_NAME_DUP, CYCLE_TASK_BLOCKED, COLLECTION_CONFLICT, COLLECTION_STRUCTURE_CHANGED, CAPEX_IN_SERVICE_INVALID, PRODUCTION_CAPACITY, REVREC_COST_ESTIMATE_INVALID, COMPANY_IN_USE_RECENT, BASELINE_REPLACE_REASON_REQUIRED, MODEL_YEAR_EXISTS, SOURCE_BOOTSTRAP_EMPTY, PACK_NO_COMMENTARY).**
+> **Code count: 99 (ZC revision — the original 97-code catalog plus the two M3-6 headcount domain codes `HC_DATE_INVALID` and `HC_OVERLAP`, admitted by DECISIONS ADR-026).**
 
 ---
 
@@ -104,6 +104,8 @@
 | ASSUMPTION_IN_USE_LOCKED | locked | "Assumption is used by a Locked Baseline. Create a new Version to change." | 422 | false |
 | SPREAD_WEIGHTS_INVALID | sum != 100 | "Seasonality weights total {sum}% — normalize to 100% or fix." | 422 | false |
 | FORMULA_UNSUPPORTED_FUNCTION | function not in set | "Function {fn} is not in the supported set (see FORMULA-ENGINE-SPEC.md). Replace it or file a V2 request." | 422 | false |
+| HC_DATE_INVALID | schedule date invalid | "A hire or termination date is outside the active fiscal calendar." | 422 | false |
+| HC_OVERLAP | schedule rows overlap | "Two rows for the same role and cost center overlap in a fiscal period." | 422 | false |
 | PACK_SCHEMA_INVALID | validation failed | "Industry Pack failed validation at {path}. Retry or use the bundled Core Pack." | 422 | false |
 | PACK_VERSION_EXISTS | version installed | "Pack version {v} is already installed." | 409 | false |
 | PACK_IN_USE_LOCKED | locked reference | "This Pack version is used by a Locked Baseline. Clone the Pack before editing." | 422 | false |

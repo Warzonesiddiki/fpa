@@ -73,4 +73,17 @@ Health Check fails any report that mixes unlabeled periods (`VARIANCE_SOURCE_MIX
 
 Lines are `input` (manual/method), `formula` (HyperFormula), `parent` (subtotal of children — computed as SUM, never typed), `driver_line` (consumes Driver Table), `schedule` (headcount/capex/debt). Parent totals are always SUM of visible children; hidden children cannot be silently excluded (a parent with un-mapped children = Health Check HARD `LINE_MAPPING_INCOMPLETE`).
 
-*Referenced by: PRD F-013/F-015, SCREENS S-041/S-043, FORMULA-ENGINE-SPEC, VARIANCE/ATTRIBUTION (PRD F-024).*
+### 6.1 Headcount schedule (F-016 / S-045)
+
+A headcount row carries `role`, `cost_center`, ISO `start_date`, nullable ISO `termination_date`,
+`base_comp_decimal`, `bonus_pct`, `benefits_pct`, `employer_load_pct`, and integer `ramp_months`.
+All compensation and percentage values cross IPC as Decimal strings. For each loaded fiscal period,
+the annual base is divided by the number of loaded periods, the percentage components are added to
+base, and the result is multiplied by inclusive `active_days / period_days` and a linear ramp when
+configured. The calculator rounds only at the explicit currency output boundary. A row whose start
+is outside the loaded horizon or whose termination precedes its start returns `HC_DATE_INVALID`;
+same-role/same-cost-center rows active in one period return `HC_OVERLAP`. The native core owns the
+authoritative calculation and SQLite write; the TS implementation is a browser-preview mirror until
+that handler is cargo-verified.
+
+*Referenced by: PRD F-013/F-015/F-016, SCREENS S-041/S-043/S-045, FORMULA-ENGINE-SPEC, VARIANCE/ATTRIBUTION (PRD F-024).*

@@ -97,7 +97,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `pack.install` | session | `{pack_path, company_id}` | `{pack_id, version}` | PACK_VERSION_EXISTS, PACK_SCHEMA_INVALID |
 | `pack.builder.save_v1` | session | `{pack_id?, definition_json}` | `{pack_id, version}` | PACK_SCHEMA_INVALID, PACK_IN_USE_LOCKED |
 | `pack.builder.apply_diff` | session | `{pack_id, model_ids[]}` | `{applied, skipped[]}` | PACK_IN_USE_LOCKED |
-| `model.schedule.upsert` | session | `{model_id, schedule_type, rows[]}` | `{schedule_id, recalc}` | CAPEX_IN_SERVICE_INVALID, PRODUCTION_CAPACITY, REVREC_COST_ESTIMATE_INVALID |
+| `model.schedule.upsert` | session | `{model_id, schedule_type: "headcount", rows[]}` | `{schedule_id, recalc, audit_id}` | HC_DATE_INVALID, HC_OVERLAP, CAPEX_IN_SERVICE_INVALID, PRODUCTION_CAPACITY, REVREC_COST_ESTIMATE_INVALID |
 | `cycle.start` | session | `{model_id, kind, name, due}` | `{cycle_id}` | CYCLE_NAME_DUP |
 | `cycle.task.update` | session | `{task_id, status, note}` | `{updated}` | CYCLE_TASK_BLOCKED |
 | `cycle.checklist.status` | session | `{model_id, period_id}` | `{tasks[], ready}` | — |
@@ -126,6 +126,55 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
             "duration_ms": 320 } } }
 ```
 **All errors** — `MODEL_CELL_LOCKED (422, retry false)` · `FORMULA_CYCLE (422, retry false, details.cycle_path)` · `REFERENCE_BROKEN (422, retry false, details.cell)` · `DRIVER_OUT_OF_BOUNDS (422, retry false, details.bounds)` · `HARDCODED_ASSUMPTION (422, retry false, details.cell)` · `SESSION_LOCKED (401)` · `VALUE_INVALID (422)` · `INTERNAL (500, retry true)`.
+
+## 3.1 DETAILED SPEC — `model.schedule.upsert` (S-045 headcount slice)
+
+The M3-6 slice specializes the catalogued schedule command to `schedule_type: "headcount"`.
+The request is strict and replaces the complete schedule for the active `model_id`:
+
+```json
+{
+  "model_id": "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+  "schedule_type": "headcount",
+  "rows": [{
+    "id": "hc-row-1",
+    "role": "Analyst",
+    "cost_center": "Finance",
+    "start_date": "2026-04-01",
+    "termination_date": null,
+    "base_comp_decimal": "120000.00",
+    "bonus_pct": "10",
+    "benefits_pct": "20",
+    "employer_load_pct": "5",
+    "ramp_months": 2
+  }]
+}
+```
+
+`base_comp_decimal` and all percentage fields are decimal strings; no browser float or rounded
+number is accepted. Dates are ISO calendar dates. A start date must be in the loaded fiscal
+horizon, termination cannot precede start, and active days are inclusive. For each fiscal period,
+the annual base is spread across the loaded periods, multiplied by `1 + (bonus + benefits +
+employer_load) / 100`, then multiplied by `active_days / period_days` and the optional linear ramp.
+Decimal arithmetic is rounded only at the displayed currency output boundary. Two rows with the
+same role and cost center cannot be active in the same fiscal period.
+
+**Success**
+```json
+{ "data": { "schedule_id": "3f9f2c9e-9f8b-4e2d-9a1c-600000000001",
+  "recalc": { "dirty_cells": 1, "cycles": [], "changed_cells": ["hc-row-1"],
+               "issues": [], "duration_ms": 0 }, "audit_id": 101 } }
+```
+
+Every mutation returns a positive integer `audit_id`; the native implementation must append the
+schedule write to the Company's HMAC audit chain. The current browser preview uses a session cache
+and the development mock only; native SQLite persistence/calculation is a Tier-3 follow-on and is
+not a DONE claim.
+
+**All errors** — `HC_DATE_INVALID (422, retry false, details.row_id/row_index/reason)` ·
+`HC_OVERLAP (422, retry false, details.role/cost_center/period_id/row_ids)` ·
+`SESSION_LOCKED (401, retry false)` · `AUDIT_CHAIN_BREAK (409, retry false)` ·
+`VALUE_INVALID (422, retry false)` · `INTERNAL (500, retry true)`.
 
 ## 4. DETAILED SPEC — `import.commit` (ingestion gate)
 

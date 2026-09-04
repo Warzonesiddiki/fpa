@@ -45,7 +45,7 @@
 - [ ] **M3-3** Driver tables + federation precedence + bounds (S-043)
 - [ ] **M3-4** Assumption Register + hardcode detection (S-044) — persisted `assumption.list/upsert/find_usages` (exact decimal values, audited writes, Company/Model scoping, five UI states, usage lookup) AND TS hardcode detection are implemented: engine `findHardcodedLiterals`/`scanHardcoded`/`convertHardcoded` + worker ops, store `scanHardcoded`/`convertHardcoded`/`waiveHardcoded` (session-scoped reason; audited event is a native follow-on) + `assumptionEffectiveForPeriod`/`diffAssumptionValues`, and the S-044 hardcoded-values panel + edit-form change diff. Remaining: converted named-range references resolve once M3-10 named ranges land; Rust audited waiver event; cargo gates.
 - [ ] **M3-5** Planning methods + period spreading + bootstrap/copy (S-041 part; MODELING-METHODS-SPEC)
-- [ ] **M3-6** Headcount plan (S-045)
+- [ ] **M3-6** Headcount plan (S-045) — TS Decimal/day-count/rollup/UI slice and typed audited response are implemented; native schedule handler, SQLite persistence, HMAC audit, cargo and desktop IPC gates remain (PARTIAL/NATIVE-UNVERIFIED).
 - [ ] **M3-7** Capital/debt/WC/13-week cash + covenant gauges (S-046)
 - [ ] **M3-8** Production/inventory/backlog + rev rec schedules (S-047/048)
 - [ ] **M3-9** Excel-parity grid UX: keys/fill/paste/undo-redo 100+ (S-041)

@@ -110,8 +110,13 @@ written.
 2. **S-041 Grid**: Revenue line method = Driver-based → `=units*price`; Opex = headcount × salary; each line shows method chip.
    - *Branch:* driver out of bounds → HARD `DRIVER_OUT_OF_BOUNDS` (set bounds in Assumption Register first).
 3. **S-044**: global assumptions (wage_inflation, copper_price).
-4. **S-045 Headcount**: 18 FTEs, 2 hires; comp 100% → 120% with benefits.
-   - *Branch:* hire date before period start → `HC_DATE_INVALID`.
+4. **S-045 Headcount**: 18 FTEs, 2 hires; comp 100% → 120% with benefits. The schedule write
+   returns `schedule_id`, `recalc`, and a positive `audit_id`; the browser renders the exact
+   Decimal-string/day-count preview only after that audited command succeeds.
+   - *Branch:* hire date before/after the loaded fiscal horizon or invalid termination window →
+     `HC_DATE_INVALID`; retain the form and correct the date.
+   - *Branch:* same role and cost center overlaps in a fiscal period → `HC_OVERLAP` with the two row
+     ids; revise the schedule rather than silently replacing a row.
 5. **S-046 Capital**: ₹40M capex, 10-yr SL; debt ₹25M 6.5%.
 6. **Success:** P&L, BS, CF, 13-week cash all derive from drivers; Change units → whole model recalculates < 2 s.
 

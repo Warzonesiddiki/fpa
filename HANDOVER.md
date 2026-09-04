@@ -1,11 +1,13 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next milestone task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. Latest sessions shipped **M4-2 (F-022) scenario
-> lifecycle** — PR A (contract + mock state machine), PR A2 (scenario store + `setScenario`),
-> PR B (S-050 Scenario Manager page + S-041 Scenario picker, this session) — working branch
-> `arena/01a06a14-fpa`. Older content below is history; the authoritative tracker is the root
-> `TASKBOARD.md` (56 files / 628 tests, coverage 90.22/82.22/90.86/92.58).
+> state, design decisions, gates, and pitfalls. The current session shipped the **M3-6 (F-016)
+> Headcount/S-045 TypeScript slice** — strict audited schedule response, exact Decimal/day-count
+> model, session store, five-state page, org/schedule/import/rollup UI, tests, and synchronized docs —
+> on working branch `arena/01a06a46-fpa`. The browser mock/session cache remain in the product path;
+> native schedule persistence/calculation and cargo gates are **PARTIAL/NATIVE-UNVERIFIED**. Older
+> content below is history; the authoritative tracker is the root `TASKBOARD.md` (59 files / 653
+> tests; JS gates pass; native gates unavailable).
 
 ---
 
@@ -18,15 +20,42 @@
    happen again _during_ your session: if `npx vitest` suddenly reports `eslint: not found`,
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~3 min) — all must PASS before you edit:
-   `npx vitest run && npm run lint && npx tsc --noEmit && npx prettier --check .`
-   Expect **56 files / 628 tests**. (Counts drift up as tests are added — the invariant is that
-   every gate above PASSES on a clean tree, not the exact number.)
+   `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
+   Expect the current **59 files / 653 tests** after the M3-6 slice. Counts drift as tests are added —
+   the invariant is that every gate PASSES on a clean tree, not the exact number.
 
 ---
 
 ## 1. STATE OF THE WORK
 
-### Latest — M4-2 scenario lifecycle (F-022), PR A/A2/B (2026-09-04)
+### Latest — M3-6 Headcount/S-045 (F-016), TypeScript slice (2026-09-04)
+
+- **Contract:** `model.schedule.upsert` is specialized to `schedule_type: "headcount"` with strict
+  row fields and strict `{schedule_id, recalc, audit_id}` success data. `audit_id` is a positive
+  integer and is asserted in schema/mock/store tests; the mutation sends the complete validated
+  schedule, not a silent local-only edit.
+- **Model:** `src/model/headcount.ts` keeps compensation and percentage inputs as Decimal strings;
+  it validates ISO/calendar dates and same-role/cost-center overlap (`HC_DATE_INVALID`, `HC_OVERLAP`),
+  prorates inclusive active days over period days, spreads annual base across loaded periods, applies
+  additive bonus/benefits/employer-load percentages, and applies optional linear ramp before the
+  explicit currency output rounding boundary.
+- **Store/UI:** `stores/headcount.ts` loads `calendar.preview`, scopes the session cache to the active
+  Company/Model, writes through the audited command, and hands driver data to `driver.import`.
+  S-045 (`src/pages/s045-headcount/`) has loading/empty/error/success/populated states, typed error
+  rendering/retry behavior, org tree, hire/termination table, edit/remove, import hand-off, exact
+  proration display, rollups, ARIA semantics, and axe coverage. Route/nav/i18n are wired.
+- **Docs:** API-SPEC, SCREENS-SPEC, USER-STORIES, USER-FLOWS, MODELING-METHODS-SPEC,
+  FEATURE-TRACEABILITY-MATRIX, ERROR-HANDLING, TASKBOARD, TODO, CHANGELOG, and this handover are
+  synchronized. ADR-026 deliberately admits the two headcount codes, taking the canonical catalog
+  from 97 to 99; this is not a silent error-code invention.
+- **Validation:** `npm run check` (59 files/653 tests; docs 54/42/97/99), `npx vitest run --coverage`
+  (89.84/81.72/90.02/92.30), `npm run test:coverage:critical` (98.49/96.98/100/98.72),
+  `npm run build`, and `npx prettier --check .` all pass after the final code/docs edits. The matching
+  coverage-gate proxy passes at main 89.85/81.73/90.03/89.27 and critical 98.49/96.98/100/98.41. Rust `cargo`/`rustc` are unavailable, so the native handler, SQLite persistence/calculation,
+  native HMAC audit wiring, desktop IPC, and cargo tests remain **NATIVE-UNVERIFIED/PARTIAL**. Do not
+  mark M3-6 DONE while the browser mock is involved.
+
+### Previous — M4-2 scenario lifecycle (F-022), PR A/A2/B (2026-09-04)
 
 Typed scenario contract + mock state machine (`model.list`, `scenario.create|duplicate|submit|approve|lock|
 reopen|delete`, `baseline.set`), `stores/scenarios.ts`, grid-store `setScenario` + `activeScenarioId()`, the
@@ -242,12 +271,12 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **Next unblocked TS units** (see `TASKBOARD.md` §1 for the full matrix — M3-10 and M4-2 PR A/B are
-   done; M3-3/M3-4/M3-5/M4-2 remain PARTIAL only on native persistence): pick the first `❗ TODO` row in
-   dependency order (e.g. M4-1 Budget/Forecast/Rolling, S-051 Compare = `model.diff`, or M3-6 Headcount =
-   S-045 once its commands are documented). When a Rust toolchain appears, resume M3-1 `model_values`
-   persistence, then M3-3 `driver_values`, then M4-2 scenario handlers + the `scenarios.created_at`
-   migration, then the M3-4 audited waiver event.
+1. **M3-6 native completion is the immediate follow-on:** implement and cargo-verify the native
+   `model.schedule.upsert` handler, SQLite schedule/model-value persistence, authoritative Decimal/day-count
+   calculation, HMAC audit event, and desktop IPC round-trip. Until then M3-6 remains PARTIAL and the
+   browser mock/session cache must not be described as production persistence. After that, resume the
+   dependency-order TODOs (M4-1 Budget/Forecast/Rolling, S-051 `model.diff`, etc.); Tier-3 scenario
+   `kind`/`created_at` decisions and other native gaps remain explicitly deferred.
 2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
    toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
    is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked
@@ -263,13 +292,13 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ```bash
 npx vitest run                                     # 34 files / 262 tests
-npx vitest run --coverage                          # ≥85/80/80/85  (now 88.56/81.09/84.30/90.85)
-npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 99.02/97.52/100/99.46)
+npx vitest run --coverage                          # ≥85/80/80/85  (now 89.84/81.72/90.02/92.30)
+npx vitest run --config vitest.critical.config.ts --coverage   # ≥95/90/90/95 (now 98.49/96.98/100/98.72)
 npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
 npx prettier --check .
-node scripts/docs-verify.mjs                        # 53 docs / 42 screens / 96 commands / 97 codes
+node scripts/docs-verify.mjs                        # 54 docs / 42 screens / 97 commands / 99 codes
 node scripts/money-ast.mjs
 node scripts/secret-scan.mjs
 node scripts/pack-validate.mjs                      # 12/12
@@ -332,7 +361,7 @@ EOF
     auto-selects in S-023 (scope by role+regex); multiple companies → `getAllByRole(...)[0]`;
     debounced/async flows need `findBy*`/`waitFor`. **The zustand session store persists across
     tests in a file — `setState` shallow-merges, so reset new state fields in `beforeEach`.**
-11. **API contracts extend ADDITIVELY only** (docs locked at 96 commands / 97 codes): new
+11. **API contracts extend ADDITIVELY only** (docs locked at 97 commands / 99 codes): new
     response fields are fine (subset tables in API-SPEC are not exhaustive; zod response
     schemas are mirrors, not runtime gates — the bridge validates ARGS only); new commands,
     new error codes, or changed documented shapes are docs changes — forbidden (B20).
@@ -359,7 +388,7 @@ EOF
 Zero-compromise, specs-first: the 54 docs in `docs/` are locked (start DOCS-INDEX →
 ARCHITECTURE → API-SPEC → ROADMAP → ZERO-COMPROMISE-RULES). Never re-open closed doc issues
 (B20). Money/calendar logic has exactly one owner: the Rust core; the UI formats only. Every
-screen needs 5 states (loading/empty/error/success/populated). All 97 error codes are defined —
+screen needs 5 states (loading/empty/error/success/populated). All 99 error codes are defined —
 reuse them, never invent. Money = exact integers/Decimal strings via `rust_decimal` (never
 REAL/float — B3/I1). PIN policy = ≥8 chars, ≥2 classes, no sequential run ≥4, enforced in Rust
 AND the zod gate. 15 technologies locked (B13/B14) — **do not add a dependency that is not in

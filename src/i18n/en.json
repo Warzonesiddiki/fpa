@@ -685,6 +685,7 @@
     "screens.coa": "Chart of Accounts",
     "screens.calendar": "Fiscal Calendar",
     "screens.packs": "Pack Studio",
+    "screens.headcount": "Headcount Plan",
     "screens.settings": "Settings",
     "screens.wizard": "First-Run Wizard"
   },
@@ -791,6 +792,7 @@
     "calendar": "Fiscal Calendar",
     "packs": "Pack Studio",
     "drivers": "Drivers",
+    "headcount": "Headcount",
     "assumptions": "Assumptions"
   },
   "gridPage": {
@@ -1058,6 +1060,74 @@
       "waiveReasonRequired": "Enter a waiver reason.",
       "waivedBadge": "Waived: {{reason}}",
       "unwaive": "Undo"
+    }
+  },
+  "headcountPage": {
+    "title": "Headcount Plan",
+    "lead": "Roles, timing, compensation, and exact fiscal-period payroll cost.",
+    "loading": "Loading the headcount calendar…",
+    "empty": "Add roles or import headcount.",
+    "saved": "Headcount plan saved.",
+    "error.load": "The headcount plan could not be loaded.",
+    "addRole": "Add role",
+    "edit": "Edit",
+    "removeAria": "Remove {{role}}",
+    "scheduleTitle": "Hire and termination schedule",
+    "scheduleHint": "Dates are inclusive; compensation is prorated by fiscal-period day count.",
+    "scheduleCaption": "Headcount hire and termination schedule",
+    "columns": {
+      "role": "Role",
+      "costCenter": "Cost center",
+      "start": "Start",
+      "termination": "Termination",
+      "comp": "Annual base comp",
+      "benefits": "Benefits",
+      "proration": "Proration days",
+      "actions": "Actions"
+    },
+    "form": {
+      "label": "Headcount role form",
+      "newTitle": "Add role",
+      "editTitle": "Edit role",
+      "role": "Role",
+      "costCenter": "Cost center",
+      "start": "Start date",
+      "termination": "Termination date",
+      "terminationHint": "Optional; the row remains active through the loaded horizon when blank.",
+      "comp": "Annual base compensation",
+      "compHint": "Exact decimal in the Company currency; do not add separators.",
+      "bonus": "Bonus %",
+      "benefits": "Benefits %",
+      "load": "Employer load %",
+      "ramp": "Ramp periods",
+      "rampHint": "0 = full cost immediately; a positive value ramps linearly.",
+      "required": "Enter a role, cost center, and start date.",
+      "compRequired": "Enter annual base compensation.",
+      "add": "Add role",
+      "save": "Save role",
+      "saveFailed": "Could not save the role. Review the typed error and retry.",
+      "editAria": "Edit {{role}}"
+    },
+    "orgLabel": "Headcount organization",
+    "orgTitle": "Org structure",
+    "rollupLabel": "Headcount cost rollup",
+    "rollupTitle": "Cost rollup preview",
+    "rollupHint": "Total cost includes bonus, benefits, employer load, day-count proration, and ramp.",
+    "rollupCaption": "Headcount cost by fiscal period",
+    "rollup": {
+      "period": "Period",
+      "active": "Active FTE",
+      "cost": "Total cost"
+    },
+    "import": {
+      "label": "Import headcount data",
+      "title": "Import from Driver Data",
+      "hint": "Use the Driver Data mapping pipeline; imported rows are materialized by the native core.",
+      "path": "Driver-data file path",
+      "mapping": "Mapping id",
+      "button": "Import headcount",
+      "failed": "Headcount import could not be started.",
+      "success": "Driver-data batch {{batch}} was accepted for headcount import."
     }
   },
   "scenariosPage": {

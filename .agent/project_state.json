@@ -4,8 +4,8 @@
   "project": {
     "name": "OneFP&A",
     "repo": "Warzonesiddiki/fpa",
-    "session_branch": "arena/01a06a14-fpa",
-    "base_commit": "99e59d88ae1c95a7783ec419e4de21271a4d22fe",
+    "session_branch": "arena/01a06a46-fpa",
+    "base_commit": "6557234a9958c426541b500921671ecd5c80b6d6",
     "identity": "Local-first, offline, single-user FP&A desktop suite. Tauri 2.11 + Rust 1.85 (edition 2024) core owning money/calendar/audit/SQLite; React 19 / TS 5.9 strict UI; HyperFormula 3.4 in a Web Worker; typed IPC via Zod (hand-typed bridge, no tauri-specta yet).",
     "source_of_truth_order": [
       "docs/ (54 locked specs; CLAUDE.md: when docs and code conflict the bug is in the code)",
@@ -15,51 +15,56 @@
     ]
   },
   "current_milestone": {
-    "roadmap": "M2 Ingestion (F-007…F-011) declared current; M1 exit criteria open; M3 TS/contract slices shipped ahead under the native-toolchain policy",
+    "roadmap": "M3-6 Headcount (F-016/S-045) TS-unblocked slice current; native persistence/cargo gates remain; M1/M2/M3 gaps stay PARTIAL under the native-toolchain policy",
     "mvp_progress_estimate": "~15% (TASKBOARD §0); 38-feature lock unchanged",
-    "screens_routed": "19/42",
+    "screens_routed": "20/42",
     "rust_handlers_registered": 35,
-    "ts_schema_commands": 46,
-    "ts_commands_without_rust_handler": ["model.inspect", "driver.import", "company.archive_year"],
+    "ts_schema_commands": 47,
+    "ts_commands_without_rust_handler": [
+      "model.inspect",
+      "driver.import",
+      "company.archive_year",
+      "model.schedule.upsert"
+    ],
     "error_codes_emitted": 39,
-    "error_codes_locked": 97,
+    "error_codes_locked": 99,
     "db_tables": 56
   },
   "baseline_gates": {
     "verified_at": "2026-09-04",
     "vitest": {
       "result": "PASS",
-      "files": 56,
-      "tests": 628,
-      "note": "+33 for M4-2 PR B (scenario actions 6, S-050 page 17 incl. axe, ScenarioPicker 8, scenario-store status transitions 2) plus grid picker/spread-test reconciliation"
+      "files": 59,
+      "tests": 653,
+      "note": "+25 for the M3-6 headcount slice (model/store/page/API tests, including five-state/axe coverage) after the M4-2 PR B baseline"
     },
     "coverage_main": {
-      "statements": 90.22,
-      "branches": 82.22,
-      "functions": 90.86,
-      "lines": 92.58,
+      "statements": 89.84,
+      "branches": 81.72,
+      "functions": 90.02,
+      "lines": 92.3,
       "thresholds": "85/80/80/85",
       "gate": "PASS"
     },
     "tsc": "PASS",
     "eslint": "PASS (--max-warnings 0)",
-    "prettier": "PASS — CONTINUE-PROMPT.md added to .prettierignore (generated agent-prompt bundle; box-drawing layout)",
-    "docs_verify": "PASS — 54 docs / 42 screens / 97 command rows / 97 error codes",
-    "docs_link_check_strict": "PASS — 141 cross-refs / 60 docs",
+    "prettier": "PASS — npx prettier --check .",
+    "docs_verify": "PASS — 54 docs / 42 screens / 97 command rows / 99 error codes",
+    "docs_link_check_strict": "PASS — 141 cross-refs / 61 docs",
     "schema_equality_check": "PASS — 56 tables, no float money columns",
     "money_ast": "PASS",
     "packs_validate": "PASS — 12/12",
     "security_scans": "PASS (secret / telemetry / license)",
-    "vite_build": "PASS (this session)",
+    "vite_build": "PASS — Vite 8.2.2, 2,245 modules transformed",
     "rust_brace_balance_hand_gate": "PASS — 26/26 files (lifetime/char-literal-aware scan)",
     "cargo_test": "UNAVAILABLE — rustc/cargo absent; rustup + crates.io unreachable (HTTP 000)",
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 90.22,
-      "branches": 82.22,
-      "functions": 90.86,
-      "lines": 92.58
+      "statements": 89.84,
+      "branches": 81.72,
+      "functions": 90.02,
+      "lines": 92.3
     }
   },
   "environment": {
@@ -72,8 +77,8 @@
     "notes": [
       "node_modules is wiped between sessions: run `npm ci --no-audit --no-fund` first; verify package-lock.json unchanged afterwards",
       "never publish .github/workflows/ (gitignored; token lacks Workflows permission)",
-      "PR ritual: gh pr create --base main --head arena/01a06a14-fpa; merge with gh pr merge --merge",
-      "2026-09-04: in THIS sandbox origin/main == 99e59d8 (synthesized shallow root of the post-M4-2-A2 repo); arena/01a06a14-fpa branches from it and PRs against main. Do not merge origin/arena/01a0687a-fpa or arena/01a0693e-fpa (older branches; would re-add ECC files)."
+      "PR ritual: gh pr create --base main --head arena/01a06a46-fpa; merge with gh pr merge --merge",
+      "2026-09-04: in THIS sandbox origin/main == 6557234 (post-M4-2 root); arena/01a06a46-fpa branches from it and PRs against main. Native cargo/rustc and Playwright are unavailable here."
     ]
   },
   "permission_tiers": {
@@ -202,6 +207,13 @@
       "status": "DONE (TS) / Rust strings aligned NATIVE-UNVERIFIED (error.rs literal-only)"
     },
     {
+      "id": "M3-6",
+      "title": "M3-6 Headcount/S-045 — TS Decimal/day-count model, audited schedule contract/mock, store, UI, tests and docs",
+      "tier": 2,
+      "status": "PARTIAL (this commit; native schedule persistence/calculation/HMAC audit and cargo gates unavailable)",
+      "rollback": "git revert <commit>"
+    },
+    {
       "id": "M4-2a1",
       "title": "Scenario lifecycle contract + mock state machine (PR A1 of M4-2)",
       "tier": 2,
@@ -222,12 +234,12 @@
     }
   ],
   "last_updated": "2026-09-04",
-  "last_action": "M4-2 PR B #30: S-050 page + S-041 picker; check 56f/628t, coverage 90.22/82.22/90.86/92.58, build+prettier PASS; docs canonicalised, ADR-023..025",
+  "last_action": "M3-6 S-045 TS slice: check 59f/653t, coverage 89.84/81.72/90.02/92.30, critical 98.49/96.98/100/98.72, build+prettier+docs gates PASS; native schedule persistence/cargo unavailable; ADR-026",
   "pr": {
-    "number": 30,
-    "url": "https://github.com/Warzonesiddiki/fpa/pull/30",
+    "number": null,
+    "url": null,
     "base": "main",
-    "head": "arena/01a06a14-fpa",
-    "commits": ["0951f6d"]
+    "head": "arena/01a06a46-fpa",
+    "commits": []
   }
 }

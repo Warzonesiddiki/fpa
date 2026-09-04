@@ -162,8 +162,16 @@ is created until that storage path and its crash/rollback tests exist.
 **Given** a hiring plan (3 hires: month 2, 4, 6; salaries; benefits 20%), **When** the plan runs, **Then** Headcount sheet and Opex lines compute monthly, prorated by start date, and Cash reflects payroll timing.
 
 **Edge cases**
-- Hire date in a 4-5-4 BU mid-period → proration via day-count of the Fiscal Period, exact; migration between calendars shows the count used.
-- Termination/attrition with notice period → modeled as a separate event with effective month+1; never double-counted.
+- Hire date in a 4-5-4 BU mid-period → proration via inclusive day-count of the Fiscal Period, exact;
+  S-045 shows the active-days/period-days denominator used.
+- A start date outside the loaded fiscal horizon, malformed ISO date, or termination before hire →
+  `HC_DATE_INVALID` (422, non-retryable) with row details; the form remains open for correction.
+- Two rows with the same role and cost center active in one fiscal period → `HC_OVERLAP` (422,
+  non-retryable) with both row ids and the period; sequential attrition ending the day before the next
+  start is valid.
+- Termination/attrition with notice period → modeled as a separate event with effective month+1;
+  never double-counted. Base compensation, bonus, benefits, and employer load remain exact decimal
+  strings; no browser float totals are authoritative.
 
 ### US-018 · F-017 Capital, Debt & Working Capital · P0 · (R)
 

@@ -118,6 +118,11 @@ describe("S-003 Global Search Palette (⌘K)", () => {
     expect(await screen.findByRole("option", { name: /Settings/ })).toHaveTextContent(
       "/app/settings",
     );
+    await user.clear(input);
+    await user.type(input, "headcount");
+    expect(await screen.findByRole("option", { name: /Headcount Plan/ })).toHaveTextContent(
+      "/app/model/headcount",
+    );
   });
 
   it("shows the no-matches empty state after the debounce", async () => {

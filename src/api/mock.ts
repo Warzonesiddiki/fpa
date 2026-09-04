@@ -20,6 +20,10 @@ import {
   type AssumptionDef,
   type AssumptionListRow,
 } from "./schema";
+import {
+  validateHeadcountRows,
+  type HeadcountScheduleRow as HeadcountPlanRow,
+} from "@/model/headcount";
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -410,6 +414,17 @@ function mockToMinorUnits(value: string): number {
 
 const modelCells = new Map<string, MockModelCell>();
 let modelAuditSeq = 100;
+
+/* ── Headcount schedule (F-016 · S-045 · mock shape mirror) ──────────────────────────── */
+/** Session-only mirror until the native schedule handler persists `model_values`/schedule rows. */
+const mockHeadcountSchedules = new Map<string, { schedule_id: string; rows: HeadcountPlanRow[] }>();
+let mockScheduleAuditSeq = 100;
+
+/** Reset the browser-preview schedule between isolated store/mock tests. */
+export function resetMockHeadcountState(): void {
+  mockHeadcountSchedules.clear();
+  mockScheduleAuditSeq = 100;
+}
 
 /* ── Scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–§3 · mock shape mirror) ──────── */
 
@@ -1593,6 +1608,62 @@ export async function mockInvoke<C extends CommandName>(
             duration_ms: 0,
           },
           value_decimal,
+        },
+      };
+    }
+    case "model.schedule.upsert": {
+      const { model_id, schedule_type, rows } = args as {
+        model_id: string;
+        schedule_type: "headcount";
+        rows: HeadcountPlanRow[];
+      };
+      const scopeErr = modelScopeViolation(model_id);
+      if (scopeErr) return scopeErr;
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "headcount schedule write blocked in degraded session",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      if (schedule_type !== "headcount") {
+        return mockError(
+          "VALUE_INVALID",
+          `unsupported schedule type: ${schedule_type}`,
+          "This schedule type is not available in the preview.",
+          422,
+        );
+      }
+      const issue = validateHeadcountRows(rows);
+      if (issue) {
+        return mockError(
+          issue.code,
+          `${issue.code}: schedule validation failed`,
+          issue.userMessage,
+          422,
+          false,
+          issue.details,
+        );
+      }
+      const previous = mockHeadcountSchedules.get(model_id);
+      const schedule_id = previous?.schedule_id ?? nextImportId("600");
+      mockHeadcountSchedules.set(model_id, {
+        schedule_id,
+        rows: rows.map((row) => ({ ...row })),
+      });
+      mockScheduleAuditSeq += 1;
+      return {
+        data: {
+          schedule_id,
+          recalc: {
+            dirty_cells: rows.length,
+            cycles: [],
+            changed_cells: rows.map((row, index) => row.id ?? `hc-row-${index + 1}`).sort(),
+            issues: [],
+            duration_ms: 0,
+          },
+          audit_id: mockScheduleAuditSeq,
         },
       };
     }
