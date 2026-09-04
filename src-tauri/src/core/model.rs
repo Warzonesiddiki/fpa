@@ -169,10 +169,14 @@ fn function_calls(formula: &str) -> Vec<String> {
 /// an explicit `FORMULA_UNSUPPORTED_FUNCTION` / `VALUE_INVALID` — never a silent fallback.
 pub fn validate_formula(formula: &str) -> AppResult<()> {
     if formula.len() > MAX_FORMULA_LEN {
-        return Err(AppError::invalid("FORMULA_TOO_LONG: at most 2048 characters"));
+        return Err(AppError::invalid(
+            "FORMULA_TOO_LONG: at most 2048 characters",
+        ));
     }
     if !formula.starts_with('=') {
-        return Err(AppError::invalid("FORMULA_PREFIX: formulas must start with '='"));
+        return Err(AppError::invalid(
+            "FORMULA_PREFIX: formulas must start with '='",
+        ));
     }
     for call in function_calls(formula) {
         if !is_supported_function(&call) {
@@ -215,7 +219,7 @@ pub fn recalc_report(
 /// (that is `model_values` in the Company vault, M3-1). It exists so the CLI/command tests can
 /// exercise the documented return shape without the native worker.
 #[derive(Default)]
-pub struct ModelCellStore(pub std::sync::Mutex<std::collections::HashMap<String, StoredCell>>);
+pub struct ModelCellStore(pub std::sync::Mutex<std::collections::BTreeMap<String, StoredCell>>);
 
 /// Composite key inside a Model: `<scenario_id>:<line_id>:<period_id>`.
 pub fn cell_key(scenario_id: &str, line_id: &str, period_id: &str) -> String {
@@ -237,12 +241,15 @@ impl ModelCellStore {
     }
 
     pub fn put(&self, key: &str, cell: StoredCell) -> AppResult<()> {
-        let mut guard = self.0.lock().map_err(|_| AppError::internal("model store lock poisoned".into()))?;
+        let mut guard = self
+            .0
+            .lock()
+            .map_err(|_| AppError::internal("model store lock poisoned"))?;
         guard.insert(key.to_string(), cell);
         Ok(())
     }
 
-    /// Distinct `line_id`s currently held for a scenario, in order of first appearance.
+    /// Distinct `line_id`s currently held for a scenario, in sorted order.
     pub fn changed_lines(&self, scenario_id: &str) -> Vec<String> {
         let guard = match self.0.lock() {
             Ok(g) => g,
@@ -252,14 +259,14 @@ impl ModelCellStore {
         let mut seen = std::collections::HashSet::new();
         let mut lines = Vec::new();
         for key in guard.keys() {
-            if let Some(rest) = key.strip_prefix(&prefix) {
-                if let Some((line, _)) = rest.split_once(':') {
-                    if seen.insert(line.to_string()) {
-                        lines.push(line.to_string());
-                    }
-                }
+            if let Some(rest) = key.strip_prefix(&prefix)
+                && let Some((line, _)) = rest.split_once(':')
+                && seen.insert(line.to_string())
+            {
+                lines.push(line.to_string());
             }
         }
+        lines.sort();
         lines
     }
 
@@ -308,7 +315,10 @@ mod tests {
     fn over_long_formula_is_rejected() {
         let long = format!("={}", "A1+".repeat(700));
         assert!(long.len() > MAX_FORMULA_LEN);
-        assert_eq!(validate_formula(&long).unwrap_err().body().code, "VALUE_INVALID");
+        assert_eq!(
+            validate_formula(&long).unwrap_err().body().code,
+            "VALUE_INVALID"
+        );
     }
 
     #[test]
@@ -317,12 +327,20 @@ mod tests {
         assert_eq!(parse_value_minor("0.1", "USD").unwrap(), 10);
         // 0.1 + 0.2 style drift is impossible: the boundary is decimal-string only (B18-2).
         assert_eq!(parse_value_minor("0.3", "USD").unwrap(), 30);
-        assert!(parse_value_minor("1e3", "USD").is_err(), "no scientific-notation float (I1)");
+        assert!(
+            parse_value_minor("1e3", "USD").is_err(),
+            "no scientific-notation float (I1)"
+        );
     }
 
     #[test]
     fn recalc_report_is_deterministic_and_ordered() {
-        let report = recalc_report(2, vec![vec!["Revenue!C10".into(), "Revenue!C12".into()]], vec!["ln-z".into(), "ln-a".into()], 12);
+        let report = recalc_report(
+            2,
+            vec![vec!["Revenue!C10".into(), "Revenue!C12".into()]],
+            vec!["ln-z".into(), "ln-a".into()],
+            12,
+        );
         assert_eq!(report["dirty_cells"], 2);
         assert_eq!(report["changed_cells"][0], "ln-a");
         assert_eq!(report["changed_cells"][1], "ln-z");
@@ -333,9 +351,39 @@ mod tests {
     #[test]
     fn store_keeps_lines_distinct_and_counts_scenario() {
         let store = ModelCellStore::default();
-        store.put("sc-base:ln-a:fp-p1", StoredCell { value_minor: Some(1), amount_text: None, formula: None, manual_override: false }).unwrap();
-        store.put("sc-base:ln-a:fp-p2", StoredCell { value_minor: Some(2), amount_text: None, formula: None, manual_override: false }).unwrap();
-        store.put("sc-base:ln-b:fp-p1", StoredCell { value_minor: None, amount_text: None, formula: Some("=A1".into()), manual_override: false }).unwrap();
+        store
+            .put(
+                "sc-base:ln-a:fp-p1",
+                StoredCell {
+                    value_minor: Some(1),
+                    amount_text: None,
+                    formula: None,
+                    manual_override: false,
+                },
+            )
+            .unwrap();
+        store
+            .put(
+                "sc-base:ln-a:fp-p2",
+                StoredCell {
+                    value_minor: Some(2),
+                    amount_text: None,
+                    formula: None,
+                    manual_override: false,
+                },
+            )
+            .unwrap();
+        store
+            .put(
+                "sc-base:ln-b:fp-p1",
+                StoredCell {
+                    value_minor: None,
+                    amount_text: None,
+                    formula: Some("=A1".into()),
+                    manual_override: false,
+                },
+            )
+            .unwrap();
         assert_eq!(store.count_for_scenario("sc-base"), 3);
         assert_eq!(store.changed_lines("sc-base"), vec!["ln-a", "ln-b"]);
         assert_eq!(store.changed_lines("sc-other").len(), 0);

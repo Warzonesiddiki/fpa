@@ -24,10 +24,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use calamine::{open_workbook_auto, Data, Reader};
+use calamine::{Data, Reader, open_workbook_auto};
 use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
-use rust_decimal::Decimal;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tauri::Manager;
@@ -35,10 +34,10 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
-use crate::core::money::{scale_for_currency, MoneyValue};
+use crate::core::money::{MoneyValue, scale_for_currency};
 use crate::storage::db;
 use crate::storage::keystore;
 
@@ -251,7 +250,10 @@ impl ParseRegistry {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /* ── Mapping ─────────────────────────────────────────────────────── */
@@ -274,7 +276,10 @@ fn canonical_mapping() -> Mapping {
     Mapping {
         id: CANONICAL_MAPPING_ID.to_string(),
         version: "canonical-v1".to_string(),
-        columns: CANONICAL_TARGETS.iter().map(|t| (t.to_string(), t.to_string())).collect(),
+        columns: CANONICAL_TARGETS
+            .iter()
+            .map(|t| (t.to_string(), t.to_string()))
+            .collect(),
         credit_positive: false,
         account_normalization: DEFAULT_ACCOUNT_NORMALIZATION.to_string(),
         dimension_normalization: DEFAULT_DIMENSION_NORMALIZATION.to_string(),
@@ -285,10 +290,14 @@ fn canonical_mapping() -> Mapping {
 fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<ValidatedMappingTemplate> {
     let name = input.name.trim().to_string();
     if name.is_empty() || name.chars().count() > 120 {
-        return Err(AppError::map_target_invalid("MAPPING_NAME: expected 1..120 characters"));
+        return Err(AppError::map_target_invalid(
+            "MAPPING_NAME: expected 1..120 characters",
+        ));
     }
     if !(3..=15).contains(&input.columns.len()) {
-        return Err(AppError::map_target_invalid("MAPPING_COLUMNS: expected 3..15 columns"));
+        return Err(AppError::map_target_invalid(
+            "MAPPING_COLUMNS: expected 3..15 columns",
+        ));
     }
 
     let mut sources = BTreeSet::new();
@@ -309,13 +318,19 @@ fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<Validated
             )));
         }
         if !CANONICAL_TARGETS.contains(&target.as_str()) {
-            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_UNKNOWN: {target}")));
+            return Err(AppError::map_target_invalid(format!(
+                "MAPPING_TARGET_UNKNOWN: {target}"
+            )));
         }
         if !sources.insert(source.clone()) {
-            return Err(AppError::map_target_invalid(format!("MAPPING_SOURCE_DUPLICATE: {source}")));
+            return Err(AppError::map_target_invalid(format!(
+                "MAPPING_SOURCE_DUPLICATE: {source}"
+            )));
         }
         if !targets.insert(target.clone()) {
-            return Err(AppError::map_target_invalid(format!("MAPPING_TARGET_DUPLICATE: {target}")));
+            return Err(AppError::map_target_invalid(format!(
+                "MAPPING_TARGET_DUPLICATE: {target}"
+            )));
         }
         columns.push((source, target));
     }
@@ -324,9 +339,7 @@ fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<Validated
             "MAPPING_TARGET_REQUIRED: period and account_code",
         ));
     }
-    if !targets.contains("amount")
-        && !(targets.contains("debit") && targets.contains("credit"))
-    {
+    if !targets.contains("amount") && !(targets.contains("debit") && targets.contains("credit")) {
         return Err(AppError::map_target_invalid(
             "MAPPING_AMOUNT_REQUIRED: amount or debit+credit",
         ));
@@ -344,11 +357,15 @@ fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<Validated
     ]
     .contains(&account_normalization.as_str())
     {
-        return Err(AppError::map_target_invalid("MAPPING_ACCOUNT_NORMALIZATION"));
+        return Err(AppError::map_target_invalid(
+            "MAPPING_ACCOUNT_NORMALIZATION",
+        ));
     }
     let dimension_normalization = input.normalization.dimension_values;
     if !["trim", "trim_collapse_whitespace"].contains(&dimension_normalization.as_str()) {
-        return Err(AppError::map_target_invalid("MAPPING_DIMENSION_NORMALIZATION"));
+        return Err(AppError::map_target_invalid(
+            "MAPPING_DIMENSION_NORMALIZATION",
+        ));
     }
     let period_normalization = input.normalization.period;
     if !["documented", "month_name_mmm_yy"].contains(&period_normalization.as_str()) {
@@ -448,7 +465,9 @@ fn resolve_mapping(conn: &Connection, company_id: &str, mapping_id: &str) -> App
         )
         .map_err(AppError::from)?;
     let rows = stmt
-        .query_map([&id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .query_map([&id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })
         .map_err(AppError::from)?;
     for row in rows {
         let (pattern, target) = row.map_err(AppError::from)?;
@@ -533,9 +552,7 @@ fn collapse_whitespace(value: &str) -> String {
 fn normalize_account_code(value: &str, rule: &str) -> String {
     match rule {
         "trim_collapse_whitespace" => collapse_whitespace(value),
-        "trim_collapse_whitespace_remove_hyphens" => {
-            collapse_whitespace(value).replace('-', "")
-        }
+        "trim_collapse_whitespace_remove_hyphens" => collapse_whitespace(value).replace('-', ""),
         _ => value.trim().to_string(),
     }
 }
@@ -595,7 +612,15 @@ fn decode_text(bytes: &[u8]) -> AppResult<(String, ParseEncoding)> {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
         let text = String::from_utf8(bytes[3..].to_vec())
             .map_err(|e| AppError::encoding_unsupported(format!("UTF8_BOM_INVALID: {e}")))?;
-        return Ok((text, ParseEncoding { scope, encoding: "utf-8".into(), bom: true, auto_detected: false }));
+        return Ok((
+            text,
+            ParseEncoding {
+                scope,
+                encoding: "utf-8".into(),
+                bom: true,
+                auto_detected: false,
+            },
+        ));
     }
     if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
         return Err(AppError::encoding_unsupported(
@@ -605,10 +630,15 @@ fn decode_text(bytes: &[u8]) -> AppResult<(String, ParseEncoding)> {
     match std::str::from_utf8(bytes) {
         Ok(text) => Ok((
             text.to_string(),
-            ParseEncoding { scope, encoding: "utf-8".into(), bom: false, auto_detected: false },
+            ParseEncoding {
+                scope,
+                encoding: "utf-8".into(),
+                bom: false,
+                auto_detected: false,
+            },
         )),
         Err(_) => {
-            if bytes.iter().any(|b| *b == 0) {
+            if bytes.contains(&0) {
                 return Err(AppError::encoding_unsupported(
                     "UTF16_OR_BINARY: NUL bytes outside UTF-8 — re-export as UTF-8 or Latin-1",
                 ));
@@ -703,7 +733,11 @@ pub fn normalise_decimal_text(raw: &str) -> Option<String> {
     let has_dot = t.contains('.');
     let has_comma = t.contains(',');
     let cleaned = if has_dot && has_comma {
-        let decimal = if t.rfind('.') > t.rfind(',') { '.' } else { ',' };
+        let decimal = if t.rfind('.') > t.rfind(',') {
+            '.'
+        } else {
+            ','
+        };
         let thousands = if decimal == '.' { ',' } else { '.' };
         t.replace(thousands, "").replace(decimal, ".")
     } else if has_dot || has_comma {
@@ -762,7 +796,8 @@ fn amount_minor(raw: Option<&str>, currency: &str) -> Result<Option<i64>, String
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
         Some(s) => {
-            let normalised = normalise_decimal_text(s).ok_or_else(|| format!("MONEY_PARSE: '{s}'"))?;
+            let normalised =
+                normalise_decimal_text(s).ok_or_else(|| format!("MONEY_PARSE: '{s}'"))?;
             Ok(Some(MoneyValue::from_decimal(&normalised, currency)?.minor))
         }
     }
@@ -849,7 +884,9 @@ fn read_workbook(path: &Path, bytes: &[u8], kind: ImportKind) -> AppResult<Parse
     })?;
     let names = workbook.sheet_names().to_vec();
     if names.is_empty() {
-        return Err(AppError::import_file_unreadable("WORKBOOK_EMPTY: no sheets found"));
+        return Err(AppError::import_file_unreadable(
+            "WORKBOOK_EMPTY: no sheets found",
+        ));
     }
     let target = select_sheet(kind, &names)?;
 
@@ -858,7 +895,7 @@ fn read_workbook(path: &Path, bytes: &[u8], kind: ImportKind) -> AppResult<Parse
     for name in &names {
         let range = workbook.worksheet_range(name);
         let row_count = match &range {
-            Some(Ok(r)) => {
+            Ok(r) => {
                 let count = r.height().saturating_sub(1) as i64; // header row excluded
                 if *name == target {
                     let mut rows = Vec::with_capacity(r.height());
@@ -869,10 +906,13 @@ fn read_workbook(path: &Path, bytes: &[u8], kind: ImportKind) -> AppResult<Parse
                 }
                 count
             }
-            Some(Err(e)) => return Err(AppError::import_file_unreadable(e.to_string())),
-            None => 0,
+            Err(e) => return Err(AppError::import_file_unreadable(e.to_string())),
         };
-        sheets.push(ParseSheet { name: name.clone(), kind: sheet_kind(name), row_count });
+        sheets.push(ParseSheet {
+            name: name.clone(),
+            kind: sheet_kind(name),
+            row_count,
+        });
     }
 
     let grid = grid
@@ -883,7 +923,11 @@ fn read_workbook(path: &Path, bytes: &[u8], kind: ImportKind) -> AppResult<Parse
         bom: false,
         auto_detected: false,
     }];
-    Ok(ParsedFile { sheets, encodings, grid })
+    Ok(ParsedFile {
+        sheets,
+        encodings,
+        grid,
+    })
 }
 
 fn read_delimited(bytes: &[u8], ext: &str) -> AppResult<ParsedFile> {
@@ -892,9 +936,16 @@ fn read_delimited(bytes: &[u8], ext: &str) -> AppResult<ParsedFile> {
     let delimiter = detect_delimiter(ext, &header);
     let grid = split_delimited(&text, delimiter);
     let row_count = grid.len().saturating_sub(1) as i64;
-    let encoding = ParseEncoding { scope: "GL".to_string(), ..encoding };
+    let encoding = ParseEncoding {
+        scope: "GL".to_string(),
+        ..encoding
+    };
     Ok(ParsedFile {
-        sheets: vec![ParseSheet { name: "GL".to_string(), kind: "gl".to_string(), row_count }],
+        sheets: vec![ParseSheet {
+            name: "GL".to_string(),
+            kind: "gl".to_string(),
+            row_count,
+        }],
         encodings: vec![encoding],
         grid,
     })
@@ -910,9 +961,14 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// Grid → canonical source rows, using the resolved mapping.
 fn prepare_rows(session: &ParseSession, mapping: &Mapping) -> AppResult<Vec<SourceRow>> {
     if session.grid.is_empty() {
-        return Err(AppError::import_file_unreadable("EMPTY_FILE: the sheet has no header row"));
+        return Err(AppError::import_file_unreadable(
+            "EMPTY_FILE: the sheet has no header row",
+        ));
     }
-    let headers: Vec<String> = session.grid[0].iter().map(|h| h.trim().to_string()).collect();
+    let headers: Vec<String> = session.grid[0]
+        .iter()
+        .map(|h| h.trim().to_string())
+        .collect();
     let idx = column_index(&headers, mapping);
     for required in ["period", "account_code"] {
         if !idx.contains_key(required) {
@@ -921,7 +977,10 @@ fn prepare_rows(session: &ParseSession, mapping: &Mapping) -> AppResult<Vec<Sour
             )));
         }
     }
-    if !["debit", "credit", "amount"].iter().any(|t| idx.contains_key(*t)) {
+    if !["debit", "credit", "amount"]
+        .iter()
+        .any(|t| idx.contains_key(*t))
+    {
         return Err(AppError::invalid(
             "COLUMN_MISSING: no source column mapped to 'debit'/'credit'/'amount' (GL-TEMPLATE-SPEC §2)",
         ));
@@ -996,12 +1055,27 @@ struct RowIssue {
 }
 
 impl RowIssue {
-    fn row(code: &str, message: impl Into<String>, line_no: i64, details: serde_json::Value) -> Self {
-        RowIssue { code: code.to_string(), message: message.into(), line_no: Some(line_no), details }
+    fn row(
+        code: &str,
+        message: impl Into<String>,
+        line_no: i64,
+        details: serde_json::Value,
+    ) -> Self {
+        RowIssue {
+            code: code.to_string(),
+            message: message.into(),
+            line_no: Some(line_no),
+            details,
+        }
     }
 
     fn batch(code: &str, message: impl Into<String>, details: serde_json::Value) -> Self {
-        RowIssue { code: code.to_string(), message: message.into(), line_no: None, details }
+        RowIssue {
+            code: code.to_string(),
+            message: message.into(),
+            line_no: None,
+            details,
+        }
     }
 
     fn to_json(&self) -> serde_json::Value {
@@ -1020,12 +1094,20 @@ impl RowIssue {
 fn issue_to_error(issue: &RowIssue) -> AppError {
     match issue.code.as_str() {
         "MAP_ACCOUNT_AMBIGUOUS" => {
-            let code = issue.details.get("accountCode").and_then(|v| v.as_str()).unwrap_or("");
+            let code = issue
+                .details
+                .get("accountCode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let accounts = issue
                 .details
                 .get("list")
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default();
             AppError::map_account_ambiguous(code, accounts)
         }
@@ -1080,18 +1162,25 @@ pub fn parse_period_key(raw: &str) -> Option<PeriodKey> {
         if year.is_empty() || code.is_empty() {
             return None;
         }
-        return Some(PeriodKey::FiscalYearPeriod(format!("FY{year}"), code.to_string()));
+        return Some(PeriodKey::FiscalYearPeriod(
+            format!("FY{year}"),
+            code.to_string(),
+        ));
     }
     if t.len() == 7 && t.as_bytes().get(4) == Some(&b'-') {
         let (year, month) = t.split_at(4);
         let year: i32 = year.parse().ok()?;
         let month: u32 = month[1..].parse().ok()?;
-        return (1..=12).contains(&month).then_some(PeriodKey::Month(year, month));
+        return (1..=12)
+            .contains(&month)
+            .then_some(PeriodKey::Month(year, month));
     }
     if t.len() == 6 && t.chars().all(|c| c.is_ascii_digit()) {
         let year: i32 = t[..4].parse().ok()?;
         let month: u32 = t[4..].parse().ok()?;
-        return (1..=12).contains(&month).then_some(PeriodKey::Month(year, month));
+        return (1..=12)
+            .contains(&month)
+            .then_some(PeriodKey::Month(year, month));
     }
     if t.len() == 8 && t.chars().all(|c| c.is_ascii_digit()) {
         // Validated by chrono so 20260231 never maps to a period silently.
@@ -1109,7 +1198,11 @@ pub fn parse_period_key(raw: &str) -> Option<PeriodKey> {
 
 /// Fiscal period containing a date, for this Company's calendars (calendar-aware: the period
 /// that contains the first day of the stated month wins, deterministically).
-fn period_containing(conn: &Connection, company_id: &str, iso_date: &str) -> AppResult<Option<String>> {
+fn period_containing(
+    conn: &Connection,
+    company_id: &str,
+    iso_date: &str,
+) -> AppResult<Option<String>> {
     conn.query_row(
         "SELECT p.id FROM fiscal_periods p
            JOIN fiscal_years y ON y.id = p.fiscal_year_id
@@ -1123,7 +1216,11 @@ fn period_containing(conn: &Connection, company_id: &str, iso_date: &str) -> App
     .map_err(AppError::from)
 }
 
-fn resolve_period(conn: &Connection, company_id: &str, key: &PeriodKey) -> AppResult<Option<String>> {
+fn resolve_period(
+    conn: &Connection,
+    company_id: &str,
+    key: &PeriodKey,
+) -> AppResult<Option<String>> {
     match key {
         PeriodKey::Month(year, month) => {
             let first = format!("{year:04}-{month:02}-01");
@@ -1167,11 +1264,15 @@ fn query_account_ids(
     let mut stmt = conn.prepare(&sql)?;
     match bu {
         Some(bu) => {
-            let rows = stmt.query_map(rusqlite::params![company_id, code, bu], |r| r.get::<_, String>(0))?;
+            let rows = stmt.query_map(rusqlite::params![company_id, code, bu], |r| {
+                r.get::<_, String>(0)
+            })?;
             rows.collect()
         }
         None => {
-            let rows = stmt.query_map(rusqlite::params![company_id, code], |r| r.get::<_, String>(0))?;
+            let rows = stmt.query_map(rusqlite::params![company_id, code], |r| {
+                r.get::<_, String>(0)
+            })?;
             rows.collect()
         }
     }
@@ -1194,13 +1295,17 @@ fn resolve_account(
             .map_err(|_| AccountFault::Missing),
         None => Ok(Vec::new()),
     }?;
-    let shared =
-        query_account_ids(conn, company_id, code, "AND bu_id IS NULL", None).map_err(|_| AccountFault::Missing)?;
+    let shared = query_account_ids(conn, company_id, code, "AND bu_id IS NULL", None)
+        .map_err(|_| AccountFault::Missing)?;
     match (scoped.len(), shared.len()) {
         (1, _) => Ok(scoped[0].clone()),
         (0, 1) => Ok(shared[0].clone()),
         (0, 0) => Err(AccountFault::Missing),
-        _ => Err(AccountFault::Ambiguous(if scoped.is_empty() { shared } else { scoped })),
+        _ => Err(AccountFault::Ambiguous(if scoped.is_empty() {
+            shared
+        } else {
+            scoped
+        })),
     }
 }
 
@@ -1217,7 +1322,9 @@ fn resolve_bu(conn: &Connection, company_id: &str, raw: &str) -> AppResult<Optio
 
 /// `src_bu→dst_bu` (GL-TEMPLATE-SPEC §2 col 12) — accepts `->` and the Unicode arrow.
 pub fn parse_ic_tag(raw: &str) -> Option<(String, String)> {
-    let (src, dst) = raw.split_once("->").or_else(|| raw.split_once('\u{2192}'))?;
+    let (src, dst) = raw
+        .split_once("->")
+        .or_else(|| raw.split_once('\u{2192}'))?;
     let src = src.trim().to_string();
     let dst = dst.trim().to_string();
     if src.is_empty() || dst.is_empty() {
@@ -1228,7 +1335,9 @@ pub fn parse_ic_tag(raw: &str) -> Option<(String, String)> {
 
 fn is_iso_week(raw: &str) -> bool {
     let t = raw.trim();
-    t.len() == 8 && t.as_bytes().get(4) == Some(&b'-') && (t.as_bytes()[5] == b'W' || t.as_bytes()[5] == b'w')
+    t.len() == 8
+        && t.as_bytes().get(4) == Some(&b'-')
+        && (t.as_bytes()[5] == b'W' || t.as_bytes()[5] == b'w')
 }
 
 struct CompanyCtx {
@@ -1258,7 +1367,12 @@ fn load_company(conn: &Connection, company_id: &str) -> AppResult<CompanyCtx> {
         .optional()
         .map_err(AppError::from)?
         .unwrap_or_else(|| "12month".to_string());
-    Ok(CompanyCtx { id: company_id.to_string(), kind, default_currency, calendar_preset })
+    Ok(CompanyCtx {
+        id: company_id.to_string(),
+        kind,
+        default_currency,
+        calendar_preset,
+    })
 }
 
 /// Map + validate every row. One hard issue per row (the first blocking problem — the UI
@@ -1344,7 +1458,10 @@ fn build_lines(
             None => {
                 hard.push(RowIssue::row(
                     "PERIOD_NOT_FOUND",
-                    format!("PERIOD_OUT_OF_RANGE: '{}' is outside this Company calendar", row.period),
+                    format!(
+                        "PERIOD_OUT_OF_RANGE: '{}' is outside this Company calendar",
+                        row.period
+                    ),
                     row.line_no,
                     json!({ "period": row.period.clone() }),
                 ));
@@ -1355,21 +1472,36 @@ fn build_lines(
         let debit = match amount_minor(row.debit.as_deref(), &currency) {
             Ok(v) => v,
             Err(e) => {
-                hard.push(RowIssue::row("VALUE_INVALID", e, row.line_no, json!({ "debit": row.debit })));
+                hard.push(RowIssue::row(
+                    "VALUE_INVALID",
+                    e,
+                    row.line_no,
+                    json!({ "debit": row.debit }),
+                ));
                 continue;
             }
         };
         let credit = match amount_minor(row.credit.as_deref(), &currency) {
             Ok(v) => v,
             Err(e) => {
-                hard.push(RowIssue::row("VALUE_INVALID", e, row.line_no, json!({ "credit": row.credit })));
+                hard.push(RowIssue::row(
+                    "VALUE_INVALID",
+                    e,
+                    row.line_no,
+                    json!({ "credit": row.credit }),
+                ));
                 continue;
             }
         };
         let signed = match amount_minor(row.amount.as_deref(), &currency) {
             Ok(v) => v,
             Err(e) => {
-                hard.push(RowIssue::row("VALUE_INVALID", e, row.line_no, json!({ "amount": row.amount })));
+                hard.push(RowIssue::row(
+                    "VALUE_INVALID",
+                    e,
+                    row.line_no,
+                    json!({ "amount": row.amount }),
+                ));
                 continue;
             }
         };
@@ -1412,7 +1544,12 @@ fn build_lines(
             continue;
         };
 
-        let bu_id = match row.business_unit.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        let bu_id = match row
+            .business_unit
+            .as_deref()
+            .map(str::trim)
+            .filter(|b| !b.is_empty())
+        {
             Some(raw) => {
                 let cached = bu_cache.get(raw).cloned();
                 match cached {
@@ -1440,11 +1577,12 @@ fn build_lines(
         let account_id = match account_cache.get(&cache_key).cloned() {
             Some(v) => v,
             None => {
-                let v = match resolve_account(conn, &company.id, &row.account_code, bu_id.as_deref()) {
-                    Ok(id) => Ok(id),
-                    Err(AccountFault::Missing) => Err(Vec::new()),
-                    Err(AccountFault::Ambiguous(list)) => Err(list),
-                };
+                let v =
+                    match resolve_account(conn, &company.id, &row.account_code, bu_id.as_deref()) {
+                        Ok(id) => Ok(id),
+                        Err(AccountFault::Missing) => Err(Vec::new()),
+                        Err(AccountFault::Ambiguous(list)) => Err(list),
+                    };
                 account_cache.insert(cache_key, v.clone());
                 v
             }
@@ -1466,7 +1604,10 @@ fn build_lines(
             Err(candidates) => {
                 hard.push(RowIssue::row(
                     "MAP_ACCOUNT_AMBIGUOUS",
-                    format!("ACCOUNT_AMBIGUOUS: '{}' resolves to several Accounts", row.account_code),
+                    format!(
+                        "ACCOUNT_AMBIGUOUS: '{}' resolves to several Accounts",
+                        row.account_code
+                    ),
                     row.line_no,
                     json!({ "accountCode": row.account_code.clone(), "list": candidates }),
                 ));
@@ -1476,7 +1617,12 @@ fn build_lines(
 
         let mut is_ic = false;
         let mut ic: Option<(String, String)> = None;
-        if let Some(tag) = row.intercompany_tag.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        if let Some(tag) = row
+            .intercompany_tag
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        {
             match parse_ic_tag(tag) {
                 None => {
                     hard.push(RowIssue::row(
@@ -1515,15 +1661,19 @@ fn build_lines(
             }
         }
 
-        if let Some(reference) = row.posting_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
-            if let Some(first) = refs.insert(reference.to_string(), row.line_no) {
-                warnings.push(RowIssue::row(
-                    "VALUE_INVALID",
-                    format!("POSTING_REF_DUPLICATE: '{reference}' first seen on row {first}"),
-                    row.line_no,
-                    json!({ "postingRef": reference, "firstLineNo": first }),
-                ));
-            }
+        if let Some(reference) = row
+            .posting_ref
+            .as_deref()
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            && let Some(first) = refs.insert(reference.to_string(), row.line_no)
+        {
+            warnings.push(RowIssue::row(
+                "VALUE_INVALID",
+                format!("POSTING_REF_DUPLICATE: '{reference}' first seen on row {first}"),
+                row.line_no,
+                json!({ "postingRef": reference, "firstLineNo": first }),
+            ));
         }
 
         let mut dims = serde_json::Map::new();
@@ -1651,7 +1801,12 @@ fn build_lines(
         }
     }
 
-    Ok(BuildResult { lines, hard, warnings, preview })
+    Ok(BuildResult {
+        lines,
+        hard,
+        warnings,
+        preview,
+    })
 }
 
 /// Trial-Balance Tie-Out (GL-TEMPLATE-SPEC §3): Σdebits = Σcredits over the rows that will be
@@ -1685,8 +1840,15 @@ fn tie_out(lines: &[MappedLine]) -> AppResult<(i64, i64, Vec<serde_json::Value>)
         credits = credits
             .checked_add(c)
             .ok_or_else(|| AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: credit total exceeds i64"))?;
-        if let Some(reference) = line.posting_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
-            let entry = groups.entry(reference.to_string()).or_insert((0, Vec::new()));
+        if let Some(reference) = line
+            .posting_ref
+            .as_deref()
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+        {
+            let entry = groups
+                .entry(reference.to_string())
+                .or_insert((0, Vec::new()));
             entry.0 = entry.0.checked_add(line.amount_minor).ok_or_else(|| {
                 AppError::invalid("TIE_OUT_TOTAL_OVERFLOW: posting-reference residual exceeds i64")
             })?;
@@ -1732,7 +1894,11 @@ fn batch_currency(lines: &[MappedLine], fallback: &str) -> String {
 /// flow (S-002 "demo data toggle" / "Open Demo Company") reference the bundled
 /// `assets/demo/sample_gl_dump.csv` by relative path on both dev and installed builds.
 /// Pure (dirs injected) so the fallback order is unit-testable without an AppHandle.
-fn resolve_import_path(direct: &Path, resource_dir: Option<&Path>, cwd: Option<&Path>) -> Option<PathBuf> {
+fn resolve_import_path(
+    direct: &Path,
+    resource_dir: Option<&Path>,
+    cwd: Option<&Path>,
+) -> Option<PathBuf> {
     if direct.is_file() {
         return Some(direct.to_path_buf());
     }
@@ -1768,12 +1934,21 @@ pub fn import_parse(
         std::env::current_dir().ok().as_deref(),
     ) {
         Some(p) => p,
-        None => return Err(AppError::import_file_unreadable(format!("FILE_NOT_FOUND: {file_path}"))),
+        None => {
+            return Err(AppError::import_file_unreadable(format!(
+                "FILE_NOT_FOUND: {file_path}"
+            )));
+        }
     };
-    let bytes = fs::read(path).map_err(|e| AppError::import_file_unreadable(format!("IO: {e}")))?;
+    let bytes =
+        fs::read(&path).map_err(|e| AppError::import_file_unreadable(format!("IO: {e}")))?;
     let size_bytes = bytes.len() as i64;
     let source_hash = sha256_hex(&bytes);
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
 
     let parsed = match ext.as_str() {
         "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" => read_workbook(&path, &bytes, kind)?,
@@ -1783,22 +1958,31 @@ pub fn import_parse(
         "zip" => {
             return Err(AppError::import_file_unreadable(
                 "ZIP_UNSUPPORTED: unzip the workbook and select the .xlsx/.csv inside",
-            ))
+            ));
         }
         other => {
             return Err(AppError::import_file_unreadable(format!(
                 "FILE_TYPE_UNSUPPORTED: .{other} (GL-TEMPLATE-SPEC §1: .xlsx/.csv/.tsv)"
-            )))
+            )));
         }
     };
 
-    let source_name =
-        path.file_name().and_then(|n| n.to_str()).unwrap_or(&file_path).to_string();
+    let source_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&file_path)
+        .to_string();
     let parse_id = Uuid::new_v4().to_string();
-    let headers: Vec<String> =
-        parsed.grid.first().map(|r| r.iter().map(|c| c.trim().to_string()).collect()).unwrap_or_default();
-    let row_counts: BTreeMap<String, i64> =
-        parsed.sheets.iter().map(|s| (s.name.clone(), s.row_count)).collect();
+    let headers: Vec<String> = parsed
+        .grid
+        .first()
+        .map(|r| r.iter().map(|c| c.trim().to_string()).collect())
+        .unwrap_or_default();
+    let row_counts: BTreeMap<String, i64> = parsed
+        .sheets
+        .iter()
+        .map(|s| (s.name.clone(), s.row_count))
+        .collect();
     let sheets: Vec<serde_json::Value> = parsed
         .sheets
         .iter()
@@ -1893,7 +2077,9 @@ fn persist_mapping(
                     }))
                 })
                 .map_err(AppError::from)?;
-            mapped.collect::<Result<Vec<_>, _>>().map_err(AppError::from)?
+            mapped
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(AppError::from)?
         };
         Some(
             json!({
@@ -1943,10 +2129,22 @@ fn persist_mapping(
 
     let mut persisted = template.columns.clone();
     persisted.extend([
-        (RULE_SIGN_CONVENTION.to_string(), template.sign_convention.clone()),
-        (RULE_ACCOUNT_CODE.to_string(), template.account_normalization.clone()),
-        (RULE_DIMENSION_VALUES.to_string(), template.dimension_normalization.clone()),
-        (RULE_PERIOD.to_string(), template.period_normalization.clone()),
+        (
+            RULE_SIGN_CONVENTION.to_string(),
+            template.sign_convention.clone(),
+        ),
+        (
+            RULE_ACCOUNT_CODE.to_string(),
+            template.account_normalization.clone(),
+        ),
+        (
+            RULE_DIMENSION_VALUES.to_string(),
+            template.dimension_normalization.clone(),
+        ),
+        (
+            RULE_PERIOD.to_string(),
+            template.period_normalization.clone(),
+        ),
     ]);
     for (source, target) in persisted {
         tx.execute(
@@ -1997,7 +2195,7 @@ pub fn import_map_save_v1(
     let template = validate_mapping_template(template)?;
     let dir = app_data_dir(&app)?;
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let (mapping_id, version) = persist_mapping(&mut conn, &company_id, &key, &template)?;
     Ok(json!({ "data": { "mapping_id": mapping_id, "version": version } }))
 }
@@ -2015,14 +2213,23 @@ pub fn import_validate(
     let company_id = require_unlocked(&session)?;
     let parsed = registry.get(&parse_id)?;
     if parsed.company_id != company_id {
-        return Err(AppError::invalid("PARSE_COMPANY_MISMATCH: re-parse the file in this Company"));
+        return Err(AppError::invalid(
+            "PARSE_COMPANY_MISMATCH: re-parse the file in this Company",
+        ));
     }
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let company = load_company(&conn, &company_id)?;
     let mapping = resolve_mapping(&conn, &company_id, &mapping_id)?;
     let rows = prepare_rows(&parsed, &mapping)?;
-    let built = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &HashSet::new())?;
+    let built = build_lines(
+        &conn,
+        &company,
+        &rows,
+        parsed.kind,
+        &mapping,
+        &HashSet::new(),
+    )?;
 
     let hard: Vec<serde_json::Value> = built.hard.iter().map(|i| i.to_json()).collect();
     let warnings: Vec<serde_json::Value> = built.warnings.iter().map(|i| i.to_json()).collect();
@@ -2050,14 +2257,23 @@ pub fn import_tieout(
     let company_id = require_unlocked(&session)?;
     let parsed = registry.get(&parse_id)?;
     if parsed.company_id != company_id {
-        return Err(AppError::invalid("PARSE_COMPANY_MISMATCH: re-parse the file in this Company"));
+        return Err(AppError::invalid(
+            "PARSE_COMPANY_MISMATCH: re-parse the file in this Company",
+        ));
     }
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let company = load_company(&conn, &company_id)?;
     let mapping = resolve_mapping(&conn, &company_id, &mapping_id)?;
     let rows = prepare_rows(&parsed, &mapping)?;
-    let built = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &HashSet::new())?;
+    let built = build_lines(
+        &conn,
+        &company,
+        &rows,
+        parsed.kind,
+        &mapping,
+        &HashSet::new(),
+    )?;
     if let Some(first) = built.hard.first() {
         return Err(issue_to_error(first));
     }
@@ -2139,14 +2355,19 @@ pub fn import_commit(
     let company_id = require_session_write(&session)?;
     let parsed = registry.get(&parse_id)?;
     if parsed.company_id != company_id {
-        return Err(AppError::invalid("PARSE_COMPANY_MISMATCH: re-parse the file in this Company"));
+        return Err(AppError::invalid(
+            "PARSE_COMPANY_MISMATCH: re-parse the file in this Company",
+        ));
     }
     // Destination honesty (M2-5): this commit path writes double-entry Actuals into `gl_lines`
     // (+ `ic_lines`). GL Dump, Excel/CSV Actuals and Opening Balances are all Actuals of a
     // Period, so they belong here. Driver data belongs in `driver_values` and a dimension master
     // list in `dimension_values` (DATABASE-SCHEMA §6/§3); neither destination pipeline exists
     // yet, so those kinds are refused outright rather than silently persisted as GL facts.
-    if matches!(parsed.kind, ImportKind::DriverData | ImportKind::DimensionMaster) {
+    if matches!(
+        parsed.kind,
+        ImportKind::DriverData | ImportKind::DimensionMaster
+    ) {
         return Err(AppError::invalid(format!(
             "IMPORT_KIND_DESTINATION_UNAVAILABLE: '{}' does not post to the general ledger and its destination pipeline is not implemented",
             parsed.kind.as_str()
@@ -2157,11 +2378,13 @@ pub fn import_commit(
         return Err(AppError::invalid("BATCH_NAME_REQUIRED"));
     }
     if trimmed_name.chars().count() > 120 {
-        return Err(AppError::invalid("BATCH_NAME_TOO_LONG: at most 120 characters"));
+        return Err(AppError::invalid(
+            "BATCH_NAME_TOO_LONG: at most 120 characters",
+        ));
     }
 
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let company = load_company(&conn, &company_id)?;
     let mapping = resolve_mapping(&conn, &company_id, &mapping_id)?;
     let rows = prepare_rows(&parsed, &mapping)?;
@@ -2170,7 +2393,14 @@ pub fn import_commit(
     // authoritative Tie-Out over the complete mapped working set. Only physical source rows named
     // by that Tie-Out may then be excluded; arbitrary balanced pairs can never be removed through
     // a crafted IPC request.
-    let baseline = build_lines(&conn, &company, &rows, parsed.kind, &mapping, &HashSet::new())?;
+    let baseline = build_lines(
+        &conn,
+        &company,
+        &rows,
+        parsed.kind,
+        &mapping,
+        &HashSet::new(),
+    )?;
     if let Some(first) = baseline.hard.first() {
         return Err(issue_to_error(first));
     }
@@ -2228,7 +2458,11 @@ pub fn import_commit(
     let now = chrono::Utc::now().to_rfc3339();
     let row_count = built.lines.len() as i64;
     // Excluded rows are logged, never dropped in silence (GL-TEMPLATE-SPEC §3).
-    let tie_out_status = if excluded.is_empty() { "pass" } else { "excluded_rows_logged" };
+    let tie_out_status = if excluded.is_empty() {
+        "pass"
+    } else {
+        "excluded_rows_logged"
+    };
 
     tx.execute(
         "INSERT INTO import_batches (id, company_id, kind, source_name, source_hash,
@@ -2460,7 +2694,7 @@ pub fn import_history(
         ));
     }
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     // Keep count, page rows, and audit-backed metadata on one SQLite read snapshot so a concurrent
     // commit cannot produce pagination metadata from a different database state.
     let tx = conn.transaction().map_err(AppError::from)?;
@@ -2485,11 +2719,13 @@ pub fn import_rollback(
         ));
     }
     if reason.trim().chars().count() > 500 {
-        return Err(AppError::invalid("ROLLBACK_REASON_TOO_LONG: at most 500 characters"));
+        return Err(AppError::invalid(
+            "ROLLBACK_REASON_TOO_LONG: at most 500 characters",
+        ));
     }
 
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(AppError::from)?;
@@ -2556,7 +2792,15 @@ pub fn import_rollback(
         "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
                                    before_json, after_json, prev_hash, hash, created_at)
          VALUES (?1, 'owner', 'import.rollback', 'import_batch', ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![company_id, batch_id, serde_json::json!({ "status": status }), after_json, prev, hash, now],
+        rusqlite::params![
+            company_id,
+            batch_id,
+            serde_json::json!({ "status": status }),
+            after_json,
+            prev,
+            hash,
+            now
+        ],
     )
     .map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
@@ -2600,7 +2844,11 @@ mod tests {
     #[test]
     fn resolve_import_path_falls_back_to_resource_dir_then_cwd_for_relative_paths() {
         let rel = Path::new("assets/demo/sample_gl_dump.csv");
-        assert_eq!(resolve_import_path(rel, None, None), None, "no bases → None");
+        assert_eq!(
+            resolve_import_path(rel, None, None),
+            None,
+            "no bases → None"
+        );
 
         let res_dir = std::env::temp_dir().join("onefpa-import-resdir");
         let _ = fs::remove_dir_all(&res_dir);
@@ -2628,9 +2876,15 @@ mod tests {
     #[test]
     fn decimal_text_normalises_us_and_eu_and_thousands() {
         assert_eq!(normalise_decimal_text("6350000.00").unwrap(), "6350000.00");
-        assert_eq!(normalise_decimal_text("1,825,000.50").unwrap(), "1825000.50");
+        assert_eq!(
+            normalise_decimal_text("1,825,000.50").unwrap(),
+            "1825000.50"
+        );
         assert_eq!(normalise_decimal_text("1825000,50").unwrap(), "1825000.50"); // EU decimal comma
-        assert_eq!(normalise_decimal_text("1.825.000,50").unwrap(), "1825000.50"); // EU thousands
+        assert_eq!(
+            normalise_decimal_text("1.825.000,50").unwrap(),
+            "1825000.50"
+        ); // EU thousands
         assert_eq!(normalise_decimal_text("(123.45)").unwrap(), "-123.45"); // accounting negative
         assert_eq!(normalise_decimal_text("123.45-").unwrap(), "-123.45");
         assert_eq!(normalise_decimal_text("-42").unwrap(), "-42");
@@ -2639,7 +2893,11 @@ mod tests {
 
     #[test]
     fn decimal_text_refuses_ambiguous_or_dirty_values() {
-        assert_eq!(normalise_decimal_text("1.234"), None, "1.234 is thousands-or-decimal: never guessed");
+        assert_eq!(
+            normalise_decimal_text("1.234"),
+            None,
+            "1.234 is thousands-or-decimal: never guessed"
+        );
         assert_eq!(normalise_decimal_text("1,234"), None);
         assert_eq!(normalise_decimal_text(""), None);
         assert_eq!(normalise_decimal_text("abc"), None);
@@ -2649,24 +2907,57 @@ mod tests {
 
     #[test]
     fn minor_units_are_exact_at_the_currency_scale() {
-        assert_eq!(amount_minor(Some("6350000.00"), "USD").unwrap(), Some(635_000_000));
-        assert_eq!(amount_minor(Some("1825000.505"), "USD").unwrap(), Some(182_500_051), "HALF_UP at scale 2");
-        assert_eq!(amount_minor(Some("1000"), "JPY").unwrap(), Some(1000), "JPY scale 0");
-        assert_eq!(amount_minor(Some("1.2345"), "KWD").unwrap(), Some(1235), "KWD scale 3, HALF_UP");
+        assert_eq!(
+            amount_minor(Some("6350000.00"), "USD").unwrap(),
+            Some(635_000_000)
+        );
+        assert_eq!(
+            amount_minor(Some("1825000.505"), "USD").unwrap(),
+            Some(182_500_051),
+            "HALF_UP at scale 2"
+        );
+        assert_eq!(
+            amount_minor(Some("1000"), "JPY").unwrap(),
+            Some(1000),
+            "JPY scale 0"
+        );
+        assert_eq!(
+            amount_minor(Some("1.2345"), "KWD").unwrap(),
+            Some(1235),
+            "KWD scale 3, HALF_UP"
+        );
         assert_eq!(amount_minor(None, "USD").unwrap(), None);
         assert!(amount_minor(Some("1.2.3"), "USD").is_err());
-        assert!(amount_minor(Some("10"), "XYZ").is_err(), "unknown currency is HARD");
+        assert!(
+            amount_minor(Some("10"), "XYZ").is_err(),
+            "unknown currency is HARD"
+        );
     }
 
     /* ── periods ── */
 
     #[test]
     fn period_keys_parse_every_documented_shape() {
-        assert_eq!(parse_period_key("2026-08").unwrap(), PeriodKey::Month(2026, 8));
-        assert_eq!(parse_period_key("202608").unwrap(), PeriodKey::Month(2026, 8));
-        assert_eq!(parse_period_key("20260831").unwrap(), PeriodKey::Day("2026-08-31".into()));
-        assert_eq!(parse_period_key("2026-08-31").unwrap(), PeriodKey::Day("2026-08-31".into()));
-        assert_eq!(parse_period_key("31.08.2026").unwrap(), PeriodKey::Day("2026-08-31".into()));
+        assert_eq!(
+            parse_period_key("2026-08").unwrap(),
+            PeriodKey::Month(2026, 8)
+        );
+        assert_eq!(
+            parse_period_key("202608").unwrap(),
+            PeriodKey::Month(2026, 8)
+        );
+        assert_eq!(
+            parse_period_key("20260831").unwrap(),
+            PeriodKey::Day("2026-08-31".into())
+        );
+        assert_eq!(
+            parse_period_key("2026-08-31").unwrap(),
+            PeriodKey::Day("2026-08-31".into())
+        );
+        assert_eq!(
+            parse_period_key("31.08.2026").unwrap(),
+            PeriodKey::Day("2026-08-31".into())
+        );
         assert_eq!(
             parse_period_key("FY26-P08").unwrap(),
             PeriodKey::FiscalYearPeriod("FY26".into(), "P08".into())
@@ -2692,7 +2983,11 @@ mod tests {
         assert_eq!(detect_delimiter("csv", "period;account_code;debit"), ';');
         assert_eq!(detect_delimiter("csv", "period,account_code,debit"), ',');
         assert_eq!(detect_delimiter("csv", "period\taccount_code"), '\t');
-        assert_eq!(detect_delimiter("tsv", "period,account_code"), '\t', "tsv is always TAB");
+        assert_eq!(
+            detect_delimiter("tsv", "period,account_code"),
+            '\t',
+            "tsv is always TAB"
+        );
     }
 
     #[test]
@@ -2703,7 +2998,7 @@ mod tests {
         assert!(!enc.auto_detected);
         assert!(text.starts_with("period"));
 
-        let (text, enc) = decode_text(b"period,amount\n2026-08,1.00\n").unwrap();
+        let (_text, enc) = decode_text(b"period,amount\n2026-08,1.00\n").unwrap();
         assert_eq!(enc.encoding, "utf-8");
         assert!(!enc.bom);
 
@@ -2785,7 +3080,10 @@ mod tests {
             "docType",
             "isIc",
         ] {
-            assert!(preview.get(camel_key).is_none(), "wire key drifted to {camel_key}");
+            assert!(
+                preview.get(camel_key).is_none(),
+                "wire key drifted to {camel_key}"
+            );
         }
     }
 
@@ -2881,12 +3179,7 @@ mod tests {
         let conn = validation_connection();
         let rows: Vec<SourceRow> = (0..52)
             .map(|index| {
-                validation_source_row(
-                    index + 2,
-                    "2026-08",
-                    "4000",
-                    Some(format!("JE-{index}")),
-                )
+                validation_source_row(index + 2, "2026-08", "4000", Some(format!("JE-{index}")))
             })
             .collect();
         let built = build_lines(
@@ -2958,7 +3251,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(built.lines.len(), 3, "the two invalid source rows are not preview lines");
+        assert_eq!(
+            built.lines.len(),
+            3,
+            "the two invalid source rows are not preview lines"
+        );
         assert_eq!(built.preview.len(), 3);
         assert_eq!(built.hard.len(), 3);
         assert_eq!(built.hard[0].code, "VALUE_INVALID");
@@ -3046,8 +3343,16 @@ mod tests {
 
         assert_eq!(built.hard.len(), 1);
         assert_eq!(built.hard[0].code, "OPENING_ALREADY_SET");
-        assert_eq!(built.hard[0].line_no, Some(4), "the later duplicate is blamed");
-        assert!(built.hard[0].message.starts_with("OPENING_ACCOUNT_DUPLICATE:"));
+        assert_eq!(
+            built.hard[0].line_no,
+            Some(4),
+            "the later duplicate is blamed"
+        );
+        assert!(
+            built.hard[0]
+                .message
+                .starts_with("OPENING_ACCOUNT_DUPLICATE:")
+        );
         assert_eq!(built.hard[0].details["firstLineNo"], 2);
 
         let clean = build_lines(
@@ -3090,7 +3395,10 @@ mod tests {
 
         assert_eq!(built.hard.len(), 1);
         assert_eq!(built.hard[0].code, "OPENING_ALREADY_SET");
-        assert_eq!(built.hard[0].line_no, None, "an existing Company opening set is batch scope");
+        assert_eq!(
+            built.hard[0].line_no, None,
+            "an existing Company opening set is batch scope"
+        );
         assert_eq!(built.hard[0].details["existingBatches"], 1);
         assert_eq!(
             issue_to_error(&built.hard[0]).body().code,
@@ -3119,10 +3427,18 @@ mod tests {
 
     #[test]
     fn tie_out_attributes_a_difference_only_through_posting_ref() {
-        let mut lines = vec![line(100, Some("JE-1")), line(-95, Some("JE-1")), line(500, None)];
+        let mut lines = vec![
+            line(100, Some("JE-1")),
+            line(-95, Some("JE-1")),
+            line(500, None),
+        ];
         let (debits, credits, diff) = tie_out(&lines.clone()).unwrap();
         assert_eq!((debits, credits), (600, 95));
-        assert_eq!(diff.len(), 2, "only the unbalanced journal entry's rows are named");
+        assert_eq!(
+            diff.len(),
+            2,
+            "only the unbalanced journal entry's rows are named"
+        );
         assert_eq!(diff[0]["posting_ref"], "JE-1");
         assert_eq!(diff[0]["residual_minor"], 5);
         assert!(diff[0].get("postingRef").is_none());
@@ -3131,7 +3447,10 @@ mod tests {
         lines = vec![line(100, None), line(-95, None)];
         let (debits, credits, diff) = tie_out(&lines).unwrap();
         assert_eq!((debits, credits), (100, 95));
-        assert!(diff.is_empty(), "a difference is never spread onto arbitrary rows");
+        assert!(
+            diff.is_empty(),
+            "a difference is never spread onto arbitrary rows"
+        );
     }
 
     #[test]
@@ -3147,7 +3466,10 @@ mod tests {
         let known = HashSet::from([1, 2, 3]);
         let attributable = HashSet::from([2]);
         let accepted = validate_exclusions(
-            &[Exclusion { line_no: 2, reason: "Source rounding".into() }],
+            &[Exclusion {
+                line_no: 2,
+                reason: "Source rounding".into(),
+            }],
             &known,
             &attributable,
         )
@@ -3156,26 +3478,44 @@ mod tests {
 
         for (exclusions, expected) in [
             (
-                vec![Exclusion { line_no: 2, reason: " ".into() }],
+                vec![Exclusion {
+                    line_no: 2,
+                    reason: " ".into(),
+                }],
                 "EXCLUSION_REASON_REQUIRED",
             ),
             (
-                vec![Exclusion { line_no: 2, reason: "x".repeat(501) }],
+                vec![Exclusion {
+                    line_no: 2,
+                    reason: "x".repeat(501),
+                }],
                 "EXCLUSION_REASON_TOO_LONG",
             ),
             (
-                vec![Exclusion { line_no: 9, reason: "Not in source".into() }],
+                vec![Exclusion {
+                    line_no: 9,
+                    reason: "Not in source".into(),
+                }],
                 "EXCLUSION_LINE_NOT_FOUND",
             ),
             (
                 vec![
-                    Exclusion { line_no: 2, reason: "First".into() },
-                    Exclusion { line_no: 2, reason: "Duplicate".into() },
+                    Exclusion {
+                        line_no: 2,
+                        reason: "First".into(),
+                    },
+                    Exclusion {
+                        line_no: 2,
+                        reason: "Duplicate".into(),
+                    },
                 ],
                 "EXCLUSION_DUPLICATE_LINE",
             ),
             (
-                vec![Exclusion { line_no: 1, reason: "Arbitrary balanced row".into() }],
+                vec![Exclusion {
+                    line_no: 1,
+                    reason: "Arbitrary balanced row".into(),
+                }],
                 "EXCLUSION_LINE_NOT_ATTRIBUTABLE",
             ),
         ] {
@@ -3272,15 +3612,27 @@ mod tests {
         let second = import_history_data(&conn, "company-1", 2).unwrap();
         assert_eq!(second["rows"].as_array().unwrap().len(), 2);
         assert_eq!(second["rows"][1]["source_name"], "GL-1.csv");
-        assert_eq!(import_history_data(&conn, "company-1", 0).unwrap_err().body().code, "VALUE_INVALID");
+        assert_eq!(
+            import_history_data(&conn, "company-1", 0)
+                .unwrap_err()
+                .body()
+                .code,
+            "VALUE_INVALID"
+        );
     }
 
     /* ── misc ── */
 
     #[test]
     fn ic_tag_and_iso_week_parsing() {
-        assert_eq!(parse_ic_tag("bu-manu->bu-retail").unwrap(), ("bu-manu".into(), "bu-retail".into()));
-        assert_eq!(parse_ic_tag("bu-manu→bu-retail").unwrap(), ("bu-manu".into(), "bu-retail".into()));
+        assert_eq!(
+            parse_ic_tag("bu-manu->bu-retail").unwrap(),
+            ("bu-manu".into(), "bu-retail".into())
+        );
+        assert_eq!(
+            parse_ic_tag("bu-manu→bu-retail").unwrap(),
+            ("bu-manu".into(), "bu-retail".into())
+        );
         assert_eq!(parse_ic_tag("bu-manu"), None);
         assert_eq!(parse_ic_tag("->bu-retail"), None);
         assert!(is_iso_week("2026-W31"));
@@ -3289,10 +3641,20 @@ mod tests {
 
     #[test]
     fn import_kind_round_trips() {
-        for raw in ["gl_dump", "excel_csv", "driver_data", "opening_balances", "dimension_master"] {
+        for raw in [
+            "gl_dump",
+            "excel_csv",
+            "driver_data",
+            "opening_balances",
+            "dimension_master",
+        ] {
             assert_eq!(ImportKind::parse(raw).unwrap().as_str(), raw);
         }
-        assert_eq!(ImportKind::parse("connector_sync"), None, "connector batches are not parsed from a file");
+        assert_eq!(
+            ImportKind::parse("connector_sync"),
+            None,
+            "connector batches are not parsed from a file"
+        );
     }
 
     #[test]
@@ -3471,8 +3833,14 @@ mod tests {
             persist_mapping(&mut conn, "company-a", key, &template).unwrap();
         let (second_id, second_version) =
             persist_mapping(&mut conn, "company-a", key, &template).unwrap();
-        assert_eq!(first_id, second_id, "same Company/name retains its mapping id");
-        assert_eq!((first_version.as_str(), second_version.as_str()), ("v1", "v2"));
+        assert_eq!(
+            first_id, second_id,
+            "same Company/name retains its mapping id"
+        );
+        assert_eq!(
+            (first_version.as_str(), second_version.as_str()),
+            ("v1", "v2")
+        );
 
         let current: (String, i64) = conn
             .query_row(
@@ -3483,7 +3851,11 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(current, ("v2".into(), 8), "four mappings plus four reserved rule rows");
+        assert_eq!(
+            current,
+            ("v2".into(), 8),
+            "four mappings plus four reserved rule rows"
+        );
         let resolved = resolve_mapping(&conn, "company-a", &first_id).unwrap();
         assert!(resolved.credit_positive);
         assert_eq!(
@@ -3500,7 +3872,9 @@ mod tests {
                 )
                 .unwrap();
             statement
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+                .query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
                 .unwrap()
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap()
@@ -3510,9 +3884,15 @@ mod tests {
         assert!(events[1].0.as_deref().unwrap().contains("persistedRows"));
         assert!(events[1].0.as_deref().unwrap().contains("v1"));
         assert_eq!(events[0].2, GENESIS_HASH);
-        assert_eq!(events[0].3, next_hash(key, GENESIS_HASH, events[0].1.as_bytes()));
+        assert_eq!(
+            events[0].3,
+            next_hash(key, GENESIS_HASH, events[0].1.as_bytes())
+        );
         assert_eq!(events[1].2, events[0].3);
-        assert_eq!(events[1].3, next_hash(key, &events[0].3, events[1].1.as_bytes()));
+        assert_eq!(
+            events[1].3,
+            next_hash(key, &events[0].3, events[1].1.as_bytes())
+        );
 
         conn.execute(
             "UPDATE mapping_columns SET semantic_target = 'amount'
@@ -3521,7 +3901,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            resolve_mapping(&conn, "company-a", &first_id).unwrap_err().body().code,
+            resolve_mapping(&conn, "company-a", &first_id)
+                .unwrap_err()
+                .body()
+                .code,
             "STORAGE_FILE_CORRUPT",
             "the checksum/audit definition detects materialized-row tampering"
         );
@@ -3544,15 +3927,23 @@ mod tests {
         let rejected = validate_mapping_template(rejected).unwrap();
         assert!(persist_mapping(&mut conn, "company-a", key, &rejected).is_err());
         let template_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM mapping_templates", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM mapping_templates", [], |row| {
+                row.get(0)
+            })
             .unwrap();
-        assert_eq!(template_count, 1, "a failed audit insert rolls back the mapping write");
+        assert_eq!(
+            template_count, 1,
+            "a failed audit insert rolls back the mapping write"
+        );
     }
 
     #[test]
     fn canonical_mapping_maps_the_template_headers_one_to_one() {
         let mapping = canonical_mapping();
-        assert!(!mapping.credit_positive, "the canonical template is debit-positive");
+        assert!(
+            !mapping.credit_positive,
+            "the canonical template is debit-positive"
+        );
         let headers: Vec<String> = CANONICAL_TARGETS.iter().map(|t| t.to_string()).collect();
         let idx = column_index(&headers, &mapping);
         for (i, target) in CANONICAL_TARGETS.iter().enumerate() {

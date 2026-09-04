@@ -13,7 +13,7 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::{db, keystore};
@@ -68,7 +68,8 @@ impl AssumptionRow {
     }
 
     fn into_json(self) -> Result<serde_json::Value, AppError> {
-        serde_json::to_value(self).map_err(|error| AppError::internal(format!("assumption JSON: {error}")))
+        serde_json::to_value(self)
+            .map_err(|error| AppError::internal(format!("assumption JSON: {error}")))
     }
 }
 
@@ -88,15 +89,24 @@ struct AssumptionUsage {
 }
 
 fn valid_slug(id: &str) -> bool {
-    let Some(suffix) = id.strip_prefix("as-") else { return false };
-    !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    let Some(suffix) = id.strip_prefix("as-") else {
+        return false;
+    };
+    !suffix.is_empty()
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
 fn valid_name(name: &str) -> bool {
     let mut chars = name.chars();
-    let Some(first) = chars.next() else { return false };
+    let Some(first) = chars.next() else {
+        return false;
+    };
     (first == '_' || first.is_ascii_lowercase())
-        && chars.all(|character| character == '_' || character.is_ascii_lowercase() || character.is_ascii_digit())
+        && chars.all(|character| {
+            character == '_' || character.is_ascii_lowercase() || character.is_ascii_digit()
+        })
 }
 
 /// Match the DecimalString Zod contract without accepting exponent/plus notation. The original
@@ -109,40 +119,69 @@ fn parse_exact_decimal(label: &str, value: &str) -> AppResult<rust_decimal::Deci
     if whole.is_empty()
         || !whole.bytes().all(|byte| byte.is_ascii_digit())
         || pieces.next().is_some()
-        || fraction.is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+        || fraction
+            .is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
     {
-        return Err(AppError::invalid(format!("VALUE_INVALID: {label} must be an exact decimal string")));
+        return Err(AppError::invalid(format!(
+            "VALUE_INVALID: {label} must be an exact decimal string"
+        )));
     }
-    rust_decimal::Decimal::from_str(value)
-        .map_err(|_| AppError::invalid(format!("VALUE_INVALID: {label} must be an exact decimal string")))
+    rust_decimal::Decimal::from_str(value).map_err(|_| {
+        AppError::invalid(format!(
+            "VALUE_INVALID: {label} must be an exact decimal string"
+        ))
+    })
 }
 
 fn validate_period_shape(label: &str, period_id: &str) -> AppResult<()> {
-    if period_id.starts_with("fp-") && period_id.len() > 3 && !period_id.bytes().any(|byte| byte.is_ascii_whitespace()) {
+    if period_id.starts_with("fp-")
+        && period_id.len() > 3
+        && !period_id.bytes().any(|byte| byte.is_ascii_whitespace())
+    {
         Ok(())
     } else {
-        Err(AppError::invalid(format!("VALUE_INVALID: {label} must be a fiscal period id")))
+        Err(AppError::invalid(format!(
+            "VALUE_INVALID: {label} must be a fiscal period id"
+        )))
     }
 }
 
 fn validate_input(input: &AssumptionInput) -> AppResult<()> {
-    if let Some(id) = input.id.as_deref() {
-        if !valid_slug(id) {
-            return Err(AppError::invalid("VALUE_INVALID: assumption id must be an as- slug"));
-        }
+    if let Some(id) = input.id.as_deref()
+        && !valid_slug(id)
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption id must be an as- slug",
+        ));
     }
     let name = input.name.trim();
     if !valid_name(name) || name.len() > 120 {
-        return Err(AppError::invalid("VALUE_INVALID: assumption name must be lowercase snake_case"));
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption name must be lowercase snake_case",
+        ));
     }
     if input.owner.trim().is_empty() || input.owner.trim().len() > 120 {
-        return Err(AppError::invalid("VALUE_INVALID: assumption owner is required"));
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption owner is required",
+        ));
     }
-    if input.unit.as_deref().is_some_and(|value| value.trim().len() > 40) {
-        return Err(AppError::invalid("VALUE_INVALID: assumption unit is too long"));
+    if input
+        .unit
+        .as_deref()
+        .is_some_and(|value| value.trim().len() > 40)
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption unit is too long",
+        ));
     }
-    if input.source.as_deref().is_some_and(|value| value.trim().len() > 120) {
-        return Err(AppError::invalid("VALUE_INVALID: assumption source is too long"));
+    if input
+        .source
+        .as_deref()
+        .is_some_and(|value| value.trim().len() > 120)
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption source is too long",
+        ));
     }
 
     let low = input
@@ -155,10 +194,12 @@ fn validate_input(input: &AssumptionInput) -> AppResult<()> {
         .as_deref()
         .map(|value| parse_exact_decimal("bounds_high", value))
         .transpose()?;
-    if let (Some(low), Some(high)) = (low, high) {
-        if low > high {
-            return Err(AppError::invalid("VALUE_INVALID: bounds_low cannot exceed bounds_high"));
-        }
+    if let (Some(low), Some(high)) = (low, high)
+        && low > high
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: bounds_low cannot exceed bounds_high",
+        ));
     }
     if let Some(period_id) = input.effective_from.as_deref() {
         validate_period_shape("effective_from", period_id)?;
@@ -169,21 +210,29 @@ fn validate_input(input: &AssumptionInput) -> AppResult<()> {
     for (period_id, value) in &input.values {
         validate_period_shape("value period", period_id)?;
         let decimal = parse_exact_decimal("value", value)?;
-        if let Some(low) = input.bounds_low.as_deref() {
-            if decimal < parse_exact_decimal("bounds_low", low)? {
-                return Err(AppError::invalid(format!("VALUE_INVALID: value for {period_id} is below bounds_low")));
-            }
+        if let Some(low) = input.bounds_low.as_deref()
+            && decimal < parse_exact_decimal("bounds_low", low)?
+        {
+            return Err(AppError::invalid(format!(
+                "VALUE_INVALID: value for {period_id} is below bounds_low"
+            )));
         }
-        if let Some(high) = input.bounds_high.as_deref() {
-            if decimal > parse_exact_decimal("bounds_high", high)? {
-                return Err(AppError::invalid(format!("VALUE_INVALID: value for {period_id} exceeds bounds_high")));
-            }
+        if let Some(high) = input.bounds_high.as_deref()
+            && decimal > parse_exact_decimal("bounds_high", high)?
+        {
+            return Err(AppError::invalid(format!(
+                "VALUE_INVALID: value for {period_id} exceeds bounds_high"
+            )));
         }
     }
     Ok(())
 }
 
-fn period_exists(conn: &Connection, company_id: &str, period_id: &str) -> Result<bool, rusqlite::Error> {
+fn period_exists(
+    conn: &Connection,
+    company_id: &str,
+    period_id: &str,
+) -> Result<bool, rusqlite::Error> {
     conn.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM fiscal_periods fp
@@ -210,7 +259,10 @@ fn validate_periods(conn: &Connection, company_id: &str, input: &AssumptionInput
     Ok(())
 }
 
-fn values_for(conn: &Connection, assumption_id: &str) -> Result<BTreeMap<String, String>, rusqlite::Error> {
+fn values_for(
+    conn: &Connection,
+    assumption_id: &str,
+) -> Result<BTreeMap<String, String>, rusqlite::Error> {
     let mut statement = conn.prepare(
         "SELECT period_id, value_decimal FROM assumption_values WHERE assumption_id = ?1 ORDER BY period_id",
     )?;
@@ -218,7 +270,11 @@ fn values_for(conn: &Connection, assumption_id: &str) -> Result<BTreeMap<String,
     rows.collect()
 }
 
-fn row_for(conn: &Connection, model_id: &str, assumption_id: &str) -> Result<Option<AssumptionRow>, rusqlite::Error> {
+fn row_for(
+    conn: &Connection,
+    model_id: &str,
+    assumption_id: &str,
+) -> Result<Option<AssumptionRow>, rusqlite::Error> {
     let base: Option<(String, String, Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> = conn
         .query_row(
             "SELECT id, name, unit, owner, source, bounds_low, bounds_high, effective_from, effective_to
@@ -239,24 +295,30 @@ fn row_for(conn: &Connection, model_id: &str, assumption_id: &str) -> Result<Opt
             },
         )
         .optional()?;
-    base.map(|(id, name, unit, owner, source, bounds_low, bounds_high, effective_from, effective_to)| {
-        Ok(AssumptionRow {
-            id,
-            name,
-            unit,
-            owner,
-            source,
-            bounds_low,
-            bounds_high,
-            effective_from,
-            effective_to,
-            values: values_for(conn, assumption_id)?,
-        })
-    })
+    base.map(
+        |(id, name, unit, owner, source, bounds_low, bounds_high, effective_from, effective_to)| {
+            Ok(AssumptionRow {
+                id,
+                name,
+                unit,
+                owner,
+                source,
+                bounds_low,
+                bounds_high,
+                effective_from,
+                effective_to,
+                values: values_for(conn, assumption_id)?,
+            })
+        },
+    )
     .transpose()
 }
 
-fn model_belongs_to_company(conn: &Connection, model_id: &str, company_id: &str) -> Result<bool, rusqlite::Error> {
+fn model_belongs_to_company(
+    conn: &Connection,
+    model_id: &str,
+    company_id: &str,
+) -> Result<bool, rusqlite::Error> {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM models WHERE id = ?1 AND company_id = ?2)",
         rusqlite::params![model_id, company_id],
@@ -264,9 +326,16 @@ fn model_belongs_to_company(conn: &Connection, model_id: &str, company_id: &str)
     )
 }
 
-fn assumption_model(conn: &Connection, assumption_id: &str) -> Result<Option<String>, rusqlite::Error> {
-    conn.query_row("SELECT model_id FROM assumptions WHERE id = ?1", [assumption_id], |row| row.get(0))
-        .optional()
+fn assumption_model(
+    conn: &Connection,
+    assumption_id: &str,
+) -> Result<Option<String>, rusqlite::Error> {
+    conn.query_row(
+        "SELECT model_id FROM assumptions WHERE id = ?1",
+        [assumption_id],
+        |row| row.get(0),
+    )
+    .optional()
 }
 
 /// Formula names are identifiers, so a substring such as `wage_inflation_adjusted` is not a use
@@ -298,7 +367,11 @@ fn formula_references_name(formula: &str, name: &str) -> bool {
     false
 }
 
-fn locked_baseline_uses(conn: &Connection, model_id: &str, name: &str) -> Result<bool, rusqlite::Error> {
+fn locked_baseline_uses(
+    conn: &Connection,
+    model_id: &str,
+    name: &str,
+) -> Result<bool, rusqlite::Error> {
     let mut statement = conn.prepare(
         "SELECT mv.formula
          FROM model_values mv
@@ -314,9 +387,16 @@ fn locked_baseline_uses(conn: &Connection, model_id: &str, name: &str) -> Result
     Ok(false)
 }
 
-fn replace_values(tx: &Transaction<'_>, assumption_id: &str, values: &BTreeMap<String, String>) -> AppResult<()> {
-    tx.execute("DELETE FROM assumption_values WHERE assumption_id = ?1", [assumption_id])
-        .map_err(AppError::from)?;
+fn replace_values(
+    tx: &Transaction<'_>,
+    assumption_id: &str,
+    values: &BTreeMap<String, String>,
+) -> AppResult<()> {
+    tx.execute(
+        "DELETE FROM assumption_values WHERE assumption_id = ?1",
+        [assumption_id],
+    )
+    .map_err(AppError::from)?;
     for (period_id, value) in values {
         tx.execute(
             "INSERT INTO assumption_values (id, assumption_id, period_id, value_decimal)
@@ -339,24 +419,30 @@ pub fn assumption_upsert(
     let company_id = require_session_write(&state)?;
     validate_input(&assumption)?;
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let tx = conn.transaction().map_err(AppError::from)?;
 
     if !model_belongs_to_company(&tx, &model_id, &company_id).map_err(AppError::from)? {
-        return Err(AppError::Scope("model is not owned by the active Company".into()));
+        return Err(AppError::Scope(
+            "model is not owned by the active Company".into(),
+        ));
     }
     validate_periods(&tx, &company_id, &assumption)?;
 
     let (assumption_id, existing) = if let Some(id) = assumption.id.as_deref() {
         let owner_model = assumption_model(&tx, id).map_err(AppError::from)?;
-        if let Some(owner_model) = owner_model {
-            if owner_model != model_id {
-                return Err(AppError::Scope("assumption is not owned by the requested Model".into()));
-            }
+        if let Some(owner_model) = owner_model
+            && owner_model != model_id
+        {
+            return Err(AppError::Scope(
+                "assumption is not owned by the requested Model".into(),
+            ));
         }
         let existing = row_for(&tx, &model_id, id).map_err(AppError::from)?;
         if existing.is_none() {
-            return Err(AppError::invalid("VALUE_INVALID: assumption id does not exist"));
+            return Err(AppError::invalid(
+                "VALUE_INVALID: assumption id does not exist",
+            ));
         }
         let duplicate: Option<String> = tx
             .query_row(
@@ -367,7 +453,9 @@ pub fn assumption_upsert(
             .optional()
             .map_err(AppError::from)?;
         if duplicate.is_some() {
-            return Err(AppError::invalid("VALUE_INVALID: assumption name already exists in this Model"));
+            return Err(AppError::invalid(
+                "VALUE_INVALID: assumption name already exists in this Model",
+            ));
         }
         (id.to_string(), existing)
     } else {
@@ -380,20 +468,25 @@ pub fn assumption_upsert(
             .optional()
             .map_err(AppError::from)?;
         if duplicate.is_some() {
-            return Err(AppError::invalid("VALUE_INVALID: assumption name already exists in this Model"));
+            return Err(AppError::invalid(
+                "VALUE_INVALID: assumption name already exists in this Model",
+            ));
         }
         (format!("as-{}", Uuid::new_v4()), None)
     };
 
-    if let Some(existing_row) = existing.as_ref() {
-        if locked_baseline_uses(&tx, &model_id, &existing_row.name).map_err(AppError::from)? {
-            return Err(AppError::assumption_in_use_locked(&assumption_id));
-        }
+    if let Some(existing_row) = existing.as_ref()
+        && locked_baseline_uses(&tx, &model_id, &existing_row.name).map_err(AppError::from)?
+    {
+        return Err(AppError::assumption_in_use_locked(&assumption_id));
     }
 
     let created = existing.is_none();
     let next = AssumptionRow::from_input(assumption_id.clone(), &assumption);
-    let before_json = existing.map(AssumptionRow::into_json).transpose()?.unwrap_or(serde_json::Value::Null);
+    let before_json = existing
+        .map(AssumptionRow::into_json)
+        .transpose()?
+        .unwrap_or(serde_json::Value::Null);
     let after_json = next.clone().into_json()?;
 
     tx.execute(
@@ -434,7 +527,15 @@ pub fn assumption_upsert(
            (company_id, actor, action, object_type, object_id, before_json, after_json,
             prev_hash, hash, created_at)
          VALUES (?1, 'owner', 'assumption.upsert', 'assumption', ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![company_id, assumption_id, before_json, after_json, prev, hash, now],
+        rusqlite::params![
+            company_id,
+            assumption_id,
+            before_json,
+            after_json,
+            prev,
+            hash,
+            now
+        ],
     )
     .map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
@@ -454,9 +555,11 @@ pub fn assumption_list(
 ) -> AppResult<serde_json::Value> {
     let company_id = require_unlocked(&state)?;
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     if !model_belongs_to_company(&conn, &model_id, &company_id).map_err(AppError::from)? {
-        return Err(AppError::Scope("model is not owned by the active Company".into()));
+        return Err(AppError::Scope(
+            "model is not owned by the active Company".into(),
+        ));
     }
 
     let mut statement = conn.prepare(
@@ -486,11 +589,26 @@ pub fn assumption_list(
             ))
         })
         .map_err(AppError::from)?;
-    let base_rows: Vec<_> = base_rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)?;
+    let base_rows: Vec<_> = base_rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
     drop(statement);
 
     let mut rows = Vec::with_capacity(base_rows.len());
-    for (id, name, unit, owner, source, bounds_low, bounds_high, effective_from, effective_to, version, last_changed_at) in base_rows {
+    for (
+        id,
+        name,
+        unit,
+        owner,
+        source,
+        bounds_low,
+        bounds_high,
+        effective_from,
+        effective_to,
+        version,
+        last_changed_at,
+    ) in base_rows
+    {
         rows.push(AssumptionListRow {
             assumption: AssumptionRow {
                 values: values_for(&conn, &id).map_err(AppError::from)?,
@@ -520,10 +638,12 @@ pub fn assumption_find_usages(
 ) -> AppResult<serde_json::Value> {
     let company_id = require_unlocked(&state)?;
     if !valid_slug(&assumption_id) {
-        return Err(AppError::invalid("VALUE_INVALID: assumption id must be an as- slug"));
+        return Err(AppError::invalid(
+            "VALUE_INVALID: assumption id must be an as- slug",
+        ));
     }
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let row: Option<(String, String)> = conn
         .query_row(
             "SELECT a.model_id, a.name
@@ -560,7 +680,11 @@ pub fn assumption_find_usages(
     for row in rows {
         let (line_id, period_id, formula) = row.map_err(AppError::from)?;
         if formula_references_name(&formula, &name) {
-            cells.push(AssumptionUsage { line_id, period_id, formula });
+            cells.push(AssumptionUsage {
+                line_id,
+                period_id,
+                formula,
+            });
         }
     }
     Ok(serde_json::json!({ "data": { "cells": cells } }))
@@ -572,7 +696,10 @@ mod tests {
 
     #[test]
     fn exact_decimal_validation_preserves_scale_without_accepting_exponents() {
-        assert_eq!(parse_exact_decimal("value", "4.0").unwrap().to_string(), "4.0");
+        assert_eq!(
+            parse_exact_decimal("value", "4.0").unwrap().to_string(),
+            "4.0"
+        );
         assert!(parse_exact_decimal("value", "4e0").is_err());
         assert!(parse_exact_decimal("value", "+4").is_err());
         assert!(parse_exact_decimal("value", "4.").is_err());
@@ -580,10 +707,22 @@ mod tests {
 
     #[test]
     fn formula_usage_requires_identifier_boundaries() {
-        assert!(formula_references_name("=base+@wage_inflation", "wage_inflation"));
-        assert!(formula_references_name("=WAGE_INFLATION*2", "wage_inflation"));
-        assert!(!formula_references_name("=wage_inflation_adjusted*2", "wage_inflation"));
-        assert!(!formula_references_name("=wage_inflation2*2", "wage_inflation"));
+        assert!(formula_references_name(
+            "=base+@wage_inflation",
+            "wage_inflation"
+        ));
+        assert!(formula_references_name(
+            "=WAGE_INFLATION*2",
+            "wage_inflation"
+        ));
+        assert!(!formula_references_name(
+            "=wage_inflation_adjusted*2",
+            "wage_inflation"
+        ));
+        assert!(!formula_references_name(
+            "=wage_inflation2*2",
+            "wage_inflation"
+        ));
     }
 
     #[test]

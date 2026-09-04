@@ -49,8 +49,16 @@ mod tests {
     #[test]
     fn chain_verifies_and_detects_tamper() {
         let key = b"test-key-32-bytes-000000000000000";
-        let e1 = ("genesis".to_string(), next_hash(key, GENESIS_HASH, b"event-1"), b"event-1".to_vec());
-        let e2 = (e1.1.clone(), next_hash(key, &e1.1, b"event-2"), b"event-2".to_vec());
+        let e1 = (
+            "genesis".to_string(),
+            next_hash(key, GENESIS_HASH, b"event-1"),
+            b"event-1".to_vec(),
+        );
+        let e2 = (
+            e1.1.clone(),
+            next_hash(key, &e1.1, b"event-2"),
+            b"event-2".to_vec(),
+        );
         assert_eq!(verify_chain(key, &[e1.clone(), e2.clone()]), None);
 
         // tamper payload (event-2 changed but hash unchanged) → broken at index 1
@@ -61,14 +69,24 @@ mod tests {
     #[test]
     fn genesis_break_is_detected() {
         let key = b"other-key-32-bytes-00000000000000";
-        let e = ("previous".to_string(), next_hash(key, GENESIS_HASH, b"x"), b"x".to_vec());
+        let e = (
+            "previous".to_string(),
+            next_hash(key, GENESIS_HASH, b"x"),
+            b"x".to_vec(),
+        );
         assert_eq!(verify_chain(key, &[e]), Some(0));
     }
 
     #[test]
     fn deterministic_hash_vectors() {
         let key = b"0123456789abcdef0123456789abcdef";
-        assert_eq!(next_hash(key, GENESIS_HASH, b"import.commit"), next_hash(key, GENESIS_HASH, b"import.commit"));
-        assert_ne!(next_hash(key, GENESIS_HASH, b"import.commit"), next_hash(key, GENESIS_HASH, b"import.rollback"));
+        assert_eq!(
+            next_hash(key, GENESIS_HASH, b"import.commit"),
+            next_hash(key, GENESIS_HASH, b"import.commit")
+        );
+        assert_ne!(
+            next_hash(key, GENESIS_HASH, b"import.commit"),
+            next_hash(key, GENESIS_HASH, b"import.rollback")
+        );
     }
 }

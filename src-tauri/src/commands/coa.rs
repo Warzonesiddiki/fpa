@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
 use crate::commands::pack::find_packs_dir;
-use crate::commands::session::{require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::keystore;
@@ -43,10 +43,7 @@ const ACCOUNT_TYPES: [&str; 6] = ["revenue", "cogs", "opex", "asset", "liability
 /// Builder rule at pack CREATION (INDUSTRY-PACK-SPEC §2, M1-9) — import does not rewrite
 /// codes that GL lines may already reference.
 fn normalize_code(raw: &str) -> String {
-    raw.trim()
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect()
+    raw.trim().chars().filter(|c| !c.is_whitespace()).collect()
 }
 
 /// AccountNode rows for a Company (optionally BU-scoped). `parent_id` forms the tree client-side.
@@ -93,7 +90,7 @@ pub fn coa_list(
     bu_id: Option<String>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
-    let conn = crate::storage::db::open_at(&dir).map_err(AppError::from)?;
+    let conn = crate::storage::db::open_at(&dir)?;
     let exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM companies WHERE id = ?1)",
@@ -118,28 +115,36 @@ pub fn import_coa(
     let mut created = 0u32;
     let mut updated = 0u32;
     for acct in accounts {
-        let code_raw = acct
-            .get("code")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::invalid("COA_IMPORT_SHAPE: each account needs a string 'code'"))?;
+        let code_raw = acct.get("code").and_then(|v| v.as_str()).ok_or_else(|| {
+            AppError::invalid("COA_IMPORT_SHAPE: each account needs a string 'code'")
+        })?;
         let code = normalize_code(code_raw);
         if code.is_empty() {
             return Err(AppError::invalid(
                 "COA_IMPORT_SHAPE: code is empty after normalization",
             ));
         }
-        let name = acct.get("name").and_then(|v| v.as_str()).unwrap_or(code_raw);
-        let account_type =
-            acct.get("type")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| AppError::invalid("COA_IMPORT_SHAPE: account 'type' is required"))?;
+        let name = acct
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(code_raw);
+        let account_type = acct
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::invalid("COA_IMPORT_SHAPE: account 'type' is required"))?;
         if !ACCOUNT_TYPES.contains(&account_type) {
             return Err(AppError::invalid(format!(
                 "COA_IMPORT_SHAPE: unknown account_type '{account_type}'"
             )));
         }
-        let report_section = acct.get("section").and_then(|v| v.as_str()).unwrap_or("General");
-        let is_control = acct.get("is_control").and_then(|v| v.as_bool()).unwrap_or(false);
+        let report_section = acct
+            .get("section")
+            .and_then(|v| v.as_str())
+            .unwrap_or("General");
+        let is_control = acct
+            .get("is_control")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let existing: Option<(String, String, i64)> = conn
             .query_row(
@@ -214,7 +219,7 @@ pub fn merge_accounts(
         )
         .optional()
         .map_err(AppError::from)?
-        .ok_or_else(|| AppError::file_corrupt())
+        .ok_or_else(AppError::file_corrupt)
     };
     let (from_type, from_parent) = lookup(from_id)?;
     let (to_type, _to_parent) = lookup(to_id)?;
@@ -265,7 +270,7 @@ pub fn coa_import(
         _ => {
             return Err(AppError::invalid(
                 "COA_IMPORT_SOURCE: exactly one of file_path / pack_key is required",
-            ))
+            ));
         }
     };
     let raw = if source.0 == "pack" {
@@ -290,7 +295,7 @@ pub fn coa_import(
         .get("accounts")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
-            AppError::import_file_unreadable("COA_IMPORT_SHAPE: expected {accounts: [...]}".into())
+            AppError::import_file_unreadable("COA_IMPORT_SHAPE: expected {accounts: [...]}")
         })?;
 
     let dir = app_data_dir(&app)?;
@@ -312,7 +317,8 @@ pub fn coa_import(
     let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
     let prev = audited_hash(&tx, &company_id)?;
     let after_json =
-        serde_json::json!({ "created": created, "updated": updated, "source": source.0 }).to_string();
+        serde_json::json!({ "created": created, "updated": updated, "source": source.0 })
+            .to_string();
     let hash = next_hash(&key, &prev, after_json.as_bytes());
     tx.execute(
         "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json,
@@ -354,7 +360,7 @@ pub fn coa_merge_accounts(
         )
         .optional()
         .map_err(AppError::from)?;
-    let company_id = company_id.ok_or_else(|| AppError::file_corrupt())?;
+    let company_id = company_id.ok_or_else(AppError::file_corrupt)?;
 
     let tx = conn.transaction().map_err(AppError::from)?;
     let remapped = merge_accounts(&tx, &company_id, &from_id, &to_id)?;
@@ -416,15 +422,10 @@ mod tests {
         .unwrap();
     }
 
-    fn import(
-        conn: &Connection,
-        accounts: &[( &str, &str, &str)],
-    ) -> AppResult<(u32, u32)> {
+    fn import(conn: &Connection, accounts: &[(&str, &str, &str)]) -> AppResult<(u32, u32)> {
         let vals: Vec<serde_json::Value> = accounts
             .iter()
-            .map(|(c, t, s)| {
-                serde_json::json!({ "code": c, "name": c, "type": t, "section": s })
-            })
+            .map(|(c, t, s)| serde_json::json!({ "code": c, "name": c, "type": t, "section": s }))
             .collect();
         import_coa(conn, CO, &vals)
     }
@@ -454,8 +455,8 @@ mod tests {
     #[test]
     fn import_creates_new_accounts() {
         let conn = fresh_company();
-        let (created, updated) = import(&conn, &[("4000", "revenue", "IS"), ("5000", "cogs", "IS")])
-            .unwrap();
+        let (created, updated) =
+            import(&conn, &[("4000", "revenue", "IS"), ("5000", "cogs", "IS")]).unwrap();
         assert_eq!((created, updated), (2, 0));
         let rows = query_accounts(&conn, CO, None).unwrap();
         assert_eq!(rows.len(), 2);
@@ -466,8 +467,11 @@ mod tests {
     fn import_updates_unreferenced_same_type_with_version_bump() {
         let conn = fresh_company();
         import(&conn, &[("4000", "revenue", "IS")]).unwrap();
-        let (created, updated) =
-            import(&conn, &[("4000", "revenue", "IS Revised"), ("4100", "revenue", "IS")]).unwrap();
+        let (created, updated) = import(
+            &conn,
+            &[("4000", "revenue", "IS Revised"), ("4100", "revenue", "IS")],
+        )
+        .unwrap();
         assert_eq!((created, updated), (1, 1));
         let rows = query_accounts(&conn, CO, None).unwrap();
         let revised = rows.iter().find(|r| r["code"] == "4000").unwrap();
@@ -523,7 +527,15 @@ mod tests {
             "INSERT INTO gl_lines (id, company_id, batch_id, period_id, account_id, dims_json,
                                    amount_minor, currency_code, debit_minor, credit_minor, line_no)
              VALUES (?1, ?2, 'b1', 'p1', ?3, '{}', ?4, 'USD', ?5, ?6, ?7)",
-            rusqlite::params![format!("l{line_no}"), CO, account_id, debit + credit, debit, credit, line_no],
+            rusqlite::params![
+                format!("l{line_no}"),
+                CO,
+                account_id,
+                debit + credit,
+                debit,
+                credit,
+                line_no
+            ],
         )
         .unwrap();
     }
@@ -543,10 +555,10 @@ mod tests {
     /// (TEST-FIXTURES-SPEC §1; README.md).
     fn fixture(name: &str) -> serde_json::Value {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/coa")
+            .join("../tests/fixtures/coa")
             .join(name);
-        let raw =
-            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         serde_json::from_str(&raw).unwrap()
     }
 
@@ -607,7 +619,9 @@ mod tests {
         let (created, updated) = import_coa(&conn, CO, &vals).unwrap();
         assert_eq!((created, updated), (2, 0));
         let codes: Vec<String> = {
-            let mut stmt = conn.prepare("SELECT code FROM accounts ORDER BY code").unwrap();
+            let mut stmt = conn
+                .prepare("SELECT code FROM accounts ORDER BY code")
+                .unwrap();
             stmt.query_map([], |r| r.get::<_, String>(0))
                 .unwrap()
                 .collect::<Result<Vec<_>, _>>()
@@ -616,12 +630,15 @@ mod tests {
         assert_eq!(codes, vec!["0004".to_string(), "4000".to_string()]);
         // The normalized form is what collides: re-importing "4000 " hits the upsert path
         // (same type, no usage) instead of creating a duplicate row.
-        let vals2 =
-            vec![serde_json::json!({ "code": "4000 ", "name": "Revenue v2", "type": "revenue", "section": "IS" })];
+        let vals2 = vec![
+            serde_json::json!({ "code": "4000 ", "name": "Revenue v2", "type": "revenue", "section": "IS" }),
+        ];
         let (created2, updated2) = import_coa(&conn, CO, &vals2).unwrap();
         assert_eq!((created2, updated2), (0, 1));
         // Whitespace-only code is invalid.
-        let vals3 = vec![serde_json::json!({ "code": "   ", "name": "X", "type": "revenue", "section": "IS" })];
+        let vals3 = vec![
+            serde_json::json!({ "code": "   ", "name": "X", "type": "revenue", "section": "IS" }),
+        ];
         let err = import_coa(&conn, CO, &vals3).unwrap_err();
         assert!(matches!(err, AppError::InvalidArgument { .. }));
     }
@@ -639,7 +656,9 @@ mod tests {
         assert_eq!(remapped, 1);
         // Line now points at the target.
         let owner: String = conn
-            .query_row("SELECT account_id FROM gl_lines WHERE id = 'l1'", [], |r| r.get(0))
+            .query_row("SELECT account_id FROM gl_lines WHERE id = 'l1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(owner, "acct-4100");
         // Child reparented onto the target.
@@ -736,7 +755,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(name, expected["code_4000_name"].as_str().unwrap());
-        assert_eq!(version, expected["code_4000_version"].as_u64().unwrap() as i64);
+        assert_eq!(
+            version,
+            expected["code_4000_version"].as_u64().unwrap() as i64
+        );
     }
 
     #[test]
@@ -749,10 +771,15 @@ mod tests {
         let accounts = f["accounts"].as_array().unwrap();
         let err = import_coa(&conn, CO, accounts).unwrap_err();
         match &err {
-            AppError::CoaDuplicateCode { code } => assert_eq!(code, expected["code"].as_str().unwrap()),
+            AppError::CoaDuplicateCode { code } => {
+                assert_eq!(code, expected["code"].as_str().unwrap())
+            }
             other => panic!("expected CoaDuplicateCode, got {other:?}"),
         }
-        assert_eq!(err.body().http_status, expected["http_status"].as_u64().unwrap() as u16);
+        assert_eq!(
+            err.body().http_status,
+            expected["http_status"].as_u64().unwrap() as u16
+        );
         // Rollback discipline: the import is atomic — nothing was written.
         let rows = query_accounts(&conn, CO, None).unwrap();
         assert_eq!(rows.len(), existing.len());
@@ -768,7 +795,13 @@ mod tests {
         seed_gl_chain(&conn);
         for (i, line) in f["gl_lines"].as_array().unwrap().iter().enumerate() {
             let acct = format!("acct-{}", line["account_code"].as_str().unwrap());
-            add_gl_line(&conn, i as i64 + 1, &acct, line["debit_minor"].as_i64().unwrap(), line["credit_minor"].as_i64().unwrap());
+            add_gl_line(
+                &conn,
+                i as i64 + 1,
+                &acct,
+                line["debit_minor"].as_i64().unwrap(),
+                line["credit_minor"].as_i64().unwrap(),
+            );
         }
         let accounts = f["accounts"].as_array().unwrap();
         let err = import_coa(&conn, CO, accounts).unwrap_err();
@@ -778,7 +811,10 @@ mod tests {
             }
             other => panic!("expected CoaReferenced, got {other:?}"),
         }
-        assert_eq!(err.body().http_status, expected["http_status"].as_u64().unwrap() as u16);
+        assert_eq!(
+            err.body().http_status,
+            expected["http_status"].as_u64().unwrap() as u16
+        );
     }
 
     #[test]
@@ -791,16 +827,24 @@ mod tests {
         seed_gl_chain(&conn);
         for (i, line) in f["gl_lines"].as_array().unwrap().iter().enumerate() {
             let acct = format!("acct-{}", line["account_code"].as_str().unwrap());
-            add_gl_line(&conn, i as i64 + 1, &acct, line["debit_minor"].as_i64().unwrap(), line["credit_minor"].as_i64().unwrap());
+            add_gl_line(
+                &conn,
+                i as i64 + 1,
+                &acct,
+                line["debit_minor"].as_i64().unwrap(),
+                line["credit_minor"].as_i64().unwrap(),
+            );
         }
         let from = format!("acct-{}", f["from_code"].as_str().unwrap());
         let to = format!("acct-{}", f["to_code"].as_str().unwrap());
         let remapped = merge_accounts(&conn, CO, &from, &to).unwrap();
         assert_eq!(remapped, expected["remapped"].as_u64().unwrap() as i64);
         let (active, version): (i64, i64) = conn
-            .query_row("SELECT active, version FROM accounts WHERE id = ?1", [&from], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT active, version FROM accounts WHERE id = ?1",
+                [&from],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(active, expected["from_active"].as_u64().unwrap() as i64);
         assert_eq!(version, expected["from_version"].as_u64().unwrap() as i64);

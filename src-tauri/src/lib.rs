@@ -2,6 +2,12 @@
 //! Invariants at the IPC boundary (ARCHITECTURE §1b): typed commands, money i64/decimal strings,
 //! mutations audited, no network (B1/B18-9).
 
+#![allow(
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::doc_lazy_continuation
+)]
+
 pub mod commands;
 pub mod core;
 pub mod storage;
@@ -14,14 +20,19 @@ use commands::company::{
 };
 use commands::driver::{driver_set_value, driver_upsert};
 use commands::import::{
-    import_commit, import_history, import_map_save_v1, import_parse, import_rollback, import_tieout,
-    import_validate, ParseRegistry,
+    ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
+    import_rollback, import_tieout, import_validate,
 };
-use commands::model::{model_cell_set_v1, model_recalc, ModelRegistry};
 use commands::license::{license_apply_response, license_request_file, license_verify};
+use commands::model::{ModelRegistry, model_cell_set_v1, model_recalc};
 use commands::pack::pack_list;
+use commands::scenario::{
+    baseline_set, model_list, scenario_approve, scenario_create, scenario_delete,
+    scenario_duplicate, scenario_lock, scenario_reopen, scenario_submit,
+};
+use commands::schedule::model_schedule_upsert;
 use commands::security::{security_change_pin, security_pin_setup};
-use commands::session::{session_lock, session_status, session_unlock, SessionState};
+use commands::session::{SessionState, session_lock, session_status, session_unlock};
 use commands::settings::{settings_get, settings_set};
 use storage::keys::KeyVault;
 
@@ -80,6 +91,16 @@ pub fn run() {
             assumption_upsert,
             assumption_list,
             assumption_find_usages,
+            model_schedule_upsert,
+            scenario_create,
+            scenario_duplicate,
+            scenario_submit,
+            scenario_approve,
+            scenario_lock,
+            scenario_reopen,
+            scenario_delete,
+            baseline_set,
+            model_list,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

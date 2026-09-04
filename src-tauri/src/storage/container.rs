@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 
 use crate::core::error::{AppError, AppResult};
 use crate::storage::db;
-use crate::storage::keys::{aes_open, aes_seal, open_key, random_bytes, KEY_LEN, NONCE_LEN, TAG_LEN};
+use crate::storage::keys::{KEY_LEN, NONCE_LEN, TAG_LEN, aes_open, aes_seal, random_bytes};
 
 pub const MAGIC: &[u8; 8] = b"ONEFPA01";
 pub const VERSION: u8 = 1;
@@ -46,6 +46,7 @@ const MIN_FILE_LEN: usize = HEADER_LEN + TAG_LEN;
 const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 
 /// A decrypted container: the Company file key (so the caller can re-seal) plus the image.
+#[derive(Debug)]
 pub struct CompanyFile {
     pub key: [u8; KEY_LEN],
     pub image: Vec<u8>,
@@ -101,14 +102,30 @@ pub fn open(path: &Path, vault_key: &[u8; KEY_LEN]) -> AppResult<CompanyFile> {
     let key = unwrap_key(&bytes, vault_key)?;
     let mut payload_nonce = [0u8; NONCE_LEN];
     payload_nonce.copy_from_slice(&bytes[PAYLOAD_NONCE_OFF..HEADER_LEN]);
-    let image = aes_open(&key, &payload_nonce, &bytes[..PAYLOAD_NONCE_OFF], &bytes[HEADER_LEN..])?;
+    let image = aes_open(
+        &key,
+        &payload_nonce,
+        &bytes[..PAYLOAD_NONCE_OFF],
+        &bytes[HEADER_LEN..],
+    )?;
     Ok(CompanyFile { key, image })
 }
 
 fn unwrap_key(bytes: &[u8], vault_key: &[u8; KEY_LEN]) -> AppResult<[u8; KEY_LEN]> {
     let mut nonce = [0u8; NONCE_LEN];
     nonce.copy_from_slice(&bytes[CEK_NONCE_OFF..CEK_SEALED_OFF]);
-    open_key(vault_key, &nonce, &bytes[CEK_SEALED_OFF..PAYLOAD_NONCE_OFF])
+    let key = aes_open(
+        vault_key,
+        &nonce,
+        &bytes[..CEK_SEALED_OFF],
+        &bytes[CEK_SEALED_OFF..PAYLOAD_NONCE_OFF],
+    )?;
+    if key.len() != KEY_LEN {
+        return Err(AppError::DecryptFailed);
+    }
+    let mut out = [0u8; KEY_LEN];
+    out.copy_from_slice(&key);
+    Ok(out)
 }
 
 /// Read a container and validate its envelope. A missing, short, foreign or future-version
@@ -116,7 +133,8 @@ fn unwrap_key(bytes: &[u8], vault_key: &[u8; KEY_LEN]) -> AppResult<[u8; KEY_LEN
 /// failure is `STORAGE_DECRYPT_FAILED` (401 → the PIN/file pair does not match).
 fn read(path: &Path) -> AppResult<Vec<u8>> {
     let bytes = fs::read(path).map_err(|_| AppError::file_corrupt())?;
-    if bytes.len() < MIN_FILE_LEN || bytes[..MAGIC_LEN] != MAGIC[..] || bytes[MAGIC_LEN] != VERSION {
+    if bytes.len() < MIN_FILE_LEN || bytes[..MAGIC_LEN] != MAGIC[..] || bytes[MAGIC_LEN] != VERSION
+    {
         return Err(AppError::file_corrupt());
     }
     Ok(bytes)
@@ -153,10 +171,10 @@ fn checkpoint(conn: &rusqlite::Connection) -> AppResult<()> {
 /// Write via a temporary file + rename so a crash mid-write cannot leave a half-sealed
 /// container where a valid one used to be.
 fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| AppError::internal(format!("FILE_DIR: {e}")))?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| AppError::internal(format!("FILE_DIR: {e}")))?;
     }
     let tmp = path.with_extension("fpa-tmp");
     fs::write(&tmp, bytes).map_err(|e| AppError::internal(format!("FILE_WRITE: {e}")))?;
@@ -210,7 +228,10 @@ mod tests {
         seal(&path, &secret, &create_key(), &vault_key).unwrap();
         let raw = fs::read(&path).unwrap();
         let as_text = String::from_utf8_lossy(&raw);
-        assert!(!as_text.contains("SUPER-SECRET-GL-TOTAL"), "no plaintext on disk (A02)");
+        assert!(
+            !as_text.contains("SUPER-SECRET-GL-TOTAL"),
+            "no plaintext on disk (A02)"
+        );
     }
 
     #[test]
@@ -221,10 +242,19 @@ mod tests {
         let err = open(&path, &random_bytes::<KEY_LEN>()).unwrap_err();
         assert_eq!(err.body().code, "STORAGE_DECRYPT_FAILED");
         assert_eq!(err.body().http_status, 401, "ERROR-HANDLING.md §B");
-        assert_eq!(err.body().user_message, "The Company file cannot be decrypted with this PIN.");
+        assert_eq!(
+            err.body().user_message,
+            "The Company file cannot be decrypted with this PIN."
+        );
         assert!(!err.body().retryable);
         // The cheap key-only check reports the same failure.
-        assert_eq!(read_key(&path, &random_bytes::<KEY_LEN>()).unwrap_err().body().code, "STORAGE_DECRYPT_FAILED");
+        assert_eq!(
+            read_key(&path, &random_bytes::<KEY_LEN>())
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_DECRYPT_FAILED"
+        );
     }
 
     #[test]
@@ -257,13 +287,25 @@ mod tests {
         let mut bytes = fs::read(&path).unwrap();
         bytes.truncate(HEADER_LEN);
         fs::write(&path, &bytes).unwrap();
-        assert_eq!(open(&path, &vault_key).unwrap_err().body().code, "STORAGE_FILE_CORRUPT");
+        assert_eq!(
+            open(&path, &vault_key).unwrap_err().body().code,
+            "STORAGE_FILE_CORRUPT"
+        );
 
         fs::write(&path, b"not a company file at all, just text").unwrap();
-        assert_eq!(open(&path, &vault_key).unwrap_err().body().code, "STORAGE_FILE_CORRUPT");
+        assert_eq!(
+            open(&path, &vault_key).unwrap_err().body().code,
+            "STORAGE_FILE_CORRUPT"
+        );
 
         // A missing file is reported the same way — never a panic, never a raw io error.
-        assert_eq!(open(&tmp("missing").join("nope.fpa"), &vault_key).unwrap_err().body().code, "STORAGE_FILE_CORRUPT");
+        assert_eq!(
+            open(&tmp("missing").join("nope.fpa"), &vault_key)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_FILE_CORRUPT"
+        );
     }
 
     #[test]

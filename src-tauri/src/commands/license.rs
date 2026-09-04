@@ -16,7 +16,7 @@
 //! mint a license for that public key.
 
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::{Signature, Verifier, VerifyKey};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -25,7 +25,7 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::db;
@@ -37,16 +37,21 @@ pub const GRACE_DAYS: i64 = 60;
 /// Production license public key (raw 32 bytes, hex). Deterministic seed
 /// `onefpa-prod-license-key-seed-00000000000001` (scripts/gen-license-fixtures.mjs prints
 /// it); the private key is the licensor's secret (LICENSE-SPEC §Key custody).
-const PROD_LICENSE_PUBKEY_HEX: &str = "0148ccc201eddb0462baa07a7d1a067837bb28dcfdf2d47ace79496824dc4546";
+const PROD_LICENSE_PUBKEY_HEX: &str =
+    "0148ccc201eddb0462baa07a7d1a067837bb28dcfdf2d47ace79496824dc4546";
 
 pub fn hex_to_bytes(hex: &str) -> Result<[u8; 32], AppError> {
     if hex.len() != 64 {
-        return Err(AppError::invalid(format!("LICENSE_KEY_HEX_INVALID: expected 64 hex chars, got {}", hex.len())));
+        return Err(AppError::invalid(format!(
+            "LICENSE_KEY_HEX_INVALID: expected 64 hex chars, got {}",
+            hex.len()
+        )));
     }
     let mut out = [0u8; 32];
     for i in 0..32 {
-        out[i] = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)
-            .map_err(|_| AppError::invalid(format!("LICENSE_KEY_HEX_INVALID: bad hex at byte {i}")))?;
+        out[i] = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).map_err(|_| {
+            AppError::invalid(format!("LICENSE_KEY_HEX_INVALID: bad hex at byte {i}"))
+        })?;
     }
     Ok(out)
 }
@@ -54,10 +59,10 @@ pub fn hex_to_bytes(hex: &str) -> Result<[u8; 32], AppError> {
 /// Verification key: the `ONEFPA_LICENSE_PUBKEY` env override (raw 32-byte hex; dev/CI,
 /// see module docs) or the embedded production key.
 pub fn license_pubkey_raw() -> [u8; 32] {
-    if let Ok(env) = std::env::var("ONEFPA_LICENSE_PUBKEY") {
-        if let Ok(bytes) = hex_to_bytes(env.trim()) {
-            return bytes;
-        }
+    if let Ok(env) = std::env::var("ONEFPA_LICENSE_PUBKEY")
+        && let Ok(bytes) = hex_to_bytes(env.trim())
+    {
+        return bytes;
     }
     hex_to_bytes(PROD_LICENSE_PUBKEY_HEX).expect("embedded production key is valid hex")
 }
@@ -140,9 +145,9 @@ pub fn canonical_payload(payload: &serde_json::Value) -> String {
                         out.push(',');
                     }
                     first = false;
-                    write(serde_json::Value::String((*k).clone()), out);
+                    write(&serde_json::Value::String((*k).clone()), out);
                     out.push(':');
-                    write(map.get(*k).expect("key present"), out);
+                    write(map.get(k.as_str()).expect("key present"), out);
                 }
                 out.push('}');
             }
@@ -153,6 +158,7 @@ pub fn canonical_payload(payload: &serde_json::Value) -> String {
     out
 }
 
+#[derive(Debug)]
 pub struct LicenseEval {
     pub status: &'static str,
     pub plan: String,
@@ -173,10 +179,15 @@ pub struct LicenseFields {
 /// Signature-only verification (LICENSE-SPEC §Verification step 1): Ed25519 over the
 /// canonical bytes (signature key absent) + field presence. Used by `license.verify`
 /// (no session → no Company/machine binding) and by `evaluate_license`.
-pub fn verify_signature(payload: &serde_json::Value, pubkey_raw: [u8; 32]) -> AppResult<LicenseFields> {
+pub fn verify_signature(
+    payload: &serde_json::Value,
+    pubkey_raw: [u8; 32],
+) -> AppResult<LicenseFields> {
     let obj = payload
         .as_object()
-        .ok_or_else(|| AppError::LicenseInvalidSignature { reason: "payload is not an object".into() })?;
+        .ok_or_else(|| AppError::LicenseInvalidSignature {
+            reason: "payload is not an object".into(),
+        })?;
     let get = |k: &str| -> AppResult<String> {
         obj.get(k)
             .and_then(|v| v.as_str())
@@ -195,12 +206,17 @@ pub fn verify_signature(payload: &serde_json::Value, pubkey_raw: [u8; 32]) -> Ap
     let signature_b64 = get("signature")?;
 
     let bytes = canonical_payload(payload).into_bytes();
-    let key = VerifyKey::from_bytes(&pubkey_raw)
-        .map_err(|e| AppError::LicenseInvalidSignature { reason: format!("bad verification key: {e}") })?;
-    let sig_bytes = base64_decode(&signature_b64)
-        .ok_or_else(|| AppError::LicenseInvalidSignature { reason: "signature is not valid base64".into() })?;
-    let sig = Signature::from_slice(&sig_bytes)
-        .map_err(|e| AppError::LicenseInvalidSignature { reason: format!("signature is not 64 bytes: {e}") })?;
+    let key =
+        VerifyingKey::from_bytes(&pubkey_raw).map_err(|e| AppError::LicenseInvalidSignature {
+            reason: format!("bad verification key: {e}"),
+        })?;
+    let sig_bytes =
+        base64_decode(&signature_b64).ok_or_else(|| AppError::LicenseInvalidSignature {
+            reason: "signature is not valid base64".into(),
+        })?;
+    let sig = Signature::from_slice(&sig_bytes).map_err(|e| AppError::LicenseInvalidSignature {
+        reason: format!("signature is not 64 bytes: {e}"),
+    })?;
     if key.verify(&bytes, &sig).is_err() {
         return Err(AppError::LicenseInvalidSignature {
             reason: "ed25519 signature does not verify".into(),
@@ -227,7 +243,10 @@ pub fn evaluate_license(
 
     // 2) Company binding: the signed field must equal this Company's id (direct equality,
     //    constant-time; see the contract note above).
-    if !constant_time_eq(fields.licensed_company_hash.as_bytes(), company_id.as_bytes()) {
+    if !constant_time_eq(
+        fields.licensed_company_hash.as_bytes(),
+        company_id.as_bytes(),
+    ) {
         return Err(AppError::LicenseInvalidSignature {
             reason: "license is bound to a different Company".into(),
         });
@@ -270,8 +289,16 @@ pub fn evaluate_license(
 /// re-evaluated against the current clock, so a `grace` license flips to `expired`
 /// without any re-activation. `None` = the Company has no license row — S-073's empty
 /// state ("Not activated"). `expires_at` NULL = perpetual (DATABASE-SCHEMA `licenses`).
-pub fn license_status_json(conn: &rusqlite::Connection, company_id: &str) -> Option<serde_json::Value> {
-    let row: Option<(String, Option<String>, String, Option<String>)> = conn
+pub fn license_status_json(
+    conn: &rusqlite::Connection,
+    company_id: &str,
+) -> Option<serde_json::Value> {
+    let (license_key_id, expires_at, plan, machine_fingerprint): (
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+    ) = conn
         .query_row(
             "SELECT license_key_id, expires_at, plan, machine_fingerprint FROM licenses
              WHERE licensed_company_hash = ?1 ORDER BY activated_at DESC LIMIT 1",
@@ -280,7 +307,6 @@ pub fn license_status_json(conn: &rusqlite::Connection, company_id: &str) -> Opt
         )
         .optional()
         .ok()??;
-    let (license_key_id, expires_at, plan, machine_fingerprint) = row;
     let now = Utc::now();
     let status = expires_at
         .as_deref()
@@ -324,12 +350,17 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 fn base64_decode(input: &str) -> Option<Vec<u8>> {
     use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD.decode(input.as_bytes()).ok()
+    base64::engine::general_purpose::STANDARD
+        .decode(input.as_bytes())
+        .ok()
 }
 
 /// `license.verify` — {license_payload} → {status, days_left}. Session-less signature +
@@ -338,8 +369,9 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 #[tauri::command(name = "license.verify", rename_all = "camelCase")]
 pub fn license_verify(license_payload: String) -> AppResult<serde_json::Value> {
     let payload: serde_json::Value =
-        serde_json::from_str(&license_payload)
-            .map_err(|e| AppError::LicenseInvalidSignature { reason: format!("payload is not JSON: {e}") })?;
+        serde_json::from_str(&license_payload).map_err(|e| AppError::LicenseInvalidSignature {
+            reason: format!("payload is not JSON: {e}"),
+        })?;
     let fields = verify_signature(&payload, license_pubkey_raw())?;
     let (status, days_left) = verify_status(&fields, Utc::now())?;
     Ok(serde_json::json!({ "data": { "status": status, "days_left": days_left } }))
@@ -365,8 +397,9 @@ pub fn license_request_file(
         )
         .optional()
         .map_err(AppError::from)?;
-    let (company_id, stored_path) =
-        row.ok_or_else(|| AppError::invalid("LICENSE_REQUEST_COMPANY_NOT_FOUND: no Company at that path"))?;
+    let (company_id, stored_path) = row.ok_or_else(|| {
+        AppError::invalid("LICENSE_REQUEST_COMPANY_NOT_FOUND: no Company at that path")
+    })?;
 
     let request = serde_json::json!({
         "company_id": company_id,
@@ -376,7 +409,8 @@ pub fn license_request_file(
         "created_at": Utc::now().to_rfc3339(),
     });
     let out_path = format!("{}.license-request.json", stored_path);
-    fs::write(&out_path, request.to_string()).map_err(|e| AppError::internal(format!("LICENSE_REQUEST_FILE: {e}")))?;
+    fs::write(&out_path, request.to_string())
+        .map_err(|e| AppError::internal(format!("LICENSE_REQUEST_FILE: {e}")))?;
     Ok(serde_json::json!({ "data": { "file": out_path } }))
 }
 
@@ -392,21 +426,31 @@ pub fn license_apply_response(
 ) -> AppResult<serde_json::Value> {
     let company_id = require_session_write(&session)?;
 
-    let looks_like_json = serde_json::from_str::<serde_json::Value>(&response_path_or_payload).is_ok();
+    let looks_like_json =
+        serde_json::from_str::<serde_json::Value>(&response_path_or_payload).is_ok();
     let text = if looks_like_json {
         response_path_or_payload
     } else {
         let p = Path::new(&response_path_or_payload);
-        fs::read_to_string(p)
-            .map_err(|e| AppError::import_file_unreadable(format!("LICENSE_FILE_UNREADABLE: {e}")))?
+        fs::read_to_string(p).map_err(|e| {
+            AppError::import_file_unreadable(format!("LICENSE_FILE_UNREADABLE: {e}"))
+        })?
     };
-    let payload: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| AppError::LicenseInvalidSignature { reason: format!("payload is not JSON: {e}") })?;
+    let payload: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| AppError::LicenseInvalidSignature {
+            reason: format!("payload is not JSON: {e}"),
+        })?;
 
     // evaluate_license already maps `expired` → LICENSE_EXPIRED and `invalid` →
     // LICENSE_INVALID_SIGNATURE (locked codes, 403).
     let now = Utc::now();
-    let eval = evaluate_license(&payload, license_pubkey_raw(), &company_id, &machine_fingerprint(), now)?;
+    let eval = evaluate_license(
+        &payload,
+        license_pubkey_raw(),
+        &company_id,
+        &machine_fingerprint(),
+        now,
+    )?;
 
     // Persist (upsert on license_key_id) + audit event in the SAME transaction (B18-1).
     let dir = app_data_dir(&app)?;
@@ -461,17 +505,19 @@ mod tests {
     use super::*;
 
     fn fixture_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/license")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/license")
     }
 
     fn load(name: &str) -> serde_json::Value {
-        let text = fs::read_to_string(fixture_dir().join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let text =
+            fs::read_to_string(fixture_dir().join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
         serde_json::from_str(&text).unwrap()
     }
 
     const TEST_PUB: [u8; 32] = [
-        0xfc, 0xca, 0x41, 0x0c, 0x2f, 0x75, 0xe6, 0x92, 0xb1, 0x5e, 0x3d, 0x03, 0xab, 0xe2, 0x17, 0x75,
-        0xba, 0xa7, 0x48, 0x81, 0x0c, 0x15, 0x13, 0x6b, 0x6b, 0x9d, 0x61, 0x45, 0xe1, 0x62, 0x68, 0x8c,
+        0xfc, 0xca, 0x41, 0x0c, 0x2f, 0x75, 0xe6, 0x92, 0xb1, 0x5e, 0x3d, 0x03, 0xab, 0xe2, 0x17,
+        0x75, 0xba, 0xa7, 0x48, 0x81, 0x0c, 0x15, 0x13, 0x6b, 0x6b, 0x9d, 0x61, 0x45, 0xe1, 0x62,
+        0x68, 0x8c,
     ];
     const COMPANY_ID: &str = "11111111-2222-3333-4444-555555555555";
     const FP: &str = "fp-c2860307d791f8c906d07dff32e4db81";
@@ -497,7 +543,14 @@ mod tests {
     #[test]
     fn fixture_valid_payload_verifies_and_is_active() {
         let payload = load("license-valid.json");
-        let eval = evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-08-31T00:00:00Z")).unwrap();
+        let eval = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-08-31T00:00:00Z"),
+        )
+        .unwrap();
         assert_eq!(eval.status, "active");
         assert_eq!(eval.plan, "pro");
         assert_eq!(eval.license_key_id, "LK-TEST-VALID-0001");
@@ -509,27 +562,58 @@ mod tests {
     fn fixture_grace_payload_is_grace_as_of_fixture_date() {
         let payload = load("license-grace.json");
         // expires 2026-07-20 → 42 days before 2026-08-31 → within the 60-day grace window
-        let eval = evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-08-31T00:00:00Z")).unwrap();
+        let eval = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-08-31T00:00:00Z"),
+        )
+        .unwrap();
         assert_eq!(eval.status, "grace");
         // … and the SAME payload is expired once the window has passed (pure function)
-        let eval = evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-10-01T00:00:00Z")).unwrap();
-        assert_eq!(eval.status, "expired");
+        let err = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-10-01T00:00:00Z"),
+        )
+        .unwrap_err();
+        assert_eq!(err.body().code, "LICENSE_EXPIRED");
     }
 
     #[test]
     fn fixture_invalid_signature_is_rejected() {
         let payload = load("license-invalid-signature.json");
-        let err = evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-08-31T00:00:00Z")).unwrap_err();
+        let err = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-08-31T00:00:00Z"),
+        )
+        .unwrap_err();
         assert_eq!(err.body().code, "LICENSE_INVALID_SIGNATURE");
         assert_eq!(err.body().http_status, 403);
         assert!(!err.body().retryable);
-        assert_eq!(err.body().user_message, "This license key is invalid. Contact your vendor.");
+        assert_eq!(
+            err.body().user_message,
+            "This license key is invalid. Contact your vendor."
+        );
     }
 
     #[test]
     fn fixture_expired_payload_is_rejected_with_the_locked_code() {
         let payload = load("license-expired.json");
-        let err = evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-08-31T00:00:00Z")).unwrap_err();
+        let err = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-08-31T00:00:00Z"),
+        )
+        .unwrap_err();
         assert_eq!(err.body().code, "LICENSE_EXPIRED");
         assert_eq!(
             err.body().user_message,
@@ -540,10 +624,21 @@ mod tests {
     #[test]
     fn fixture_machine_mismatch_is_rejected() {
         let payload = load("license-machine-mismatch.json");
-        let err =
-            evaluate_license(&payload, TEST_PUB, COMPANY_ID, FP, dt("2026-08-31T00:00:00Z")).unwrap_err();
+        let err = evaluate_license(
+            &payload,
+            TEST_PUB,
+            COMPANY_ID,
+            FP,
+            dt("2026-08-31T00:00:00Z"),
+        )
+        .unwrap_err();
         assert_eq!(err.body().code, "LICENSE_INVALID_SIGNATURE");
-        assert!(err.body().details["reason"].as_str().unwrap().contains("machine"));
+        assert!(
+            err.body().details["reason"]
+                .as_str()
+                .unwrap()
+                .contains("machine")
+        );
     }
 
     #[test]
@@ -558,7 +653,12 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.body().code, "LICENSE_INVALID_SIGNATURE");
-        assert!(err.body().details["reason"].as_str().unwrap().contains("Company"));
+        assert!(
+            err.body().details["reason"]
+                .as_str()
+                .unwrap()
+                .contains("Company")
+        );
     }
 
     #[test]
@@ -567,8 +667,13 @@ mod tests {
         // re-signing is not possible here (private key), but verify() over our canonicalization
         // is the exact oracle — if canonicalization drifted, ALL fixture verifies would fail.
         let payload = load("license-valid.json");
-        let key = VerifyKey::from_bytes(&TEST_PUB).unwrap();
-        let sig = Signature::from_slice(&base64_decode(payload["signature"].as_str().unwrap()).unwrap()).unwrap();
-        assert!(key.verify(canonical_payload(&payload).as_bytes(), &sig).is_ok());
+        let key = VerifyingKey::from_bytes(&TEST_PUB).unwrap();
+        let sig =
+            Signature::from_slice(&base64_decode(payload["signature"].as_str().unwrap()).unwrap())
+                .unwrap();
+        assert!(
+            key.verify(canonical_payload(&payload).as_bytes(), &sig)
+                .is_ok()
+        );
     }
 }

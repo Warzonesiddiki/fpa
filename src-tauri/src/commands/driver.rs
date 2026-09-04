@@ -17,7 +17,7 @@ use std::str::FromStr;
 use tauri::{AppHandle, State};
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, SessionState};
+use crate::commands::session::{SessionState, require_session_write};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::{db, keystore};
@@ -35,7 +35,7 @@ const DRIVER_SOURCES: [&str; 4] = ["global", "bu_override", "collection", "impor
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-struct DriverInput {
+pub struct DriverInput {
     id: Option<String>,
     name: String,
     driver_type: String,
@@ -48,13 +48,20 @@ struct DriverInput {
 }
 
 fn valid_driver_id(id: &str) -> bool {
-    let Some(suffix) = id.strip_prefix("dr-") else { return false };
-    !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    let Some(suffix) = id.strip_prefix("dr-") else {
+        return false;
+    };
+    !suffix.is_empty()
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
 fn valid_name(name: &str) -> bool {
     let mut chars = name.chars();
-    let Some(first) = chars.next() else { return false };
+    let Some(first) = chars.next() else {
+        return false;
+    };
     (first == '_' || first.is_ascii_lowercase())
         && chars.all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
 }
@@ -67,19 +74,25 @@ fn parse_exact_decimal(label: &str, value: &str) -> AppResult<rust_decimal::Deci
     if whole.is_empty()
         || !whole.bytes().all(|byte| byte.is_ascii_digit())
         || pieces.next().is_some()
-        || fraction.is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+        || fraction
+            .is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
     {
-        return Err(AppError::invalid(format!("VALUE_INVALID: {label} must be an exact decimal string")));
+        return Err(AppError::invalid(format!(
+            "VALUE_INVALID: {label} must be an exact decimal string"
+        )));
     }
-    rust_decimal::Decimal::from_str(value)
-        .map_err(|_| AppError::invalid(format!("VALUE_INVALID: {label} must be an exact decimal string")))
+    rust_decimal::Decimal::from_str(value).map_err(|_| {
+        AppError::invalid(format!(
+            "VALUE_INVALID: {label} must be an exact decimal string"
+        ))
+    })
 }
 
 fn validate_input(input: &DriverInput) -> AppResult<()> {
-    if let Some(id) = input.id.as_deref() {
-        if !valid_driver_id(id) {
-            return Err(AppError::invalid("VALUE_INVALID: driver id must be a slug"));
-        }
+    if let Some(id) = input.id.as_deref()
+        && !valid_driver_id(id)
+    {
+        return Err(AppError::invalid("VALUE_INVALID: driver id must be a slug"));
     }
     if !valid_name(&input.name) {
         return Err(AppError::invalid(
@@ -92,17 +105,31 @@ fn validate_input(input: &DriverInput) -> AppResult<()> {
     if !DRIVER_SOURCES.contains(&input.source.as_str()) {
         return Err(AppError::invalid("VALUE_INVALID: unknown source"));
     }
-    let low = input.bounds_low.as_deref().map(|v| parse_exact_decimal("bounds_low", v)).transpose()?;
-    let high = input.bounds_high.as_deref().map(|v| parse_exact_decimal("bounds_high", v)).transpose()?;
-    if let (Some(l), Some(h)) = (low, high) {
-        if l > h {
-            return Err(AppError::invalid("VALUE_INVALID: bounds_low exceeds bounds_high"));
-        }
+    let low = input
+        .bounds_low
+        .as_deref()
+        .map(|v| parse_exact_decimal("bounds_low", v))
+        .transpose()?;
+    let high = input
+        .bounds_high
+        .as_deref()
+        .map(|v| parse_exact_decimal("bounds_high", v))
+        .transpose()?;
+    if let (Some(l), Some(h)) = (low, high)
+        && l > h
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: bounds_low exceeds bounds_high",
+        ));
     }
     Ok(())
 }
 
-fn model_belongs_to_company(conn: &rusqlite::Connection, model_id: &str, company_id: &str) -> AppResult<bool> {
+fn model_belongs_to_company(
+    conn: &rusqlite::Connection,
+    model_id: &str,
+    company_id: &str,
+) -> AppResult<bool> {
     let exists = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM models WHERE id = ?1 AND company_id = ?2)",
@@ -113,7 +140,11 @@ fn model_belongs_to_company(conn: &rusqlite::Connection, model_id: &str, company
     Ok(exists)
 }
 
-fn period_exists(conn: &rusqlite::Connection, company_id: &str, period_id: &str) -> AppResult<bool> {
+fn period_exists(
+    conn: &rusqlite::Connection,
+    company_id: &str,
+    period_id: &str,
+) -> AppResult<bool> {
     let exists = conn
         .query_row(
             "SELECT EXISTS(
@@ -141,20 +172,28 @@ pub fn driver_upsert(
     validate_input(&driver)?;
 
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     if !model_belongs_to_company(&conn, &model_id, &company_id)? {
-        return Err(AppError::Scope("model is not owned by the active Company".into()));
+        return Err(AppError::Scope(
+            "model is not owned by the active Company".into(),
+        ));
     }
 
     let tx = conn.transaction().map_err(AppError::from)?;
     let (driver_id, created) = if let Some(id) = driver.id.as_deref() {
         let owner_model: Option<String> = tx
-            .query_row("SELECT model_id FROM drivers WHERE id = ?1", [id], |row| row.get(0))
+            .query_row("SELECT model_id FROM drivers WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
             .optional()
             .map_err(AppError::from)?;
         match owner_model {
             Some(owner) if owner == model_id => (id.to_string(), false),
-            Some(_) => return Err(AppError::Scope("driver is not owned by the requested Model".into())),
+            Some(_) => {
+                return Err(AppError::Scope(
+                    "driver is not owned by the requested Model".into(),
+                ));
+            }
             None => (id.to_string(), true),
         }
     } else {
@@ -185,7 +224,9 @@ pub fn driver_upsert(
         }
     };
     if duplicate {
-        return Err(AppError::invalid("VALUE_INVALID: driver name already exists in this Model"));
+        return Err(AppError::invalid(
+            "VALUE_INVALID: driver name already exists in this Model",
+        ));
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -263,7 +304,7 @@ pub fn driver_set_value(
     parse_exact_decimal("value_decimal", &value_decimal)?;
 
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
 
     let driver_row: Option<(String, Option<String>, Option<String>)> = conn
         .query_row(
@@ -278,38 +319,50 @@ pub fn driver_set_value(
 
     // The scenario must belong to the same Model as the driver (API-SPEC §2 scoping).
     let scenario_model: Option<String> = conn
-        .query_row("SELECT model_id FROM scenarios WHERE id = ?1", [&scenario_id], |row| row.get(0))
+        .query_row(
+            "SELECT model_id FROM scenarios WHERE id = ?1",
+            [&scenario_id],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(AppError::from)?;
-    if let Some(owner) = scenario_model {
-        if owner != model_id {
-            return Err(AppError::Scope("scenario is not owned by the driver's Model".into()));
-        }
+    if let Some(owner) = scenario_model
+        && owner != model_id
+    {
+        return Err(AppError::Scope(
+            "scenario is not owned by the driver's Model".into(),
+        ));
     }
     if !period_exists(&conn, &company_id, &period_id)? {
         return Err(AppError::period_not_found(period_id.as_str()));
     }
 
     let value = parse_exact_decimal("value_decimal", &value_decimal)?;
-    let low = bounds_low.as_deref().map(|v| parse_exact_decimal("bounds_low", v)).transpose()?;
-    let high = bounds_high.as_deref().map(|v| parse_exact_decimal("bounds_high", v)).transpose()?;
-    if let Some(l) = low {
-        if value < l {
-            return Err(AppError::driver_out_of_bounds(
-                &value_decimal,
-                bounds_low.as_deref().unwrap_or(""),
-                bounds_high.as_deref().unwrap_or(""),
-            ));
-        }
+    let low = bounds_low
+        .as_deref()
+        .map(|v| parse_exact_decimal("bounds_low", v))
+        .transpose()?;
+    let high = bounds_high
+        .as_deref()
+        .map(|v| parse_exact_decimal("bounds_high", v))
+        .transpose()?;
+    if let Some(l) = low
+        && value < l
+    {
+        return Err(AppError::driver_out_of_bounds(
+            &value_decimal,
+            bounds_low.as_deref().unwrap_or(""),
+            bounds_high.as_deref().unwrap_or(""),
+        ));
     }
-    if let Some(h) = high {
-        if value > h {
-            return Err(AppError::driver_out_of_bounds(
-                &value_decimal,
-                bounds_low.as_deref().unwrap_or(""),
-                bounds_high.as_deref().unwrap_or(""),
-            ));
-        }
+    if let Some(h) = high
+        && value > h
+    {
+        return Err(AppError::driver_out_of_bounds(
+            &value_decimal,
+            bounds_low.as_deref().unwrap_or(""),
+            bounds_high.as_deref().unwrap_or(""),
+        ));
     }
 
     let tx = conn.transaction().map_err(AppError::from)?;
@@ -385,7 +438,10 @@ mod tests {
         };
         assert!(validate_input(&ok).is_ok());
 
-        let bad_type = DriverInput { driver_type: "magic".into(), ..ok.clone() };
+        let bad_type = DriverInput {
+            driver_type: "magic".into(),
+            ..ok.clone()
+        };
         assert!(validate_input(&bad_type).is_err());
 
         let bad_bounds = DriverInput {

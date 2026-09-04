@@ -10,7 +10,7 @@ use rusqlite::OptionalExtension;
 use tauri::{AppHandle, State};
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::{db, keystore};
@@ -57,7 +57,7 @@ pub fn settings_get(
     validate_settings_key(&key)?;
 
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let value: Option<String> = conn
         .query_row(
             "SELECT value_json FROM settings WHERE key = ?1 AND scope = ?2",
@@ -85,7 +85,7 @@ pub fn settings_set(
     validate_settings_value(&value_json)?;
 
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let tx = conn.transaction().map_err(AppError::from)?;
 
     // App-scope settings are shared across Companies but written under the active Company's

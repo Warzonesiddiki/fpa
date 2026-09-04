@@ -1,13 +1,13 @@
 //! `calendar.preview` / `calendar.apply` (F-003). preview is pure engine output — the UI
 //! previews before apply persists the config + generated years/periods for a Company.
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use rusqlite::OptionalExtension;
 use uuid::Uuid;
 
-use crate::commands::company::{audited_hash, write_calendar, CalendarConfig};
+use crate::commands::company::{CalendarConfig, audited_hash, write_calendar};
 use crate::core::audit::next_hash;
-use crate::core::calendar::{build_12month, build_week_based, CalendarPreset, WeekRule};
+use crate::core::calendar::{CalendarPreset, WeekRule, build_12month, build_week_based};
 use crate::core::error::{AppError, AppResult};
 use crate::storage::keystore;
 
@@ -23,7 +23,11 @@ fn parse_preset(s: &str) -> Result<CalendarPreset, AppError> {
 }
 
 fn parse_week_rule(s: Option<&str>, preset: CalendarPreset) -> Result<WeekRule, AppError> {
-    let rule = match s.unwrap_or(if preset == CalendarPreset::Nrf454 { "nrf_4_day" } else { "full_week" }) {
+    let rule = match s.unwrap_or(if preset == CalendarPreset::Nrf454 {
+        "nrf_4_day"
+    } else {
+        "full_week"
+    }) {
         "nrf_4_day" => WeekRule::NrfFourDay,
         "full_week" => WeekRule::FullWeek,
         other => return Err(AppError::invalid(format!("CAL_WEEK_RULE_UNKNOWN: {other}"))),
@@ -50,7 +54,8 @@ pub fn calendar_preview(
     let week_rule = parse_week_rule(year_end_rule.as_deref(), preset)?;
     let count = year_count.unwrap_or(3).clamp(1, 5);
 
-    let from_date = NaiveDate::parse_from_str(&from, "%Y-%m-%d").map_err(|_| AppError::invalid("DATE_INVALID"))?;
+    let from_date = NaiveDate::parse_from_str(&from, "%Y-%m-%d")
+        .map_err(|_| AppError::invalid("DATE_INVALID"))?;
 
     let fiscal_years = match preset {
         CalendarPreset::TwelveMonth => {
@@ -65,7 +70,9 @@ pub fn calendar_preview(
             };
             // NRF family weeks start Sunday; a different week start is out of scope (CAL_53WEEK_CONFLICT family).
             if week_start_day.unwrap_or(0) != 0 {
-                return Err(AppError::invalid("WEEK_START_MUST_BE_SUNDAY for the NRF family (F-003)".into()));
+                return Err(AppError::invalid(
+                    "WEEK_START_MUST_BE_SUNDAY for the NRF family (F-003)",
+                ));
             }
             build_week_based(preset, anchor, count, week_rule)
         }
@@ -88,7 +95,11 @@ pub struct BuMapEntry {
 /// Validate the apply payload: exactly one Default-calendar config for a single-entity Company
 /// (more requires the BU matrix → CAL_PERIOD_MAPPING_CONFLICT) and a non-ambiguous transit map
 /// (partial mapping must carry an explicit share → CAL_TRANSIT_AMBIGUOUS).
-fn validate_apply(company_id: &str, config: &[CalendarConfig], bu_map: &[BuMapEntry]) -> AppResult<()> {
+fn validate_apply(
+    company_id: &str,
+    config: &[CalendarConfig],
+    bu_map: &[BuMapEntry],
+) -> AppResult<()> {
     if config.len() != 1 {
         return Err(AppError::period_mapping_conflict(format!(
             "expected exactly 1 calendar config for company {company_id}, got {}",
@@ -97,7 +108,10 @@ fn validate_apply(company_id: &str, config: &[CalendarConfig], bu_map: &[BuMapEn
     }
     for entry in bu_map {
         if entry.mapping != "exact" && entry.mapping != "partial" {
-            return Err(AppError::invalid(format!("CAL_MAPPING_UNKNOWN: {}", entry.mapping)));
+            return Err(AppError::invalid(format!(
+                "CAL_MAPPING_UNKNOWN: {}",
+                entry.mapping
+            )));
         }
         if entry.mapping == "partial" && entry.share_pct.is_none() {
             return Err(AppError::transit_ambiguous(format!(
@@ -123,14 +137,18 @@ pub fn calendar_apply(
     // AUTH-SPEC §2.5/§3: a read-only (audit-chain-broken) Company accepts no mutations.
     crate::commands::session::require_company_write(&state, &company_id)?;
     let dir = crate::commands::company::app_data_dir(&app)?;
-    let mut conn = crate::storage::db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = crate::storage::db::open_at(&dir)?;
 
     validate_apply(&company_id, &config, &bu_map)?;
     let calendar = &config[0];
 
     let tx = conn.transaction().map_err(AppError::from)?;
     let exists: Option<String> = tx
-        .query_row("SELECT name FROM companies WHERE id = ?1", [&company_id], |r| r.get(0))
+        .query_row(
+            "SELECT name FROM companies WHERE id = ?1",
+            [&company_id],
+            |r| r.get(0),
+        )
         .optional()
         .map_err(AppError::from)?;
     if exists.is_none() {
@@ -223,8 +241,16 @@ mod tests {
 
     #[test]
     fn twelve_month_requires_start_month() {
-        let e = calendar_preview("12month".into(), None, None, None, None, "2026-04-01".into(), None)
-            .unwrap_err();
+        let e = calendar_preview(
+            "12month".into(),
+            None,
+            None,
+            None,
+            None,
+            "2026-04-01".into(),
+            None,
+        )
+        .unwrap_err();
         assert_eq!(e.body().code, "VALUE_INVALID");
     }
 

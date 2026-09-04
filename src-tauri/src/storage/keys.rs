@@ -17,8 +17,8 @@ use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::Argon2;
 use base64::Engine;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, MutexGuard};
 
@@ -74,7 +74,13 @@ pub fn aes_seal(
     plaintext: &[u8],
 ) -> AppResult<Vec<u8>> {
     cipher(key)
-        .encrypt(Nonce::from_slice(nonce), Payload { msg: plaintext, aad })
+        .encrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .map_err(|e| AppError::internal(format!("aes-gcm seal: {e}")))
 }
 
@@ -87,7 +93,13 @@ pub fn aes_open(
     ciphertext: &[u8],
 ) -> AppResult<Vec<u8>> {
     cipher(key)
-        .decrypt(Nonce::from_slice(nonce), Payload { msg: ciphertext, aad })
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
         .map_err(|_| AppError::DecryptFailed)
 }
 
@@ -252,7 +264,9 @@ impl KeyVault {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> AppResult<MutexGuard<'_, T>> {
-    mutex.lock().map_err(|_| AppError::internal("vault lock poisoned".into()))
+    mutex
+        .lock()
+        .map_err(|_| AppError::internal("vault lock poisoned"))
 }
 
 #[cfg(test)]
@@ -288,13 +302,18 @@ mod tests {
         let key = random_bytes::<KEY_LEN>();
         let (sealed, nonce) = seal_key(&wrapping, &key).unwrap();
         assert_eq!(sealed.len(), KEY_LEN + TAG_LEN);
-        assert_ne!(&sealed[..KEY_LEN], &key[..], "the sealed key is never stored raw");
+        assert_ne!(
+            &sealed[..KEY_LEN],
+            &key[..],
+            "the sealed key is never stored raw"
+        );
         assert_eq!(open_key(&wrapping, &nonce, &sealed).unwrap(), key);
     }
 
     #[test]
     fn wrong_wrapping_key_fails_as_decrypt_failed() {
-        let (sealed, nonce) = seal_key(&random_bytes::<KEY_LEN>(), &random_bytes::<KEY_LEN>()).unwrap();
+        let (sealed, nonce) =
+            seal_key(&random_bytes::<KEY_LEN>(), &random_bytes::<KEY_LEN>()).unwrap();
         let err = open_key(&random_bytes::<KEY_LEN>(), &nonce, &sealed).unwrap_err();
         assert_eq!(err.body().code, "STORAGE_DECRYPT_FAILED");
         assert_eq!(err.body().http_status, 401, "ERROR-HANDLING.md §B");
@@ -305,10 +324,22 @@ mod tests {
         let wrapping = random_bytes::<KEY_LEN>();
         let (mut sealed, nonce) = seal_key(&wrapping, &random_bytes::<KEY_LEN>()).unwrap();
         sealed[0] ^= 0x01;
-        assert_eq!(open_key(&wrapping, &nonce, &sealed).unwrap_err().body().code, "STORAGE_DECRYPT_FAILED");
+        assert_eq!(
+            open_key(&wrapping, &nonce, &sealed)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_DECRYPT_FAILED"
+        );
         // A truncated blob is tampering too, never a panic.
         sealed.pop();
-        assert_eq!(open_key(&wrapping, &nonce, &sealed).unwrap_err().body().code, "STORAGE_DECRYPT_FAILED");
+        assert_eq!(
+            open_key(&wrapping, &nonce, &sealed)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_DECRYPT_FAILED"
+        );
     }
 
     #[test]
@@ -316,8 +347,17 @@ mod tests {
         let key = random_bytes::<KEY_LEN>();
         let nonce = random_bytes::<NONCE_LEN>();
         let sealed = aes_seal(&key, &nonce, b"header", b"payload").unwrap();
-        assert_eq!(aes_open(&key, &nonce, b"header", &sealed).unwrap(), b"payload".to_vec());
-        assert_eq!(aes_open(&key, &nonce, b"other", &sealed).unwrap_err().body().code, "STORAGE_DECRYPT_FAILED");
+        assert_eq!(
+            aes_open(&key, &nonce, b"header", &sealed).unwrap(),
+            b"payload".to_vec()
+        );
+        assert_eq!(
+            aes_open(&key, &nonce, b"other", &sealed)
+                .unwrap_err()
+                .body()
+                .code,
+            "STORAGE_DECRYPT_FAILED"
+        );
     }
 
     #[test]
@@ -334,7 +374,11 @@ mod tests {
         weakened.m = 1024;
         assert!(!weakened.params_are_spec());
         assert_eq!(
-            weakened.unseal_vault_key("Meridian#2026").unwrap_err().body().code,
+            weakened
+                .unseal_vault_key("Meridian#2026")
+                .unwrap_err()
+                .body()
+                .code,
             "STORAGE_DECRYPT_FAILED",
             "a weakened record must fail closed (A02: no weak mode)"
         );
@@ -342,22 +386,34 @@ mod tests {
 
     #[test]
     fn wrong_pin_cannot_unseal_the_vault_key() {
-        let (record, _) = seal_pin_record("Meridian#2026", hash_pin("Meridian#2026").unwrap()).unwrap();
+        let (record, _) =
+            seal_pin_record("Meridian#2026", hash_pin("Meridian#2026").unwrap()).unwrap();
         assert_eq!(
-            record.unseal_vault_key("WrongPin9!").unwrap_err().body().code,
+            record
+                .unseal_vault_key("WrongPin9!")
+                .unwrap_err()
+                .body()
+                .code,
             "STORAGE_DECRYPT_FAILED"
         );
     }
 
     #[test]
     fn change_pin_reseals_the_same_vault_key() {
-        let (record, vault_key) = seal_pin_record("Meridian#2026", hash_pin("Meridian#2026").unwrap()).unwrap();
+        let (record, vault_key) =
+            seal_pin_record("Meridian#2026", hash_pin("Meridian#2026").unwrap()).unwrap();
         let new_phc = hash_pin("Meridian#2027").unwrap();
         let rotated = reseal_pin_record(&vault_key, "Meridian#2027", new_phc.clone()).unwrap();
         assert_ne!(rotated.salt, record.salt, "a new PIN gets a fresh salt");
-        assert_ne!(rotated.nonce, record.nonce, "never reuse a nonce with a key");
+        assert_ne!(
+            rotated.nonce, record.nonce,
+            "never reuse a nonce with a key"
+        );
         assert_eq!(rotated.phc, new_phc);
-        assert_eq!(rotated.unseal_vault_key("Meridian#2027").unwrap(), vault_key);
+        assert_eq!(
+            rotated.unseal_vault_key("Meridian#2027").unwrap(),
+            vault_key
+        );
     }
 
     #[test]

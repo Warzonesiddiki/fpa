@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 /// Read-only currency scale registry (mirrors `currency_scales` seed; Rust stays authoritative).
 pub fn scale_for_currency(iso: &str) -> Option<u8> {
     match iso {
-        "USD" | "EUR" | "GBP" | "INR" | "AUD" | "CAD" | "SGD" | "CHF" | "AED" | "SAR" | "SEK" | "NOK"
-        | "DKK" | "PLN" | "TRY" | "ZAR" | "BRL" | "MXN" | "NZD" | "HKD" => Some(2),
+        "USD" | "EUR" | "GBP" | "INR" | "AUD" | "CAD" | "SGD" | "CHF" | "AED" | "SAR" | "SEK"
+        | "NOK" | "DKK" | "PLN" | "TRY" | "ZAR" | "BRL" | "MXN" | "NZD" | "HKD" => Some(2),
         "JPY" | "KRW" | "VND" => Some(0),
         "KWD" | "BHD" | "OMR" | "JOD" | "IQD" | "TND" => Some(3),
         _ => None,
@@ -27,18 +27,28 @@ pub struct MoneyValue {
 
 impl MoneyValue {
     pub fn new(minor: i64, currency: &str) -> Result<Self, String> {
-        let scale = scale_for_currency(currency).ok_or_else(|| format!("CURRENCY_UNKNOWN: {currency}"))?;
-        Ok(MoneyValue { minor, scale, currency: currency.to_string() })
+        let scale =
+            scale_for_currency(currency).ok_or_else(|| format!("CURRENCY_UNKNOWN: {currency}"))?;
+        Ok(MoneyValue {
+            minor,
+            scale,
+            currency: currency.to_string(),
+        })
     }
 
     /// Parse an exact decimal string ("182500.00") to minor units — never float (B18-2).
     pub fn from_decimal(s: &str, currency: &str) -> Result<Self, String> {
-        let scale = scale_for_currency(currency).ok_or_else(|| format!("CURRENCY_UNKNOWN: {currency}"))?;
+        let scale =
+            scale_for_currency(currency).ok_or_else(|| format!("CURRENCY_UNKNOWN: {currency}"))?;
         let d = Decimal::from_str_exact(s).map_err(|e| format!("MONEY_PARSE: {e}"))?;
         let factor = pow10(scale)?;
         let minor = (d * factor).round_dp_with_strategy(0, RoundingStrategy::MidpointAwayFromZero);
         let minor = minor.to_i64().ok_or_else(|| "MONEY_OVERFLOW".to_string())?;
-        Ok(MoneyValue { minor, scale, currency: currency.to_string() })
+        Ok(MoneyValue {
+            minor,
+            scale,
+            currency: currency.to_string(),
+        })
     }
 
     pub fn to_decimal_string(&self) -> String {
@@ -79,7 +89,10 @@ pub fn largest_remainder_allocate(exact_values: &[Decimal], unit: Decimal) -> Ve
         return vec![];
     }
     // 1. floor each value to the unit
-    let floored: Vec<Decimal> = exact_values.iter().map(|v| (v / unit).floor() * unit).collect();
+    let floored: Vec<Decimal> = exact_values
+        .iter()
+        .map(|v| (v / unit).floor() * unit)
+        .collect();
     let total: Decimal = exact_values.iter().sum();
     let floored_total: Decimal = floored.iter().sum();
     let mut residual: Decimal = total - floored_total;
@@ -116,7 +129,10 @@ mod tests {
     fn half_up_exact_decimal_not_binary_float() {
         let d = Decimal::from_str_exact("2.675").unwrap();
         assert_eq!(round_half_up(d, 2).to_string(), "2.68");
-        assert_eq!(round_half_up(Decimal::from_str_exact("-2.675").unwrap(), 2).to_string(), "-2.68");
+        assert_eq!(
+            round_half_up(Decimal::from_str_exact("-2.675").unwrap(), 2).to_string(),
+            "-2.68"
+        );
     }
 
     #[test]
@@ -154,8 +170,10 @@ mod tests {
         let total = values.iter().sum::<Decimal>();
         assert_eq!(child_sum, total); // 12 + 4 + 8 = 24 == 24
         // §4b: the residual units land on the LARGEST remainders (.9 then .7), never on .4.
-        let expected: Vec<Decimal> =
-            ["12", "4", "8"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        let expected: Vec<Decimal> = ["12", "4", "8"]
+            .iter()
+            .map(|s| Decimal::from_str_exact(s).unwrap())
+            .collect();
         assert_eq!(displayed, expected);
     }
 
@@ -172,8 +190,10 @@ mod tests {
         let sum: Decimal = displayed.iter().sum();
         assert_eq!(sum, Decimal::from_str_exact("4000.0").unwrap());
         assert!(displayed[1] > Decimal::from_str_exact("2665.5").unwrap());
-        let expected: Vec<Decimal> =
-            ["1234.4", "2665.6", "100.0"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        let expected: Vec<Decimal> = ["1234.4", "2665.6", "100.0"]
+            .iter()
+            .map(|s| Decimal::from_str_exact(s).unwrap())
+            .collect();
         assert_eq!(displayed, expected);
     }
 
@@ -183,8 +203,10 @@ mod tests {
         let third = Decimal::ONE / Decimal::from(3u32);
         let unit = Decimal::from_str_exact("0.01").unwrap();
         let displayed = largest_remainder_allocate(&[third, third, third], unit);
-        let expected: Vec<Decimal> =
-            ["0.34", "0.33", "0.33"].iter().map(|s| Decimal::from_str_exact(s).unwrap()).collect();
+        let expected: Vec<Decimal> = ["0.34", "0.33", "0.33"]
+            .iter()
+            .map(|s| Decimal::from_str_exact(s).unwrap())
+            .collect();
         assert_eq!(displayed, expected);
     }
 

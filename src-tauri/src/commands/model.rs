@@ -19,11 +19,11 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::commands::company::{app_data_dir, audited_hash};
-use crate::commands::session::{require_session_write, require_unlocked, SessionState};
+use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::core::model::{
-    self, cell_key, parse_value_minor, validate_formula, ModelCellStore, StoredCell,
+    self, ModelCellStore, StoredCell, cell_key, parse_value_minor, validate_formula,
 };
 use crate::storage::db;
 use crate::storage::keystore;
@@ -58,6 +58,26 @@ impl ModelCellPayload {
     }
 }
 
+/// Query the SQLite `scenarios` table for `scenario_id`: if `state == "locked"`, return `MODEL_CELL_LOCKED`
+/// (SCENARIO-VERSION-SPEC §1 / ERROR-HANDLING §E).
+pub(crate) fn check_scenario_unlocked(
+    conn: &rusqlite::Connection,
+    scenario_id: &str,
+) -> AppResult<()> {
+    let state: Option<String> = conn
+        .query_row(
+            "SELECT state FROM scenarios WHERE id = ?1",
+            [scenario_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if state.as_deref() == Some("locked") {
+        return Err(AppError::model_cell_locked());
+    }
+    Ok(())
+}
+
 /// `model.cell.set.v1` — {line_id, scenario_id, period_id, value?, formula?, manual_override?}
 /// → {recalc, cell, audit_id} (API-SPEC §2/§3). Writes an audited cell to the M1 working set
 /// after validating formula/money; a Locked Scenario raises `MODEL_CELL_LOCKED`. The cell is
@@ -79,16 +99,25 @@ pub fn model_cell_set_v1(
     let company_id = require_session_write(&session)?;
 
     if value.is_none() && formula.is_none() {
-        return Err(AppError::invalid("MODEL_CELL_VALUE_REQUIRED: provide a value or a formula"));
+        return Err(AppError::invalid(
+            "MODEL_CELL_VALUE_REQUIRED: provide a value or a formula",
+        ));
     }
     if let Some(f) = formula.as_deref() {
         validate_formula(f)?;
     }
     // The only exact money conversion point: decimal string → minor units (B18-2).
     let value_minor = match value.as_deref() {
-        Some(v) => Some(parse_value_minor(v, currency.as_deref().unwrap_or(DEFAULT_CURRENCY))?),
+        Some(v) => Some(parse_value_minor(
+            v,
+            currency.as_deref().unwrap_or(DEFAULT_CURRENCY),
+        )?),
         None => None,
     };
+
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    check_scenario_unlocked(&conn, &scenario_id)?;
 
     let key = cell_key(&scenario_id, &line_id, &period_id);
     let before = registry.cells.get(&key);
@@ -112,12 +141,14 @@ pub fn model_cell_set_v1(
     let after_json = serde_json::to_value(ModelCellPayload::from_stored(&stored))
         .map_err(|e| AppError::internal(e.to_string()))?;
 
-    let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
     let tx = conn.transaction().map_err(AppError::from)?;
     // The Company row must belong to the unlocked session — fail closed on a foreign id.
     let company_exists: Option<String> = tx
-        .query_row("SELECT id FROM companies WHERE id = ?1", [&company_id], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM companies WHERE id = ?1",
+            [&company_id],
+            |r| r.get(0),
+        )
         .optional()
         .map_err(AppError::from)?;
     if company_exists.is_none() {
@@ -159,7 +190,7 @@ pub fn model_cell_set_v1(
 /// model. M1 reports the cells currently in the in-memory working set; the worker graph is M3-1.
 #[tauri::command(name = "model.recalc", rename_all = "snake_case")]
 pub fn model_recalc(
-    model_id: String,
+    _model_id: String,
     scenario_id: String,
     session: State<'_, SessionState>,
     registry: State<'_, ModelRegistry>,
@@ -181,4 +212,86 @@ pub fn model_recalc(
             "cycles": recalc["cycles"],
         }
     }))
+}
+
+pub use crate::commands::scenario::model_list;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn insert_test_scaffolding(conn: &rusqlite::Connection, company_id: &str, model_id: &str) {
+        conn.execute(
+            "INSERT INTO packs (id, key, name, version, schema_version, is_bundled, source_checksum, installed_at)
+             VALUES ('pack-1', 'saas', 'SaaS Pack', '1.0.0', '1.0.0', 1, 'abc', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO companies (id, name, type, default_currency_code, base_locale, pack_schema_version,
+                                    company_file_path, created_at, updated_at)
+             VALUES (?1, ?1, 'single', 'USD', 'en-IN', '1.0.0', ?2, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            rusqlite::params![company_id, format!("/tmp/{company_id}.fpa")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO models (id, company_id, name, horizon, pack_id) VALUES (?1, ?2, ?3, '3y', 'pack-1')",
+            rusqlite::params![model_id, company_id, "Test Model"],
+        )
+        .unwrap();
+    }
+
+    fn insert_scenario(
+        conn: &rusqlite::Connection,
+        scenario_id: &str,
+        model_id: &str,
+        name: &str,
+        state: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO scenarios (id, model_id, name, kind, state, baseline)
+             VALUES (?1, ?2, ?3, 'budget', ?4, 0)",
+            rusqlite::params![scenario_id, model_id, name, state],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn scenario_unlocked_check_allows_missing_and_unlocked_states() {
+        let conn = db::open_in_memory().unwrap();
+        // Missing scenario returns Ok(())
+        assert!(check_scenario_unlocked(&conn, "scen-missing").is_ok());
+
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        insert_scenario(&conn, "scen-draft", "mod-1", "Draft Scenario", "draft");
+        insert_scenario(&conn, "scen-review", "mod-1", "Review Scenario", "review");
+        insert_scenario(
+            &conn,
+            "scen-approved",
+            "mod-1",
+            "Approved Scenario",
+            "approved",
+        );
+
+        assert!(check_scenario_unlocked(&conn, "scen-draft").is_ok());
+        assert!(check_scenario_unlocked(&conn, "scen-review").is_ok());
+        assert!(check_scenario_unlocked(&conn, "scen-approved").is_ok());
+    }
+
+    #[test]
+    fn scenario_unlocked_check_rejects_locked_scenario_with_model_cell_locked() {
+        let conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        insert_scenario(&conn, "scen-locked", "mod-1", "Locked Scenario", "locked");
+
+        let err = check_scenario_unlocked(&conn, "scen-locked").unwrap_err();
+        let body = err.body();
+        assert_eq!(body.code, "MODEL_CELL_LOCKED");
+        assert_eq!(body.http_status, 422);
+        assert!(!body.retryable);
+        assert_eq!(
+            body.user_message,
+            "This scenario is locked. Create a Version to edit it."
+        );
+    }
 }

@@ -57,15 +57,16 @@ pub fn sunday_nearest(date: NaiveDate) -> NaiveDate {
     let dow = date.weekday().num_days_from_sunday(); // 0=Sun..6=Sat
     match dow {
         0 => date,
-        1..=3 => date - Duration::days(dow as i64),       // Mon–Wed: previous Sunday
-        4..=6 => date + Duration::days((7 - dow) as i64),  // Thu–Sat: following Sunday
+        1..=3 => date - Duration::days(dow as i64), // Mon–Wed: previous Sunday
+        4..=6 => date + Duration::days((7 - dow) as i64), // Thu–Sat: following Sunday
         _ => unreachable!(),
     }
 }
 
 /// Build a fiscal year range for the NRF family starting at `start` (already anchored).
 fn nrf_year(start: NaiveDate) -> (NaiveDate, NaiveDate, u16) {
-    let next_start = sunday_nearest(NaiveDate::new(start.year() + 1, 2, 1));
+    let next_start =
+        sunday_nearest(NaiveDate::from_ymd_opt(start.year() + 1, 2, 1).expect("valid date"));
     let days = (next_start - start).num_days();
     let week_count = if days >= 371 { 53 } else { 52 };
     let end = next_start - Duration::days(1);
@@ -73,7 +74,11 @@ fn nrf_year(start: NaiveDate) -> (NaiveDate, NaiveDate, u16) {
 }
 
 /// Month week-counts plus `is_53rd_week` flags for a week-based preset.
-fn month_schedule(preset: CalendarPreset, week_count: u16, week_rule: WeekRule) -> (Vec<u8>, Vec<bool>, bool) {
+fn month_schedule(
+    preset: CalendarPreset,
+    week_count: u16,
+    week_rule: WeekRule,
+) -> (Vec<u8>, Vec<bool>, bool) {
     match preset {
         // 4-5-4: 12 months; 53-week NRF rule → Q4 4-5-5 (P12 flagged); full-week → 12 std months + W53.
         CalendarPreset::Nrf454 => {
@@ -93,7 +98,11 @@ fn month_schedule(preset: CalendarPreset, week_count: u16, week_rule: WeekRule) 
         // 4-4-5 / 5-4-4: 12 months; 53-week years always append the explicit W53 (NRF rule is
         // exclusive to 4-5-4 — CAL_53WEEK_CONFLICT; engine degrades deterministically to full-week).
         CalendarPreset::Nrf445 | CalendarPreset::Nrf544 => {
-            let p: [u8; 3] = if preset == CalendarPreset::Nrf445 { [4, 4, 5] } else { [5, 4, 4] };
+            let p: [u8; 3] = if preset == CalendarPreset::Nrf445 {
+                [4, 4, 5]
+            } else {
+                [5, 4, 4]
+            };
             let weeks = [p, p, p, p].concat();
             let flags = vec![false; 12];
             let needs_w53 = week_count == 53;
@@ -133,8 +142,10 @@ pub fn build_12month(fy_start_year: i32, fy_start_month: u32, year_count: u32) -
                     let ym = ((start_month + p - 1) % 12) + 1;
                     let ys = y + if start_month + p > 12 { 1 } else { 0 };
                     let ps = NaiveDate::from_ymd_opt(ys, ym, 1).unwrap();
-                    let pe = NaiveDate::from_ymd_opt(if ym == 12 { ys + 1 } else { ys }, ym % 12 + 1, 1).unwrap()
-                        - Duration::days(1);
+                    let pe =
+                        NaiveDate::from_ymd_opt(if ym == 12 { ys + 1 } else { ys }, ym % 12 + 1, 1)
+                            .unwrap()
+                            - Duration::days(1);
                     FiscalPeriod {
                         period_no: (p + 1) as u8,
                         code: format!("P{:02}", p + 1),
@@ -230,8 +241,15 @@ mod tests {
         assert_eq!(years[4].week_count, 53);
         assert_eq!(years[4].end_date, "2029-02-03");
         let y28 = &years[4];
-        assert_eq!(y28.periods.len(), 12, "NRF 4-day absorbs 53rd week into Q4 4-5-5");
-        assert!(y28.periods[11].is_53rd_week, "P12 carries the 53rd-week flag");
+        assert_eq!(
+            y28.periods.len(),
+            12,
+            "NRF 4-day absorbs 53rd week into Q4 4-5-5"
+        );
+        assert!(
+            y28.periods[11].is_53rd_week,
+            "P12 carries the 53rd-week flag"
+        );
         assert!(!y28.periods.iter().any(|p| p.code == "W53"));
     }
 
@@ -315,9 +333,16 @@ mod tests {
         );
         let y = &years[0];
         assert_eq!(y.periods.len(), 13, "3-3-3-4 is a 13-period calendar");
-        assert!(y.periods[12].is_53rd_week, "P13 absorbs the 53rd week and is flagged");
+        assert!(
+            y.periods[12].is_53rd_week,
+            "P13 absorbs the 53rd week and is flagged"
+        );
         assert!(!y.periods.iter().any(|p| p.code == "W53"));
-        let days: i64 = y.periods.iter().map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1).sum();
+        let days: i64 = y
+            .periods
+            .iter()
+            .map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1)
+            .sum();
         assert_eq!(days, y.week_count as i64 * 7);
     }
 
@@ -327,9 +352,10 @@ mod tests {
 
     fn fixture(name: &str) -> serde_json::Value {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/calendar")
+            .join("../tests/fixtures/calendar")
             .join(name);
-        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         serde_json::from_str(&raw).unwrap()
     }
 
@@ -376,17 +402,28 @@ mod tests {
         .clone();
         let w53 = &full.periods[12];
         assert_eq!(w53.code, f["full_week_variant_2028"]["w53"]["code"]);
-        assert_eq!(w53.start_date, f["full_week_variant_2028"]["w53"]["start_date"]);
+        assert_eq!(
+            w53.start_date,
+            f["full_week_variant_2028"]["w53"]["start_date"]
+        );
         assert_eq!(w53.end_date, f["full_week_variant_2028"]["w53"]["end_date"]);
     }
 
     fn assert_days_and_contiguity(y: &FiscalYear, file: &str) {
-        let days: i64 = y.periods.iter().map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1).sum();
+        let days: i64 = y
+            .periods
+            .iter()
+            .map(|p| (d(&p.end_date) - d(&p.start_date)).num_days() + 1)
+            .sum();
         assert_eq!(days, y.week_count as i64 * 7, "{file}: day sum");
         for w in y.periods.windows(2) {
             let next = d(&w[1].start_date);
             let prev_end = d(&w[0].end_date);
-            assert_eq!(next - prev_end, chrono::Duration::days(1), "{file}: contiguity");
+            assert_eq!(
+                next - prev_end,
+                chrono::Duration::days(1),
+                "{file}: contiguity"
+            );
         }
     }
 
@@ -396,8 +433,13 @@ mod tests {
     #[test]
     fn fixture_nrf_544_satisfies_invariants() {
         let f = fixture("nrf-544-expected.json");
-        let y = build_week_based(CalendarPreset::Nrf544, sunday_nearest(d("2028-02-01")), 1, WeekRule::NrfFourDay)[0]
-            .clone();
+        let y = build_week_based(
+            CalendarPreset::Nrf544,
+            sunday_nearest(d("2028-02-01")),
+            1,
+            WeekRule::NrfFourDay,
+        )[0]
+        .clone();
         assert_eq!(y.week_count, 53);
         assert_eq!(y.periods.len(), 13, "12 standard + W53");
         let pattern: Vec<u8> = f["invariants"]["quarter_week_pattern"]
@@ -407,8 +449,15 @@ mod tests {
             .map(|v| v.as_u64().unwrap() as u8)
             .collect();
         for q in 0..4usize {
+            for (m, &expected_weeks) in pattern.iter().take(3).enumerate() {
+                assert_eq!(
+                    period_weeks(&y.periods[q * 3 + m]),
+                    expected_weeks as i64,
+                    "quarter {q} month {m} weeks"
+                );
+            }
             let weeks: i64 = y.periods[q * 3..q * 3 + 3].iter().map(period_weeks).sum();
-            assert_eq!(weeks, pattern[q] as i64, "quarter {q} weeks");
+            assert_eq!(weeks, 13, "quarter {q} total weeks");
         }
         for (i, p) in y.periods[..12].iter().enumerate() {
             assert_eq!(p.code, format!("P{:02}", i + 1));
@@ -434,7 +483,10 @@ mod tests {
         )[0]
         .clone();
         assert_eq!(y.week_count, 53);
-        assert_eq!(y.periods.len(), f["invariants"]["periods_total"].as_u64().unwrap() as usize);
+        assert_eq!(
+            y.periods.len(),
+            f["invariants"]["periods_total"].as_u64().unwrap() as usize
+        );
         let per_quarter: Vec<u8> = f["invariants"]["periods_per_quarter"]
             .as_array()
             .unwrap()
@@ -453,4 +505,3 @@ mod tests {
         assert_days_and_contiguity(&y, "nrf-3334");
     }
 }
-

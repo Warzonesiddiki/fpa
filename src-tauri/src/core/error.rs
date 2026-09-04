@@ -3,7 +3,7 @@
 //! `Serialize` is implemented manually so a Tauri `Err` resolves to the documented error object
 //! (snake_case → camelCase per the IPC contract in API-SPEC §1).
 
-use serde::{ser::SerializeStruct, Serialize};
+use serde::{Serialize, ser::SerializeStruct};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ErrorBody {
@@ -63,7 +63,12 @@ pub enum AppError {
     #[error("parse session expired or unknown: {0}")]
     ImportParseExpired(String),
     #[error("import tie-out failed: debits {debits_minor} != credits {credits_minor}")]
-    ImportTieOutFailed { debits_minor: i64, credits_minor: i64, currency: String, diff_rows: serde_json::Value },
+    ImportTieOutFailed {
+        debits_minor: i64,
+        credits_minor: i64,
+        currency: String,
+        diff_rows: serde_json::Value,
+    },
     #[error("source file already imported as batch {existing_batch}")]
     ImportBatchHashExists { existing_batch: String },
     #[error("account code {} resolves to {} accounts", code, accounts.len())]
@@ -89,7 +94,11 @@ pub enum AppError {
     #[error("reference to {cell} is broken")]
     ReferenceBroken { cell: String },
     #[error("driver value {value} is outside bounds [{low}, {high}]")]
-    DriverOutOfBounds { value: String, low: String, high: String },
+    DriverOutOfBounds {
+        value: String,
+        low: String,
+        high: String,
+    },
     #[error("assumption is used by a locked baseline")]
     AssumptionInUseLocked { assumption_id: String },
     #[error("hardcoded assumption at {cell}")]
@@ -114,6 +123,29 @@ pub enum AppError {
     LicenseInvalidSignature { reason: String },
     #[error("license is past expiry and beyond the 60-day grace window")]
     LicenseExpired,
+    // ── Headcount schedule (F-016 / S-045 / ERROR-HANDLING) ──────────────────────────────
+    #[error("headcount date invalid: {reason}")]
+    HcDateInvalid {
+        row_id: String,
+        row_index: usize,
+        reason: String,
+    },
+    #[error("headcount overlap for {role} in cost center {cost_center}")]
+    HcOverlap {
+        role: String,
+        cost_center: String,
+        period_id: Option<String>,
+        row_ids: Vec<String>,
+    },
+    // ── Scenario Management ──────────────────────────────────────────────────────────────
+    #[error("scenario name already exists: {name}")]
+    ScenarioNameDup { name: String },
+    #[error("scenario is already in {state}")]
+    ScenarioLockConflict { state: String },
+    #[error("baseline replace requires a reason")]
+    BaselineReplaceReasonRequired {
+        current_baseline_scenario_id: Option<String>,
+    },
 }
 
 impl AppError {
@@ -123,7 +155,9 @@ impl AppError {
             // new PIN — the same call is never re-issued); AUTH_LOCKED 423 / retry=true *after* the
             // countdown carried in `retryAfterMs`; SESSION_LOCKED 401 / retry=false (unlock first).
             AppError::PinInvalid => ("AUTH_PIN_INVALID", 401, false, None),
-            AppError::Locked { retry_after_ms } => ("AUTH_LOCKED", 423, true, Some(*retry_after_ms)),
+            AppError::Locked { retry_after_ms } => {
+                ("AUTH_LOCKED", 423, true, Some(*retry_after_ms))
+            }
             // ERROR-HANDLING.md §B: key mismatch is 401 with the exact documented user text.
             AppError::DecryptFailed => ("STORAGE_DECRYPT_FAILED", 401, false, None),
             AppError::FileExists => ("STORAGE_FILE_EXISTS", 409, false, None),
@@ -145,28 +179,43 @@ impl AppError {
             AppError::EncodingUnsupported(_) => ("ENCODING_UNSUPPORTED", 422, true, None),
             AppError::ImportParseExpired(_) => ("IMPORT_PARSE_EXPIRED", 410, true, None),
             AppError::ImportTieOutFailed { .. } => ("IMPORT_TIE_OUT_FAILED", 422, false, None),
-            AppError::ImportBatchHashExists { .. } => ("IMPORT_BATCH_HASH_EXISTS", 409, false, None),
+            AppError::ImportBatchHashExists { .. } => {
+                ("IMPORT_BATCH_HASH_EXISTS", 409, false, None)
+            }
             AppError::MapAccountAmbiguous { .. } => ("MAP_ACCOUNT_AMBIGUOUS", 422, false, None),
             AppError::MapTargetInvalid(_) => ("MAP_TARGET_INVALID", 422, false, None),
             AppError::UnitPeriodMismatch(_) => ("UNIT_PERIOD_MISMATCH", 422, false, None),
             AppError::OpeningAlreadySet(_) => ("OPENING_ALREADY_SET", 409, false, None),
             AppError::BatchAlreadyRolledBack => ("BATCH_ALREADY_ROLLED_BACK", 409, false, None),
             AppError::PeriodNotFound(_) => ("PERIOD_NOT_FOUND", 404, false, None),
-            AppError::FormulaUnsupported { .. } => ("FORMULA_UNSUPPORTED_FUNCTION", 422, false, None),
+            AppError::FormulaUnsupported { .. } => {
+                ("FORMULA_UNSUPPORTED_FUNCTION", 422, false, None)
+            }
             AppError::ModelCellLocked => ("MODEL_CELL_LOCKED", 422, false, None),
             AppError::FormulaCycle { .. } => ("FORMULA_CYCLE", 422, false, None),
             AppError::ReferenceBroken { .. } => ("REFERENCE_BROKEN", 422, false, None),
             AppError::DriverOutOfBounds { .. } => ("DRIVER_OUT_OF_BOUNDS", 422, false, None),
-            AppError::AssumptionInUseLocked { .. } => ("ASSUMPTION_IN_USE_LOCKED", 422, false, None),
+            AppError::AssumptionInUseLocked { .. } => {
+                ("ASSUMPTION_IN_USE_LOCKED", 422, false, None)
+            }
             AppError::HardcodedAssumption { .. } => ("HARDCODED_ASSUMPTION", 422, false, None),
             // ERROR-HANDLING §H: both license codes are 403, not retryable.
-            AppError::LicenseInvalidSignature { .. } => ("LICENSE_INVALID_SIGNATURE", 403, false, None),
-            AppError::LicenseExpired { .. } => ("LICENSE_EXPIRED", 403, false, None),
+            AppError::LicenseInvalidSignature { .. } => {
+                ("LICENSE_INVALID_SIGNATURE", 403, false, None)
+            }
+            AppError::LicenseExpired => ("LICENSE_EXPIRED", 403, false, None),
             // ERROR-HANDLING §H: settings writes are exactly the documented retryable 500.
             AppError::SettingsSaveFailed(_) => ("SETTINGS_SAVE_FAILED", 500, true, None),
             AppError::CoaDuplicateCode { .. } => ("COA_DUPLICATE_CODE", 409, false, None),
             AppError::CoaTypeMismatch { .. } => ("COA_TYPE_MISMATCH", 422, false, None),
             AppError::CoaReferenced { .. } => ("COA_REFERENCED", 409, false, None),
+            AppError::HcDateInvalid { .. } => ("HC_DATE_INVALID", 422, false, None),
+            AppError::HcOverlap { .. } => ("HC_OVERLAP", 422, false, None),
+            AppError::ScenarioNameDup { .. } => ("SCENARIO_NAME_DUP", 409, false, None),
+            AppError::ScenarioLockConflict { .. } => ("SCENARIO_LOCK_CONFLICT", 409, false, None),
+            AppError::BaselineReplaceReasonRequired { .. } => {
+                ("BASELINE_REPLACE_REASON_REQUIRED", 422, false, None)
+            }
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -220,9 +269,7 @@ impl AppError {
                 "License expired. The Company is read-only. Activate to continue."
             }
             // Exact documented text (ERROR-HANDLING.md §H).
-            AppError::SettingsSaveFailed(_) => {
-                "Settings could not be saved. Retry."
-            }
+            AppError::SettingsSaveFailed(_) => "Settings could not be saved. Retry.",
             AppError::CoaDuplicateCode { code } => {
                 // Exact documented template (ERROR-HANDLING.md) with the colliding code.
                 return ErrorBody {
@@ -288,7 +335,12 @@ impl AppError {
                 "Encoding not detected. Choose UTF-8 or Latin-1 (preview) and continue."
             }
             AppError::ImportParseExpired(_) => "This parse session expired. Re-run the import.",
-            AppError::ImportTieOutFailed { debits_minor, credits_minor, currency, diff_rows } => {
+            AppError::ImportTieOutFailed {
+                debits_minor,
+                credits_minor,
+                currency,
+                diff_rows,
+            } => {
                 return ErrorBody {
                     code: code.to_string(),
                     message: self.to_string(),
@@ -323,7 +375,10 @@ impl AppError {
                     details: serde_json::json!({ "existingBatch": existing_batch }),
                 };
             }
-            AppError::MapAccountAmbiguous { code: account_code, accounts } => {
+            AppError::MapAccountAmbiguous {
+                code: account_code,
+                accounts,
+            } => {
                 return ErrorBody {
                     code: code.to_string(),
                     message: self.to_string(),
@@ -366,8 +421,8 @@ impl AppError {
                 return ErrorBody {
                     code: code.to_string(),
                     message: self.to_string(),
-                    user_message:
-                        "This scenario is locked. Create a Version to edit it.".to_string(),
+                    user_message: "This scenario is locked. Create a Version to edit it."
+                        .to_string(),
                     http_status,
                     retryable,
                     retry_after_ms,
@@ -438,6 +493,87 @@ impl AppError {
                     retryable,
                     retry_after_ms,
                     details: serde_json::json!({ "cell": cell }),
+                };
+            }
+            AppError::HcDateInvalid {
+                row_id,
+                row_index,
+                reason,
+            } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "A hire or termination date is outside the active fiscal calendar."
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({
+                        "row_id": row_id,
+                        "row_index": row_index,
+                        "reason": reason,
+                    }),
+                };
+            }
+            AppError::HcOverlap {
+                role,
+                cost_center,
+                period_id,
+                row_ids,
+            } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "Two rows for the same role and cost center overlap in a fiscal period."
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({
+                        "role": role,
+                        "cost_center": cost_center,
+                        "period_id": period_id,
+                        "row_ids": row_ids,
+                    }),
+                };
+            }
+            AppError::ScenarioNameDup { name } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "A Scenario with this name already exists.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "name": name }),
+                };
+            }
+            AppError::ScenarioLockConflict { state } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "This Scenario is already in {state} — cannot transition."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "state": state }),
+                };
+            }
+            AppError::BaselineReplaceReasonRequired {
+                current_baseline_scenario_id,
+            } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "Replacing the baseline requires a written reason.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "current_baseline_scenario_id": current_baseline_scenario_id }),
                 };
             }
         };
@@ -523,11 +659,16 @@ impl AppError {
     }
 
     pub fn import_batch_hash_exists(existing_batch: &str) -> Self {
-        AppError::ImportBatchHashExists { existing_batch: existing_batch.to_string() }
+        AppError::ImportBatchHashExists {
+            existing_batch: existing_batch.to_string(),
+        }
     }
 
     pub fn map_account_ambiguous(code: &str, accounts: Vec<String>) -> Self {
-        AppError::MapAccountAmbiguous { code: code.to_string(), accounts }
+        AppError::MapAccountAmbiguous {
+            code: code.to_string(),
+            accounts,
+        }
     }
 
     pub fn map_target_invalid(reason: impl Into<String>) -> Self {
@@ -551,7 +692,9 @@ impl AppError {
     }
 
     pub fn formula_unsupported(function: &str) -> Self {
-        AppError::FormulaUnsupported { function: function.to_string() }
+        AppError::FormulaUnsupported {
+            function: function.to_string(),
+        }
     }
 
     pub fn model_cell_locked() -> Self {
@@ -563,7 +706,9 @@ impl AppError {
     }
 
     pub fn reference_broken(cell: &str) -> Self {
-        AppError::ReferenceBroken { cell: cell.to_string() }
+        AppError::ReferenceBroken {
+            cell: cell.to_string(),
+        }
     }
 
     pub fn driver_out_of_bounds(value: &str, low: &str, high: &str) -> Self {
@@ -579,11 +724,57 @@ impl AppError {
     }
 
     pub fn assumption_in_use_locked(assumption_id: &str) -> Self {
-        AppError::AssumptionInUseLocked { assumption_id: assumption_id.to_string() }
+        AppError::AssumptionInUseLocked {
+            assumption_id: assumption_id.to_string(),
+        }
     }
 
     pub fn hardcoded_assumption(cell: &str) -> Self {
-        AppError::HardcodedAssumption { cell: cell.to_string() }
+        AppError::HardcodedAssumption {
+            cell: cell.to_string(),
+        }
+    }
+
+    pub fn hc_date_invalid(
+        row_id: impl Into<String>,
+        row_index: usize,
+        reason: impl Into<String>,
+    ) -> Self {
+        AppError::HcDateInvalid {
+            row_id: row_id.into(),
+            row_index,
+            reason: reason.into(),
+        }
+    }
+
+    pub fn hc_overlap(
+        role: impl Into<String>,
+        cost_center: impl Into<String>,
+        period_id: Option<String>,
+        row_ids: Vec<String>,
+    ) -> Self {
+        AppError::HcOverlap {
+            role: role.into(),
+            cost_center: cost_center.into(),
+            period_id,
+            row_ids,
+        }
+    }
+
+    pub fn scenario_name_dup(name: impl Into<String>) -> Self {
+        AppError::ScenarioNameDup { name: name.into() }
+    }
+
+    pub fn scenario_lock_conflict(state: impl Into<String>) -> Self {
+        AppError::ScenarioLockConflict {
+            state: state.into(),
+        }
+    }
+
+    pub fn baseline_replace_reason_required(current_baseline_scenario_id: Option<String>) -> Self {
+        AppError::BaselineReplaceReasonRequired {
+            current_baseline_scenario_id,
+        }
     }
 }
 
@@ -647,28 +838,113 @@ mod tests {
         assert!(!pin.retryable, "AUTH_PIN_INVALID is not retryable (§A)");
         assert_eq!(pin.retry_after_ms, None);
 
-        let locked = AppError::Locked { retry_after_ms: 30_000 }.body();
+        let locked = AppError::Locked {
+            retry_after_ms: 30_000,
+        }
+        .body();
         assert_eq!(locked.code, "AUTH_LOCKED");
         assert_eq!(locked.http_status, 423);
-        assert!(locked.retryable, "AUTH_LOCKED is retryable after the countdown (§A)");
+        assert!(
+            locked.retryable,
+            "AUTH_LOCKED is retryable after the countdown (§A)"
+        );
         assert_eq!(locked.retry_after_ms, Some(30_000));
 
         let session = AppError::SessionRequired.body();
         assert_eq!(session.code, "SESSION_LOCKED");
         assert_eq!(session.http_status, 401);
-        assert!(!session.retryable, "SESSION_LOCKED is not retryable — unlock first (§A)");
+        assert!(
+            !session.retryable,
+            "SESSION_LOCKED is not retryable — unlock first (§A)"
+        );
         assert_eq!(session.retry_after_ms, None);
     }
 
     /// The IPC serializer must emit the documented camelCase field names (API-SPEC §1).
     #[test]
     fn serializes_the_documented_camel_case_envelope() {
-        let json = serde_json::to_value(AppError::Locked { retry_after_ms: 1_500 }).unwrap();
+        let json = serde_json::to_value(AppError::Locked {
+            retry_after_ms: 1_500,
+        })
+        .unwrap();
         assert_eq!(json["code"], "AUTH_LOCKED");
         assert_eq!(json["httpStatus"], 423);
         assert_eq!(json["retryable"], true);
         assert_eq!(json["retryAfterMs"], 1_500);
         assert!(json.get("userMessage").is_some());
-        assert!(json.get("http_status").is_none(), "snake_case must not leak to the UI");
+        assert!(
+            json.get("http_status").is_none(),
+            "snake_case must not leak to the UI"
+        );
+    }
+
+    #[test]
+    fn headcount_error_envelopes_match_contract() {
+        let date_err = AppError::hc_date_invalid("hc-row-1", 0, "not_an_iso_calendar_date").body();
+        assert_eq!(date_err.code, "HC_DATE_INVALID");
+        assert_eq!(date_err.http_status, 422);
+        assert!(!date_err.retryable);
+        assert_eq!(date_err.details["row_id"], "hc-row-1");
+        assert_eq!(date_err.details["row_index"], 0);
+        assert_eq!(date_err.details["reason"], "not_an_iso_calendar_date");
+
+        let overlap_err = AppError::hc_overlap(
+            "Engineer",
+            "R&D",
+            Some("p-1".to_string()),
+            vec!["hc-1".to_string(), "hc-2".to_string()],
+        )
+        .body();
+        assert_eq!(overlap_err.code, "HC_OVERLAP");
+        assert_eq!(overlap_err.http_status, 422);
+        assert!(!overlap_err.retryable);
+        assert_eq!(overlap_err.details["role"], "Engineer");
+        assert_eq!(overlap_err.details["cost_center"], "R&D");
+        assert_eq!(overlap_err.details["period_id"], "p-1");
+        assert_eq!(
+            overlap_err.details["row_ids"],
+            serde_json::json!(["hc-1", "hc-2"])
+        );
+    }
+
+    #[test]
+    fn scenario_errors_match_contract() {
+        let dup = AppError::scenario_name_dup("Base Case").body();
+        assert_eq!(dup.code, "SCENARIO_NAME_DUP");
+        assert_eq!(dup.http_status, 409);
+        assert!(!dup.retryable);
+        assert_eq!(
+            dup.user_message,
+            "A Scenario with this name already exists."
+        );
+        assert_eq!(dup.details["name"], "Base Case");
+
+        let lock = AppError::scenario_lock_conflict("Archived").body();
+        assert_eq!(lock.code, "SCENARIO_LOCK_CONFLICT");
+        assert_eq!(lock.http_status, 409);
+        assert!(!lock.retryable);
+        assert_eq!(
+            lock.user_message,
+            "This Scenario is already in Archived — cannot transition."
+        );
+        assert_eq!(lock.details["state"], "Archived");
+
+        let replace1 =
+            AppError::baseline_replace_reason_required(Some("scen-1".to_string())).body();
+        assert_eq!(replace1.code, "BASELINE_REPLACE_REASON_REQUIRED");
+        assert_eq!(replace1.http_status, 422);
+        assert!(!replace1.retryable);
+        assert_eq!(
+            replace1.user_message,
+            "Replacing the baseline requires a written reason."
+        );
+        assert_eq!(replace1.details["current_baseline_scenario_id"], "scen-1");
+
+        let replace2 = AppError::baseline_replace_reason_required(None).body();
+        assert_eq!(replace2.code, "BASELINE_REPLACE_REASON_REQUIRED");
+        assert_eq!(
+            replace2.details["current_baseline_scenario_id"],
+            serde_json::Value::Null
+        );
     }
 }

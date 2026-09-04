@@ -2,8 +2,8 @@
 //! headless-Linux fallback = 0600 file beside the app dir (warned in logs; no key ever in the DB).
 
 use keyring::Entry;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use std::fs;
 use std::path::Path;
 
@@ -12,7 +12,11 @@ const USER_HMAC: &str = "chain-key";
 
 /// Get or create the 32-byte HMAC chain key (hex in keychain; key is zeroised after use).
 pub fn audit_hmac_key(data_dir: &Path) -> Result<Vec<u8>, String> {
-    let hex = get_or_create(&Entry::new(SERVICE_HMAC, USER_HMAC).map_err(|e| e.to_string())?, data_dir, 64)?;
+    let hex = get_or_create(
+        &Entry::new(SERVICE_HMAC, USER_HMAC).map_err(|e| e.to_string())?,
+        data_dir,
+        64,
+    )?;
     let mut key = Vec::with_capacity(32);
     for i in (0..64).step_by(2) {
         let byte = u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| format!("KEY_HEX: {e}"))?;
@@ -22,17 +26,26 @@ pub fn audit_hmac_key(data_dir: &Path) -> Result<Vec<u8>, String> {
 }
 
 fn get_or_create(entry: &Entry, data_dir: &Path, hex_len: usize) -> Result<String, String> {
-    if let Ok(v) = entry.get_password() {
-        if v.len() == hex_len {
-            return Ok(v);
-        }
+    if let Ok(v) = entry.get_password()
+        && v.len() == hex_len
+    {
+        return Ok(v);
     }
     let v = random_hex(hex_len);
     match entry.set_password(&v) {
-        Ok(_) => Ok(v),
+        Ok(_) => {
+            if let Ok(check) = entry.get_password()
+                && check.len() == hex_len
+            {
+                return Ok(check);
+            }
+            fallback_file(data_dir, hex_len)
+        }
         Err(e) => {
             // Headless Linux without a Secret Service: OS-permission-protected file fallback.
-            eprintln!("SECURITY: keychain unavailable ({e}); using 0600 file fallback (SECURITY-CHECKLIST A02)");
+            eprintln!(
+                "SECURITY: keychain unavailable ({e}); using 0600 file fallback (SECURITY-CHECKLIST A02)"
+            );
             fallback_file(data_dir, hex_len)
         }
     }
@@ -40,10 +53,10 @@ fn get_or_create(entry: &Entry, data_dir: &Path, hex_len: usize) -> Result<Strin
 
 fn fallback_file(data_dir: &Path, hex_len: usize) -> Result<String, String> {
     let path = data_dir.join("audit.key");
-    if let Ok(v) = fs::read_to_string(&path) {
-        if v.trim().len() == hex_len {
-            return Ok(v.trim().to_string());
-        }
+    if let Ok(v) = fs::read_to_string(&path)
+        && v.trim().len() == hex_len
+    {
+        return Ok(v.trim().to_string());
     }
     let v = random_hex(hex_len);
     fs::write(&path, &v).map_err(|e| e.to_string())?;

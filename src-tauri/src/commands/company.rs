@@ -12,8 +12,8 @@ use tauri::Manager;
 use tauri::State;
 use uuid::Uuid;
 
-use crate::core::audit::{next_hash, GENESIS_HASH};
-use crate::core::calendar::{build_12month, build_week_based, CalendarPreset, WeekRule};
+use crate::core::audit::{GENESIS_HASH, next_hash};
+use crate::core::calendar::{CalendarPreset, WeekRule, build_12month, build_week_based};
 use crate::core::error::{AppError, AppResult};
 use crate::storage::container;
 use crate::storage::db;
@@ -25,14 +25,16 @@ use crate::storage::keystore;
 pub const COMPANY_RECENT_WINDOW_DAYS: i64 = 30;
 
 pub fn app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
-    app.path().app_data_dir().map_err(|e| AppError::internal(format!("APP_DATA_DIR: {e}")))
+    app.path()
+        .app_data_dir()
+        .map_err(|e| AppError::internal(format!("APP_DATA_DIR: {e}")))
 }
 
 /// `company.list` — CompanyMeta[] (last_opened_at = last activity: create/open/unlock).
 #[tauri::command(name = "company.list", rename_all = "camelCase")]
 pub fn company_list(app: AppHandle) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let mut stmt = conn
         .prepare(
             "SELECT c.id, c.name, c.type, c.default_currency_code, c.base_locale, c.updated_at,
@@ -55,7 +57,9 @@ pub fn company_list(app: AppHandle) -> AppResult<serde_json::Value> {
             }))
         })
         .map_err(AppError::from)?;
-    let rows = rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)?;
+    let rows = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
     Ok(serde_json::json!({ "data": rows }))
 }
 
@@ -103,15 +107,20 @@ pub(crate) fn write_calendar(
     if preset != "12month" {
         parse_preset(preset)?;
     }
-    let year_end_rule_val = calendar
-        .year_end_rule
-        .clone()
-        .unwrap_or_else(|| if preset == "454" { "nrf_4_day".into() } else { "full_week".into() });
+    let year_end_rule_val = calendar.year_end_rule.clone().unwrap_or_else(|| {
+        if preset == "454" {
+            "nrf_4_day".into()
+        } else {
+            "full_week".into()
+        }
+    });
     if year_end_rule_val == "nrf_4_day" && preset != "454" {
         return Err(AppError::cal_53week_conflict());
     }
     if preset != "12month" && calendar.week_start_day.unwrap_or(0) != 0 {
-        return Err(AppError::invalid("WEEK_START_MUST_BE_SUNDAY for the NRF family (F-003)".into()));
+        return Err(AppError::invalid(
+            "WEEK_START_MUST_BE_SUNDAY for the NRF family (F-003)",
+        ));
     }
 
     tx.execute(
@@ -139,9 +148,15 @@ pub(crate) fn write_calendar(
         ),
         _ => build_week_based(
             parse_preset(preset)?,
-            crate::core::calendar::sunday_nearest(chrono::NaiveDate::from_ymd_opt(now_year, 2, 1).unwrap()),
+            crate::core::calendar::sunday_nearest(
+                chrono::NaiveDate::from_ymd_opt(now_year, 2, 1).unwrap(),
+            ),
             horizon_years(horizon),
-            if year_end_rule_val == "nrf_4_day" { WeekRule::NrfFourDay } else { WeekRule::FullWeek },
+            if year_end_rule_val == "nrf_4_day" {
+                WeekRule::NrfFourDay
+            } else {
+                WeekRule::FullWeek
+            },
         ),
     };
     for y in &years {
@@ -225,7 +240,7 @@ pub fn company_create(
     vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
 
     // First-run gate (F-004): `security.pin_setup` must have registered the PIN before a
     // Company can exist (AUTH-SPEC §2.1 — setup precedes company.create).
@@ -237,24 +252,33 @@ pub fn company_create(
         )
         .map_err(AppError::from)?;
     if !pin_set {
-        return Err(AppError::invalid("PIN_NOT_SET: run security.pin_setup before creating a Company"));
+        return Err(AppError::invalid(
+            "PIN_NOT_SET: run security.pin_setup before creating a Company",
+        ));
     }
 
     // Pack must be registered first (bundled seed on first run).
     crate::commands::pack::seed_bundled_packs(&app, &conn)?;
     let pack_key_clean = pack_key.trim().to_lowercase();
     let pack_id: Option<String> = conn
-        .query_row("SELECT id FROM packs WHERE key = ?1", [&pack_key_clean], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM packs WHERE key = ?1",
+            [&pack_key_clean],
+            |r| r.get(0),
+        )
         .optional()
         .map_err(AppError::from)?;
     let Some(pack_id) = pack_id else {
-        return Err(AppError::invalid(format!("PACK_SCHEMA_INVALID: unknown pack_key '{pack_key_clean}'")));
+        return Err(AppError::invalid(format!(
+            "PACK_SCHEMA_INVALID: unknown pack_key '{pack_key_clean}'"
+        )));
     };
 
     let now = Utc::now().to_rfc3339();
     let company_id = Uuid::new_v4().to_string();
-    let company_file_path =
-        Path::new(&path).canonicalize().unwrap_or_else(|_| Path::new(&path).to_path_buf());
+    let company_file_path = Path::new(&path)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(&path).to_path_buf());
     let company_file_path = company_file_path.to_string_lossy().to_string();
 
     // Never overwrite an existing Company file (ERROR-HANDLING STORAGE_FILE_EXISTS).
@@ -322,7 +346,7 @@ pub fn company_open(
     vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
     let row: Option<(String, String, String, String, String, String, String, Option<String>)> = conn
         .query_row(
             "SELECT c.id, c.name, c.type, c.default_currency_code, c.base_locale, c.pack_schema_version,
@@ -364,11 +388,19 @@ pub fn company_open(
     let chain_broken_at = verify_company_chain(&conn, &dir, &company_id)?;
 
     // Session switch (token re-minted per open — AUTH-SPEC §2).
-    crate::commands::session::mint_session(&state, company_id.clone(), stored_path.clone(), chain_broken_at)?;
+    crate::commands::session::mint_session(
+        &state,
+        company_id.clone(),
+        stored_path.clone(),
+        chain_broken_at,
+    )?;
 
     let now = Utc::now().to_rfc3339();
-    conn.execute("UPDATE companies SET updated_at = ?1 WHERE id = ?2", [&now, &company_id])
-        .map_err(AppError::from)?;
+    conn.execute(
+        "UPDATE companies SET updated_at = ?1 WHERE id = ?2",
+        [&now, &company_id],
+    )
+    .map_err(AppError::from)?;
 
     Ok(serde_json::json!({
         "data": {
@@ -413,7 +445,7 @@ pub fn company_clone_sandbox(
     vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::invalid("Sandbox name is required"));
@@ -438,9 +470,9 @@ pub fn company_clone_sandbox(
         )
         .optional()
         .map_err(AppError::from)?;
-    let (src_type, src_currency, src_locale, src_pack_schema_version, src_path) =
-        src.map(|(_, ty, cu, lo, pv, path)| (ty, cu, lo, pv, path))
-            .ok_or_else(|| AppError::invalid(format!("Source Company '{company_id}' not found")))?;
+    let (src_type, src_currency, src_locale, src_pack_schema_version, src_path) = src
+        .map(|(_, ty, cu, lo, pv, path)| (ty, cu, lo, pv, path))
+        .ok_or_else(|| AppError::invalid(format!("Source Company '{company_id}' not found")))?;
 
     // Company names are unique (companies.name UNIQUE) — a taken name is bad input.
     let name_taken: bool = conn
@@ -482,7 +514,9 @@ pub fn company_clone_sandbox(
         .optional()
         .map_err(AppError::from)?;
     let (src_horizon, src_pack_id) = src_model.ok_or_else(|| {
-        AppError::internal(format!("CLONE_NO_MODEL: source '{company_id}' has no Model to clone"))
+        AppError::internal(format!(
+            "CLONE_NO_MODEL: source '{company_id}' has no Model to clone"
+        ))
     })?;
 
     // The vault key is only present between unlock and lock (AUTH-SPEC §2.2/§2.3): a locked app
@@ -574,10 +608,9 @@ pub fn company_clone_sandbox(
             .map_err(AppError::from)?;
         for (old, cal_id, fy_label, start_date, end_date, week_count, is_leap_fiscal) in rows {
             let new_id = Uuid::new_v4().to_string();
-            let new_cal = cal_map
-                .get(&cal_id)
-                .cloned()
-                .ok_or_else(|| AppError::internal(format!("CLONE_CAL_REMAP: missing calendar {cal_id}")))?;
+            let new_cal = cal_map.get(&cal_id).cloned().ok_or_else(|| {
+                AppError::internal(format!("CLONE_CAL_REMAP: missing calendar {cal_id}"))
+            })?;
             tx.execute(
                 "INSERT INTO fiscal_years (id, calendar_id, fy_label, start_date, end_date, week_count, is_leap_fiscal)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -614,10 +647,9 @@ pub fn company_clone_sandbox(
             .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::from)?;
         for (old_fy, period_no, code, start_date, end_date, is_53rd_week) in rows {
-            let new_fy = fy_map
-                .get(&old_fy)
-                .cloned()
-                .ok_or_else(|| AppError::internal(format!("CLONE_FY_REMAP: missing fiscal year {old_fy}")))?;
+            let new_fy = fy_map.get(&old_fy).cloned().ok_or_else(|| {
+                AppError::internal(format!("CLONE_FY_REMAP: missing fiscal year {old_fy}"))
+            })?;
             tx.execute(
                 "INSERT INTO fiscal_periods (id, fiscal_year_id, period_no, code, start_date, end_date, is_53rd_week)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -667,8 +699,17 @@ pub fn company_clone_sandbox(
     let mut bu_map = HashMap::new();
     while bu_map.len() < bu_rows.len() {
         let mut progress = false;
-        for (old, bname, parent_bu_id, pack_id, calendar_id, reporting_currency_code, is_consolidated, ownership_pct, sort_order) in
-            &bu_rows
+        for (
+            old,
+            bname,
+            parent_bu_id,
+            pack_id,
+            calendar_id,
+            reporting_currency_code,
+            is_consolidated,
+            ownership_pct,
+            sort_order,
+        ) in &bu_rows
         {
             if bu_map.contains_key(old) {
                 continue;
@@ -677,12 +718,11 @@ pub fn company_clone_sandbox(
             if parent_bu_id.is_some() && new_parent.is_none() {
                 continue; // parent not mapped yet — resolved on a later pass
             }
-            let new_cal = cal_map
-                .get(calendar_id)
-                .cloned()
-                .ok_or_else(|| {
-                    AppError::internal(format!("CLONE_BU_CAL_REMAP: missing calendar {calendar_id}"))
-                })?;
+            let new_cal = cal_map.get(calendar_id).cloned().ok_or_else(|| {
+                AppError::internal(format!(
+                    "CLONE_BU_CAL_REMAP: missing calendar {calendar_id}"
+                ))
+            })?;
             // ownership_pct is a NUMERIC ownership ratio (not money) — round-trip it as its
             // textual form so no float type touches the core (B3); NUMERIC affinity coerces the
             // text back to the exact INTEGER/REAL storage class on insert.
@@ -762,8 +802,18 @@ pub fn company_clone_sandbox(
     let mut acct_map = HashMap::new();
     while acct_map.len() < acct_rows.len() {
         let mut progress = false;
-        for (old, bu_id, code, aname, account_type, report_section, parent_id, is_control, version, active) in
-            &acct_rows
+        for (
+            old,
+            bu_id,
+            code,
+            aname,
+            account_type,
+            report_section,
+            parent_id,
+            is_control,
+            version,
+            active,
+        ) in &acct_rows
         {
             if acct_map.contains_key(old) {
                 continue;
@@ -849,17 +899,23 @@ pub fn company_delete(
     state: tauri::State<'_, crate::commands::session::SessionState>,
 ) -> AppResult<serde_json::Value> {
     if reason.trim().is_empty() {
-        return Err(AppError::invalid("COMPANY_DELETE_REASON_REQUIRED: a deletion reason is required for the audit".into()));
+        return Err(AppError::invalid(
+            "COMPANY_DELETE_REASON_REQUIRED: a deletion reason is required for the audit",
+        ));
     }
     // AUTH-SPEC §2.5: erasure is a mutation — a Company under read-only (chain break) cannot
     // be deleted while its session is read-only; restore first, then erase (if still wanted).
     crate::commands::session::require_company_write(&state, &company_id)?;
     let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir).map_err(AppError::from)?;
+    let mut conn = db::open_at(&dir)?;
     let tx = conn.transaction().map_err(AppError::from)?;
 
     let updated_at: Option<String> = tx
-        .query_row("SELECT updated_at FROM companies WHERE id = ?1", [&company_id], |r| r.get(0))
+        .query_row(
+            "SELECT updated_at FROM companies WHERE id = ?1",
+            [&company_id],
+            |r| r.get(0),
+        )
         .optional()
         .map_err(AppError::from)?;
     let updated_at = updated_at.ok_or_else(AppError::file_corrupt)?;
@@ -935,10 +991,23 @@ pub fn company_delete(
         [&company_id],
     )
     .map_err(AppError::from)?;
-    tx.execute("DELETE FROM fiscal_calendars WHERE company_id = ?1", [&company_id]).map_err(AppError::from)?;
-    tx.execute("DELETE FROM business_units WHERE company_id = ?1", [&company_id]).map_err(AppError::from)?;
-    tx.execute("DELETE FROM audit_events WHERE company_id = ?1", [&company_id]).map_err(AppError::from)?;
-    tx.execute("DELETE FROM companies WHERE id = ?1", [&company_id]).map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM fiscal_calendars WHERE company_id = ?1",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM business_units WHERE company_id = ?1",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "DELETE FROM audit_events WHERE company_id = ?1",
+        [&company_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute("DELETE FROM companies WHERE id = ?1", [&company_id])
+        .map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
 
     match fs::remove_file(Path::new(&container_path)) {
@@ -1020,7 +1089,9 @@ mod tests {
     fn engine_generates_60_periods_for_five_years() {
         let years = build_week_based(
             CalendarPreset::Nrf454,
-            crate::core::calendar::sunday_nearest(chrono::NaiveDate::from_ymd_opt(2024, 2, 1).unwrap()),
+            crate::core::calendar::sunday_nearest(
+                chrono::NaiveDate::from_ymd_opt(2024, 2, 1).unwrap(),
+            ),
             5,
             WeekRule::NrfFourDay,
         );
@@ -1031,7 +1102,7 @@ mod tests {
 
     #[test]
     fn calendar_config_validates_nrf_rule_scoped_to_454() {
-        let conn = db::open_in_memory().unwrap();
+        let mut conn = db::open_in_memory().unwrap();
         let tx = conn.transaction().unwrap();
         let err = write_calendar(
             &tx,
@@ -1058,7 +1129,10 @@ mod tests {
         let recent = AppError::company_recent_use(12).body();
         assert_eq!(recent.code, "COMPANY_IN_USE_RECENT");
         assert!(recent.user_message.contains("12 days"));
-        assert_eq!(AppError::transit_ambiguous("x").body().code, "CAL_TRANSIT_AMBIGUOUS");
+        assert_eq!(
+            AppError::transit_ambiguous("x").body().code,
+            "CAL_TRANSIT_AMBIGUOUS"
+        );
         assert_eq!(
             AppError::period_mapping_conflict("x").body().code,
             "CAL_PERIOD_MAPPING_CONFLICT"
@@ -1125,7 +1199,8 @@ mod tests {
         assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), None);
         assert_eq!(verify_company_chain(&conn, &dir, COMP_B).unwrap(), None);
 
-        conn.execute("DELETE FROM audit_events WHERE company_id = ?1", [COMP_B]).unwrap();
+        conn.execute("DELETE FROM audit_events WHERE company_id = ?1", [COMP_B])
+            .unwrap();
         assert_eq!(
             verify_company_chain(&conn, &dir, COMP_A).unwrap(),
             None,
@@ -1144,12 +1219,21 @@ mod tests {
         chain_append(&conn, &dir, COMP_A, "original-1");
         chain_append(&conn, &dir, COMP_A, "original-2");
         let first_seq: i64 = conn
-            .query_row("SELECT seq FROM audit_events WHERE company_id = ?1 ORDER BY seq ASC LIMIT 1", [COMP_A], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT seq FROM audit_events WHERE company_id = ?1 ORDER BY seq ASC LIMIT 1",
+                [COMP_A],
+                |r| r.get(0),
+            )
             .unwrap();
-        conn.execute("UPDATE audit_events SET after_json = 'EVIL-EDIT' WHERE seq = ?1", [first_seq]).unwrap();
-        assert_eq!(verify_company_chain(&conn, &dir, COMP_A).unwrap(), Some(first_seq));
+        conn.execute(
+            "UPDATE audit_events SET after_json = 'EVIL-EDIT' WHERE seq = ?1",
+            [first_seq],
+        )
+        .unwrap();
+        assert_eq!(
+            verify_company_chain(&conn, &dir, COMP_A).unwrap(),
+            Some(first_seq)
+        );
     }
 
     #[test]

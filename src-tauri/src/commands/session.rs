@@ -5,8 +5,8 @@
 //! is the only thing held between unlock and lock and is zeroised on lock (AUTH-SPEC §2.3).
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use base64::Engine;
 use chrono::Utc;
@@ -96,8 +96,11 @@ pub fn hash_pin(pin: &str) -> Result<String, AppError> {
 }
 
 pub fn verify_pin(pin: &str, stored_hash: &str) -> Result<bool, AppError> {
-    let parsed = PasswordHash::new(stored_hash).map_err(|e| AppError::internal(format!("argon2 parse: {e}")))?;
-    Ok(Argon2::default().verify_password(pin.as_bytes(), &parsed).is_ok())
+    let parsed = PasswordHash::new(stored_hash)
+        .map_err(|e| AppError::internal(format!("argon2 parse: {e}")))?;
+    Ok(Argon2::default()
+        .verify_password(pin.as_bytes(), &parsed)
+        .is_ok())
 }
 
 /// Mint a fresh session token for `company_id` and swap it into the session state.
@@ -121,8 +124,16 @@ fn mint_session_into(
     chain_broken_at: Option<i64>,
 ) -> AppResult<String> {
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Uuid::new_v4().as_bytes());
-    let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-    *guard = Some(Session { company_id, session_token: token.clone(), container_path, chain_broken_at });
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
+    *guard = Some(Session {
+        company_id,
+        session_token: token.clone(),
+        container_path,
+        chain_broken_at,
+    });
     Ok(token)
 }
 
@@ -131,13 +142,15 @@ fn mint_session_into(
 /// the compromised Company accepts no mutations until it is restored, so a chain whose
 /// hashes no longer verify is never extended with new "trusted" events.
 pub fn require_company_write(state: &SessionState, company_id: &str) -> AppResult<()> {
-    let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-    if let Some(session) = guard.as_ref() {
-        if session.company_id == company_id {
-            if let Some(at_seq) = session.chain_broken_at {
-                return Err(AppError::audit_chain_break(at_seq));
-            }
-        }
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
+    if let Some(session) = guard.as_ref()
+        && session.company_id == company_id
+        && let Some(at_seq) = session.chain_broken_at
+    {
+        return Err(AppError::audit_chain_break(at_seq));
     }
     Ok(())
 }
@@ -147,8 +160,14 @@ pub fn require_company_write(state: &SessionState, company_id: &str) -> AppResul
 /// Company. Fails `SESSION_LOCKED` (401, not retryable — unlock first; ERROR-HANDLING §A) when
 /// nothing is unlocked.
 pub fn require_unlocked(state: &SessionState) -> AppResult<String> {
-    let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
-    guard.as_ref().map(|s| s.company_id.clone()).ok_or(AppError::SessionRequired)
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
+    guard
+        .as_ref()
+        .map(|s| s.company_id.clone())
+        .ok_or(AppError::SessionRequired)
 }
 
 /// Write gate for session-scoped mutations without an explicit `company_id`: an unlocked
@@ -162,8 +181,14 @@ pub fn require_session_write(state: &SessionState) -> AppResult<String> {
 
 /// `session.status` — pre-unlock safe (no secrets).
 #[tauri::command(name = "session.status")]
-pub fn session_status(app: AppHandle, state: State<'_, SessionState>) -> AppResult<serde_json::Value> {
-    let guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
+pub fn session_status(
+    app: AppHandle,
+    state: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
     let unlocked = guard.is_some();
     let company_id = guard.as_ref().map(|s| s.company_id.clone());
     // Keep the active model discoverable after a frontend reload while preserving the
@@ -172,14 +197,19 @@ pub fn session_status(app: AppHandle, state: State<'_, SessionState>) -> AppResu
     // against the current clock (license_status_json), None = not activated.
     let (model_id, license) = if let Some(company_id) = company_id.as_deref() {
         let dir = app_data_dir(&app)?;
-        let conn = db::open_at(&dir).map_err(AppError::from)?;
-        let model_id = conn
-            .query_row("SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1", [company_id], |row| {
-                row.get(0)
-            })
+        let conn = db::open_at(&dir)?;
+        let model_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM models WHERE company_id = ?1 ORDER BY id LIMIT 1",
+                [company_id],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(AppError::from)?;
-        (model_id, crate::commands::license::license_status_json(&conn, company_id))
+        (
+            model_id,
+            crate::commands::license::license_status_json(&conn, company_id),
+        )
     } else {
         (None, None)
     };
@@ -227,7 +257,10 @@ fn load_pin_row(conn: &Connection) -> Result<Option<PinRow>, AppError> {
 
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// `session.unlock` — verify PIN (Argon2id), enforce lockout, unwrap the vault key, prove the
@@ -242,7 +275,7 @@ pub fn session_unlock(
 ) -> AppResult<serde_json::Value> {
     validate_pin_policy(&pin)?;
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir).map_err(AppError::from)?;
+    let conn = db::open_at(&dir)?;
 
     // The Company row owns the path of its sealed `.fpa` container — opened below (A02).
     let container_path: String = conn
@@ -267,13 +300,19 @@ pub fn session_unlock(
         Some(r) => r,
         // F-004: no bootstrap — the PIN row is created only by the explicit
         // `security.pin_setup` command (first-run screen before the wizard).
-        None => return Err(AppError::invalid("PIN_NOT_SET: run security.pin_setup before creating a Company")),
+        None => {
+            return Err(AppError::invalid(
+                "PIN_NOT_SET: run security.pin_setup before creating a Company",
+            ));
+        }
     };
 
-    if let Some(until) = row.locked_until {
-        if now_ms() < until {
-            return Err(AppError::Locked { retry_after_ms: (until - now_ms()).max(1) as u64 });
-        }
+    if let Some(until) = row.locked_until
+        && now_ms() < until
+    {
+        return Err(AppError::Locked {
+            retry_after_ms: (until - now_ms()).max(1) as u64,
+        });
     }
 
     if verify_pin(&pin, &row.record.phc)? {
@@ -302,7 +341,8 @@ pub fn session_unlock(
         // NOT refuse the unlock — the data may be intact and the user must still be able to
         // read it — but the Company opens read-only with the restore offer surfaced to the UI,
         // so a trail that failed verification can never be silently extended.
-        let chain_broken_at = crate::commands::company::verify_company_chain(&conn, &dir, &company_id)?;
+        let chain_broken_at =
+            crate::commands::company::verify_company_chain(&conn, &dir, &company_id)?;
 
         let token = mint_session(&state, company_id.clone(), container_path, chain_broken_at)?;
         return Ok(serde_json::json!({
@@ -328,7 +368,9 @@ pub fn session_unlock(
             rusqlite::params![until, PIN_ROW_ID],
         )
         .map_err(AppError::from)?;
-        return Err(AppError::Locked { retry_after_ms: LOCKOUT_MS });
+        return Err(AppError::Locked {
+            retry_after_ms: LOCKOUT_MS,
+        });
     }
     conn.execute(
         "UPDATE pin_metadata SET failed_attempts = ?1 WHERE id = ?2",
@@ -346,7 +388,10 @@ pub fn session_lock(
     state: State<'_, SessionState>,
     vault: State<'_, KeyVault>,
 ) -> AppResult<serde_json::Value> {
-    let mut guard = state.0.lock().map_err(|_| AppError::internal("session lock poisoned".into()))?;
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
     *guard = None;
     drop(guard);
     // KeyVault::clear zeroises the vault key; the Company file key lives only inside the
@@ -362,7 +407,10 @@ mod tests {
     #[test]
     fn pin_policy_accepts_spec_strong_pin() {
         assert!(validate_pin_policy("Meridian#2026").is_ok());
-        assert!(validate_pin_policy("Meridian2026").is_ok(), "letters+digits = 2 classes");
+        assert!(
+            validate_pin_policy("Meridian2026").is_ok(),
+            "letters+digits = 2 classes"
+        );
         assert!(validate_pin_policy("aB3!zQ9$xK").is_ok());
     }
 
@@ -392,7 +440,10 @@ mod tests {
     #[test]
     fn pin_policy_rejects_over_64_chars() {
         let long = format!("Ab1!{}", "x".repeat(61));
-        assert_eq!(validate_pin_policy(&long).unwrap_err().body().code, "PIN_POLICY_WEAK");
+        assert_eq!(
+            validate_pin_policy(&long).unwrap_err().body().code,
+            "PIN_POLICY_WEAK"
+        );
     }
 
     #[test]
@@ -413,7 +464,10 @@ mod tests {
         let row = load_pin_row(&conn).unwrap().unwrap();
         assert_eq!(row.record.phc, phc);
         assert!(verify_pin("Meridian#2026", &row.record.phc).unwrap());
-        assert_eq!(row.record.unseal_vault_key("Meridian#2026").unwrap(), vault_key);
+        assert_eq!(
+            row.record.unseal_vault_key("Meridian#2026").unwrap(),
+            vault_key
+        );
         assert_eq!(row.failed_attempts, 0);
         assert!(row.locked_until.is_none());
     }
@@ -475,8 +529,14 @@ mod tests {
         // The `import.*` family carries no company_id (API-SPEC §2): the target is the
         // unlocked Company, so a locked session fails closed with SESSION_LOCKED (401).
         let state = SessionState::default();
-        assert_eq!(require_unlocked(&state).unwrap_err().body().code, "SESSION_LOCKED");
-        assert_eq!(require_session_write(&state).unwrap_err().body().code, "SESSION_LOCKED");
+        assert_eq!(
+            require_unlocked(&state).unwrap_err().body().code,
+            "SESSION_LOCKED"
+        );
+        assert_eq!(
+            require_session_write(&state).unwrap_err().body().code,
+            "SESSION_LOCKED"
+        );
 
         mint_session_into(&state, "comp-a".into(), "/tmp/a.fpa".into(), None).unwrap();
         assert_eq!(require_unlocked(&state).unwrap(), "comp-a");
@@ -490,6 +550,9 @@ mod tests {
         // Read-only is a write gate, not a read gate: the Company is still addressable...
         assert_eq!(require_unlocked(&state).unwrap(), "comp-a");
         // ...but no session-scoped mutation may extend a chain that failed verification.
-        assert_eq!(require_session_write(&state).unwrap_err().body().code, "AUDIT_CHAIN_BREAK");
+        assert_eq!(
+            require_session_write(&state).unwrap_err().body().code,
+            "AUDIT_CHAIN_BREAK"
+        );
     }
 }
