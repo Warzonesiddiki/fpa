@@ -115,5 +115,12 @@ Rules: engines are pure; commands are thin (validate → core → repository); `
 5. Tests added; count reported; coverage not reduced.
 6. Docs-index updates; GLOSSARY terms used.
 7. No forbidden patterns (manual scan + lint).
+8. **Nothing is cited that does not exist** — every dependency, symbol, command, error code, table, column, i18n key
+and screen ID must be proven before it is used: `npm ls <pkg>` / `cargo tree -i <crate>` resolves **and** the exact
+symbol exists at that pinned version (`TECH-STACK.md`); commands and codes trace to `API-SPEC.md` / `ERROR-HANDLING.md`
+§2; tables and columns to `DATABASE-SCHEMA.md`; keys to `COPY-GUIDELINES.md` §8b. A plausible name is not evidence:
+if it cannot be grepped, it is invented — stop and write the spec row first (or reserve it in `ERROR-HANDLING.md` §2C).
+`docs:verify` 7b enforces the error-code half of this rule; the rest is reviewer-enforced, and **a gate widened to
+accommodate a hallucination is a B8 violation, not a fix**.
 
 *Referenced by: CLAUDE.md, GIT-STANDARDS.md, TESTING-STRATEGY.md.*

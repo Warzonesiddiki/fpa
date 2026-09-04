@@ -26,7 +26,7 @@
 | 16 | `AUTH-SPEC.md` | Local auth: PIN/recovery/lock/license flows + permission matrix | 13, 14 |
 | 17 | `STATE-MANAGEMENT.md` | State table (scope/storage/invalidation) + race rules | 13, 15 |
 | 18 | `INTEGRATIONS.md` | 11 integrations: purpose/secrets/rate-limits/fallbacks | 13, 16 |
-| 19 | `ERROR-HANDLING.md` | Canonical error JSON + ~75-code taxonomy + UI rules | 15 |
+| 19 | `ERROR-HANDLING.md` | Canonical error JSON + 99-code taxonomy (§A–H) + §2B validator prefixes + §2C reserved names + UI rules | 15 |
 | 20 | `CLAUDE.md` | Coding-AI context: DO/DON'T/forbidden patterns/response format | 1–19 |
 | 21 | `CODING-STANDARDS.md` | Naming, imports, async patterns, templates, review checklist | 20 |
 | 22 | `GIT-STANDARDS.md` | Commits/branches/PR rules/release tags | 21 |
@@ -41,8 +41,8 @@
 | 31 | `README.md` (root) | <5-min quickstart + 60-second product path | 3, 12 |
 | 32 | `CHANGELOG.md` | Keep-a-changelog; v0.1.0 initial entry | 31 |
 | 33 | `TODO.md` | Actionable tasks by milestone (M0–M7) + V2 backlog | 35 |
-| 34 | `KNOWN-ISSUES.md` | KI-001…KI-017: severity/status/plan + entry template (KI-015 = fixed dead `docs:verify` guard · KI-016 = 7 uncatalogued shipped codes) | 3, 19 |
-| 35 | `DECISIONS.md` | A1–A22 assumptions + 22 ADRs + superseded record | 1–34 |
+| 34 | `KNOWN-ISSUES.md` | KI-001…KI-018: severity/status/plan + entry template (KI-015 = dead `docs:verify` guard, revived with zero exemptions · KI-016 = the 17 cited names classified · KI-018 = wrong copy on the account-missing import branch) | 3, 19 |
+| 35 | `DECISIONS.md` | A1–A22 assumptions + 27 ADRs + superseded record | 1–34 |
 | 36 | `ROADMAP.md` | Dependency-ordered milestones w/ complexity + reference docs | 35 |
 | 37 | `DEFINITION-OF-DONE.md` | Feature/release doneness checklist + traps | 24, 36 |
 | 38 | `FEATURE-TRACEABILITY-MATRIX.md` | Stage 3 audit: feature ↔ story ↔ screens ↔ commands ↔ tables ↔ tests | 3–36 |

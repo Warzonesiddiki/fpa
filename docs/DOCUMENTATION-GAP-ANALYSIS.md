@@ -15,22 +15,24 @@
 | 2 UX & Design | 18–27 | ✅6 🟡1 ❌3 | **✅7 🟡2 ❌1** | #21 hi-fi prototype, #19 flow diagrams (§3 row 19) |
 | 3 Architecture | 28–49 | ✅12 🟡7 ❌1 ➖2 | ✅12 🟡7 ❌1 ➖2 | #46 capacity plan; partials are desktop-app N/A-adjacent |
 | 4 Security/Privacy | 50–55 | ✅4 🟡2 | ✅4 🟡2 | #53 user-facing policy text, #52 formal classification tiers |
-| 5 Standards | 56–65 | ✅7 🟡3 | **✅8 🟡2** | #61 hallucination guards, #64 recipe breadth |
+| 5 Standards | 56–65 | ✅7 🟡3 | **✅9 🟡1** | #64 recipe breadth (multi-runtime recipes) |
 | 6 Testing | 66–73 | ✅6 🟡2 | ✅6 🟡2 | #68 E2E implementation (specs are complete) |
 | 7 DevOps | 74–83 | ✅6 🟡2 ❌1 ➖1 | ✅6 🟡2 ❌1 ➖1 | #82 cost model; #76 CI execution is env-bound |
 | 8 Execution | 84–89 | ✅4 🟡1 ❌1 | **✅5 🟡1** | #88 change-process formality |
 | 9 Business/Legal | 90–98 | 🟡4 ❌4 ➖1 | **🟡5 ❌3 ➖1** | #91 ToS, #92 privacy policy, #96 launch · #90 mechanism specified, numbers await ratification |
 | 10 Living | 99–101 | ✅3 | ✅3 | — |
-| **Total** | **101** | **✅58 🟡27 ❌12 ➖4** | **✅63 🟡27 ❌7 ➖4** | |
+| **Total** | **101** | **✅58 🟡27 ❌12 ➖4** | **✅64 🟡26 ❌7 ➖4** | |
 
-**Verdict:** the technical spine is complete and machine-enforced (`docs:verify`, `docs-link-check --strict`,
+**Verdict (2026-09-05):** the technical spine is complete and machine-enforced (`docs:verify`, `docs-link-check --strict`,
 `money:ast`, `schema-equality-check`, `telemetry-scan`). Four gaps were closed on 2026-09-04; the remaining ❌ are
 (a) legal/GTM text that only a human/attorney can author, (b) #12 journey maps and #21 hi-fi prototype (deferred by
 choice, with triggers), and (c) #82 cost model, due at M7. **Nothing currently blocks an AI build session.** Highest
-residual risk is not missing prose — it was the dead review backstop (guard fixed 2026-09-05, see §5 and KI-015) and the unratified `plan` semantics (now specified in `PRICING-AND-ENTITLEMENTS.md` §7).
+residual risk is no longer documentation at all: it is **KI-017** (`money:ast` is red at `HEAD` on four percent/ratio sites while `TASKBOARD.md` records it green) and **KI-016's**
+lesson that a plausible-looking "fix" — admitting 7 message prefixes as catalog codes — would have corrupted the taxonomy. Both are now answered: the review checklist carries the
+anti-hallucination step (`CODING-STANDARDS.md` §7.8) and the gate that enforces the code half has zero hardcoded exemptions.
 ---
 
-## 2. CLOSED BY THIS REVISION (2026-09-04)
+## 2. CLOSED BY THE 2026-09-04 / 05 REVISIONS
 
 | Checklist item | Was | Now | Doc |
 |---|---|---|---|
@@ -40,7 +42,9 @@ residual risk is not missing prose — it was the dead review backstop (guard fi
 | #24 Copy / microcopy | error codes only (ERROR-HANDLING); no tone, no UI strings | voice rules, mechanics table, per-slot copy formulas, locked verb/noun lexicon, dialog+notification copy, 33-key seed registry, copy review gate | `COPY-GUIDELINES.md` |
 | #57 AI rules file | `docs/CLAUDE.md` existed but nothing at repo root; `.codex/AGENTS.md` pointed at a missing root file | root `CLAUDE.md` + `AGENTS.md` router files (pointer-only, no duplicated rules — B9) | `CLAUDE.md`, `AGENTS.md` |
 | #87 Open questions / parking lot | no such register (findings were buried in SCREENS-SPEC availability notes) | registered below with owner + revisit trigger (§4) | this file §4 |
-| #101 Docs index | 54 rows | 59 rows incl. the 5 gap docs + this audit | `DOCS-INDEX.md` |
+| #101 Docs index | 54 rows | 61 rows: 60 docs/specs + the root README pointer | `DOCS-INDEX.md` |
+| #90 Pricing & entitlements | `licenses.plan` CHECKed `pro`/`enterprise` with nothing defining either | verified ground truth (enforced nowhere), the constraints an offline policy inherits, one sanctioned seam, axis sheet, **proposed** pricing, D1–D5 for the owner, interim rule that no code may branch on `plan` | `PRICING-AND-ENTITLEMENTS.md` |
+| #61 Review checklist: anti-hallucination guards | no such step; the machine backstop that was supposed to cover it was unreachable | `CODING-STANDARDS.md` §7.8 (prove every dependency, symbol, command, code, table, column and key exists; widening a gate to admit a hallucination is a B8 violation) + a live `docs:verify` 7b with zero hardcoded exemptions and a mutation self-test | `CODING-STANDARDS.md` §7.8, `ERROR-HANDLING.md` §2B/§2C |
 
 ---
 
@@ -62,7 +66,7 @@ Each entry states what is missing, whether it blocks a build session, and the tr
 | 6 | Risk register (severity/mitigation/validation) | 🟡 | No | Assumptions A1–A22 are locked in `DECISIONS.md` §1 but carry no validation plan, severity or mitigation. Trigger: any assumption whose falsification would force a schema or stack change → add to §4 with a validation step |
 | 7 | Success KPIs (activation/retention/revenue) | 🟡 | No | `PROJECT-BRIEF.md` §7 has 6 numeric acceptance criteria. Adoption/retention are unmeasurable by design (zero telemetry, B18-9) — the substitute is manual: pilot interviews + `TODO.md` review |
 | 32 | ER diagram + cardinality notation | 🟡 | Minor | 56 tables documented with types/FK/indexes/example rows; no `erDiagram`. Trigger: next schema change beyond `001_initial.sql` — generate the mermaid ER in the same PR |
-| 61 | Code-review checklist: AI-hallucination guards | 🟡 | **Yes** | `CODING-STANDARDS.md` §7 still has no "prove the dependency/API exists" step. Its machine backstop **was unreachable** and is now fixed: `docs:verify` 7b rejects undefined codes cited in `API-SPEC.md`, behind a baseline that may only shrink, with a mutation self-test (three probes verified 2026-09-05). Measured drift: **17 distinct codes** cited with no definition suite-wide, now classified against the binary in **KI-016**: 7 ship in `import.rs` with inline copy but no catalog row, 1 is a phantom (`INVALID_ARGUMENT` is the Rust variant name; its wire code is `VALUE_INVALID`), 9 are forward references to unbuilt capability. Still open: the §7 checklist section itself, and widening the guard beyond `API-SPEC.md` once those 17 are resolved — most of the other all-caps tokens are env vars and enum labels, not codes |
+| 61 | Code-review checklist: AI-hallucination guards | ✅ (2026-09-05) | — | **Closed:** `CODING-STANDARDS.md` §7.8 now requires every dependency, symbol, command, code, table, column and i18n key to be proven to exist before use, and states that widening a gate to admit a hallucination is a B8 violation. The machine half (`docs:verify` 7b) was unreachable and is now live: `docs:verify` 7b rejects undefined codes cited in `API-SPEC.md`, behind a baseline that may only shrink, with a mutation self-test (three probes verified 2026-09-05). Measured drift: **17 distinct codes** cited with no definition suite-wide, now classified against the binary in **KI-016**: 7 ship in `import.rs` with inline copy but no catalog row, 1 is a phantom (`INVALID_ARGUMENT` is the Rust variant name; its wire code is `VALUE_INVALID`), 9 are forward references to unbuilt capability. Still open: the §7 checklist section itself, and widening the guard beyond `API-SPEC.md` once those 17 are resolved — most of the other all-caps tokens are env vars and enum labels, not codes |
 | 19 | Flow **diagrams** | 🟡 | No | 14 journeys are fully written as ordered steps + branches in `USER-FLOWS.md`; only the rendered diagram is absent. Trigger: any flow exceeding 12 steps — add the mermaid graph in the same PR that edits that flow |
 | 42 | Search design | 🟡 | Minor | F-038 / S-003 defines scope and states; no index/backing-store decision recorded. Trigger: implementation start of F-038 — record as an ADR (in-memory vs `sqlite-fts5`; note ADR-005 single-store constraint) |
 | 39 | Background jobs / retries / DLQ | 🟡 | Minor | Import/recalc run through the worker + batch state machine; no dead-letter section. Trigger: first retryable long-running job beyond connector sync |
@@ -101,7 +105,7 @@ Nothing here may be silently absorbed into v1.0.0 scope (B20).
 | OQ-07 | Ratify `PRICING-AND-ENTITLEMENTS.md` D1–D5 (numbers, axis set, deny-path code, v1.1 module set, term shape). Interim rule already binds: no branching on `plan` | product + owner | before any plan-gated UI or external quote |
 | OQ-08 | Working product name (ADR-019) is unresolved for public release. | human | before any external artifact |
 | OQ-09 | Search backing store undecided (register #42) — needs an ADR before F-038. | architecture | start of F-038 |
-| OQ-11 | Guard is fixed (KI-015, 2026-09-05) and the 17 refs are classified with a per-code disposition (**KI-016**). Owner call: admit the 7 shipped codes to `ERROR-HANDLING.md` §2 — copy + httpStatus + retry — taking the catalog **99 → 106** and moving the `DOCS-INDEX.md`/`FEATURE-TRACEABILITY-MATRIX.md`/`docs:verify` claims in the same PR; repoint `INVALID_ARGUMENT` → `VALUE_INVALID`; reserve-or-drop the 9 forward refs. Then delete the baseline lines (the ratchet fails the run if they linger) and widen the guard beyond `API-SPEC.md` | architecture | before the next `API-SPEC.md` or `SCREENS-SPEC.md` change |
+| OQ-11 | **CLOSED (2026-09-05, ADR-027).** Classification found the catalog was already right: 7 of the 17 are validator message prefixes (documented in `ERROR-HANDLING.md` §2B, each bound to its governing code), 1 was a leaked Rust type name (`INVALID_ARGUMENT` → `VALUE_INVALID`, `API-SPEC.md` corrected), 9 are unbuilt and now sit in §2C as reserved-with-no-copy. The gate's hardcoded baseline is deleted and §2B is its only exemption source. Follow-on: `MAP_ACCOUNT_NOT_FOUND` (**KI-018**, needs cargo+vitest) | architecture | ~~before the next API-SPEC change~~ done; KI-018 open |
 | OQ-10 | Native gates (cargo, clippy, tauri build, signing, notarization, multi-monitor/DPI, screenshot diffs) cannot run in the current sandbox; many TASKBOARD rows are `🚧 PARTIAL/NATIVE-UNVERIFIED` for this reason. Which environment is authoritative for DONE? | release | next CI-capable environment |
 
 **Rules for this register:** every row is either (a) implemented with its spec updated, or (b) promoted into
@@ -122,8 +126,9 @@ Until a hallucination section is added to `CODING-STANDARDS.md` §7, every revie
 4. **No invented screen, error code, table, column, or i18n key.** `docs:verify` and `schema-equality-check` catch
    most of this; if a gate has been widened instead of the docs fixed, that is a B8 violation — revert it.
    Since 2026-09-05 the error-code half is machine-enforced for `API-SPEC.md` (`docs-verify` 7b + its shrinking
-   baseline). Codes cited in **other** docs are still reviewer-only until OQ-11 clears the 11 non-`API-SPEC` refs:
-   `grep -c` each one against `ERROR-HANDLING.md` §2 before it reaches a screen or payload example.
+   baseline, and its only exemption is the §2B prefix table). Codes cited in **other** docs are reviewer-enforced still:
+   check a name against `ERROR-HANDLING.md` §2, then §2B (a prefix), then §2C (reserved, unbuilt). A name in none of the
+   three is invented — write the row, do not bend the gate.
 5. **No silent capability claim.** A button whose handler is absent is a defect, not a placeholder (B10/B18-3).
 
 ---
