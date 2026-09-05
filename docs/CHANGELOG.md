@@ -3,6 +3,46 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+- **M6-7 Model Health Check — engine + waiver + S-071 (F-032 · US-033 · SCREENS-SPEC S-071 · API-SPEC §16, 2026-09-05):**
+  Shipped the Model Health Check at `/app/governance/health` (`src/pages/s071-health/`, code-split). Geometry follows
+  WIREFRAMES-ANALYTICS §S-071: five category rows (tie-outs · references · rounding · driver feeds · anomalies), a finding
+  table (severity · message · `→ cell`) and the footstrip "N blocking · M warnings" with the export verdict. All five
+  canonical states ship — the loading state is deliberately **indeterminate**: the command answers once, so a percentage
+  would be fabricated (the categories being worked through are shown instead).
+  New native engine `src-tauri/src/commands/health.rs` (registered in `lib.rs`, **64** handlers) runs the five documented
+  categories against **real persisted rows**, never a stub: `tie_out` asserts committed GL balances to exactly 0 per Fiscal
+  Period under the debit-positive/credit-negative store (GL-TEMPLATE-SPEC §3) and flags any committed batch carrying
+  `tie_out_status='fail'`; `reference` runs every authored `model_values.formula` through the same whitelist gate the grid
+  uses (`core::model::validate_formula`, B14 — one owner) and resolves every `account_id`/`driver_id`; `rounding` is HARD
+  when a money cell holds text instead of exact integer minor units (MONEY-ROUNDING-SPEC §1) and WARN when a money Line's
+  `decimals` disagrees with the Company's Currency Scale; `driver_feed` requires every consumed Driver to be fed for every
+  (scenario, period) the Model actually holds values for, reporting the exact missing count; `anomaly` reports
+  declared-bounds breaches on Drivers/Assumptions and period-over-period money moves above 5× the prior magnitude.
+  **Nothing is ever auto-fixed** (QA-CHECKLIST F-032 item 3): the module issues no UPDATE/DELETE against Model, Driver or GL
+  data, and the screen carries no "fix" affordance (both asserted by tests). Money comparisons are integer `amount_minor`;
+  bounds/swings use `rust_decimal` on the stored decimal strings — no float anywhere (B3/B18-2).
+  **A failing Model is a report, not an exception.** `health.run` has no error row: findings ride the response with
+  `blocking_count` = unwaived HARD findings. `HEALTH_CHECK_BLOCKED` is newly mapped in `core/error.rs` for the *export* path
+  (M6-6) to raise when an export is actually attempted, bound to that count — it is never thrown by the check itself.
+  **The waiver costs a reason, and it is the only escape** (D-010 / US-033). `health.waive` rejects a blank reason with the
+  newly mapped `HEALTH_WAIVER_REASON_REQUIRED` (422, verbatim catalog text), persists reason + actor in `waivers` and writes
+  an HMAC-chained `health.waive` audit event. The waiver panel is **never inline on the finding row** — the friction is the
+  point — and its confirm button stays disabled until a non-blank reason exists and the Company is writable. Waived findings
+  **stay visible** with reason and author. Waivers **survive a re-run**: a finding's cross-run identity is its fingerprint
+  (`category|severity|entity_ref|message`), not its row id, and the carry-forward copies the original reason/actor/timestamp
+  verbatim while minting **no new audit event** (re-stating a recorded decision, not creating one).
+  `entity_ref` is a typed pointer (`cell:` · `line:` · `driver:` · `assumption:` · `period:` · `batch:`) and S-071 offers
+  "→ cell" **only** for the `cell:` form — no fabricated navigation target for the rest.
+  Contracts: `HealthRunArgs`/`HealthWaiveArgs`/`HealthRunData`/`HealthWaiveData`/`HealthFindingRecord`/`HealthCategoryResult`
+  in `src/api/schema.ts` (`.strict()`; `reason` is `.trim().min(1)` so a blank waiver cannot even reach the wire), a dev
+  mirror in `src/api/mock.ts` exercising every severity and ref shape with a session-lived waiver ledger, and
+  `src/stores/health.ts` (report-vs-error rule, local D-010 gate, re-run after waive so every count comes from the engine,
+  `parseEntityRef`). Docs synchronized: API-SPEC §16 (full detailed spec incl. the category table), TASKBOARD (M6-7 row,
+  screen tracker, command tracker, gap table, dashboard, counts), TODO and this changelog. New tests: **54** (24 page incl.
+  4 axe states, 15 store, 15 contract) plus **21** Rust unit tests covering each category in isolation, the clean baseline,
+  excluded/uncommitted GL, waiver carry-forward, the single-audit-event rule, cross-Company refusal and both error bodies.
+  **NATIVE-UNVERIFIED:** this sandbox has no Rust toolchain and no network to install one — `cargo test`/`clippy`/`fmt` over
+  `commands/health.rs` are pending on a Rust-equipped machine, so M6-7 stays 🚧 PARTIAL, never ✅.
 - **M6-8a Audit Trail — `audit.list` + S-070 (F-033 · US-034 · SCREENS-SPEC S-070 · API-SPEC §15, 2026-09-05):**
   Shipped the Audit Trail at `/app/governance/audit` (`src/pages/s070-audit/`, code-split; `/app/governance` now lands here).
   Geometry follows WIREFRAMES-ANALYTICS §S-070 exactly: toolbar (inclusive date range · actor ▾ · action ▾ · object ▾ ·

@@ -1470,5 +1470,56 @@
     "exportDataRoom": "Auditor Data-Room Export",
     "exportLog": "Export log",
     "exportPending": "Export commands are not implemented yet (audit.export_dataroom / export.*)."
+  },
+  "healthPage": {
+    "title": "Model Health Check",
+    "subtitle": "Five checks run against the saved Model before it can be exported",
+    "lastRun": "Last run {{at}}",
+    "rerun": "Re-run check",
+    "runNow": "Run Health Check",
+    "running": "Running the five checks — results appear as each category completes.",
+    "runningLabel": "Running Health Check",
+    "noModel": "Open a Model to run its Health Check.",
+    "neverRun": "This Model has not been checked yet.",
+    "allClear": "No issues — all five checks pass.",
+    "categoriesLabel": "Health Check categories",
+    "findingsLabel": "Health Check findings",
+    "historyLabel": "Previous runs",
+    "runPassed": "passed",
+    "runFailed": "failed",
+    "category": {
+      "tie_out": "Tie-outs",
+      "reference": "References",
+      "rounding": "Rounding",
+      "driver_feed": "Driver feeds",
+      "anomaly": "Anomalies"
+    },
+    "categoryCount": "{{count}} finding",
+    "categoryCount_other": "{{count}} findings",
+    "columns": {
+      "severity": "Severity",
+      "message": "Finding",
+      "actions": "Actions"
+    },
+    "severity": {
+      "hard": "Blocking",
+      "warn": "Warning"
+    },
+    "goToCell": "Go to cell",
+    "waiver": {
+      "open": "Waive…",
+      "panelLabel": "Waive finding",
+      "title": "Waive this finding",
+      "policy": "A waiver does not fix the finding. It is recorded with your name and reason on the Audit Trail, and the finding stays visible on every future run.",
+      "reasonLabel": "Reason (required)",
+      "confirm": "Record waiver",
+      "cancel": "Cancel",
+      "readOnly": "This Company is open in read-only mode — a waiver is an audited change.",
+      "recorded": "Waived by {{actor}} on {{at}}:"
+    },
+    "footstrip": "{{blocking}} blocking · {{warnings}} warnings",
+    "footWaived": "{{count}} waived",
+    "exportBlocked": "Export blocked until every blocking finding is fixed or waived.",
+    "exportAllowed": "No blocking findings — export is allowed."
   }
 }

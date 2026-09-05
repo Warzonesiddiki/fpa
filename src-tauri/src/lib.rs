@@ -26,6 +26,7 @@ use commands::cycle::{
 };
 use commands::driver::{driver_set_value, driver_upsert};
 use commands::fva::fva_get;
+use commands::health::{health_run, health_waive};
 use commands::import::{
     ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
     import_rollback, import_tieout, import_validate,
@@ -128,6 +129,8 @@ pub fn run() {
             alerts_list,
             alerts_create_rule,
             audit_list,
+            health_run,
+            health_waive,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

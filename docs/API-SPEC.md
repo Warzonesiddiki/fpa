@@ -657,3 +657,83 @@ it is delivered as `chain_status.verified: false` rather than as a thrown error.
 
 `audit.export_dataroom` has no handler yet — S-070 therefore ships the Data-Room and
 Export-log buttons **disabled** with an explanatory title rather than fabricating a file.
+
+---
+
+## 16. DETAILED SPEC — `health.run` / `health.waive` (F-032 Model Health Check, S-071)
+
+**`health.run` input**
+```json
+{ "model_id": "m-main" }
+```
+
+**Success**
+```json
+{ "data": {
+  "check_id": "hc-1", "model_id": "m-main", "run_at": "2026-09-05T10:00:00Z",
+  "status": "failed",
+  "findings": [
+    { "id": "hf-1", "category": "tie_out", "severity": "hard",
+      "message": "Committed GL does not tie for period fp-2026-p02: debits minus credits = 5 minor units (must be 0).",
+      "entity_ref": "period:fp-2026-p02", "waiver": null },
+    { "id": "hf-2", "category": "reference", "severity": "hard",
+      "message": "Formula is not valid: unsupported function: LAMBDA.",
+      "entity_ref": "cell:ln-opex:sc-budget:fp-2026-p03",
+      "waiver": { "reason": "Signed off by the Controller.", "actor": "owner",
+                  "created_at": "2026-09-05T11:00:00Z" } } ],
+  "categories": [ { "category": "tie_out", "status": "failed", "finding_count": 1,
+                    "blocking_count": 1, "warning_count": 0 } ],
+  "blocking_count": 1, "warning_count": 0, "waived_count": 1,
+  "history": [ { "check_id": "hc-1", "run_at": "2026-09-05T10:00:00Z",
+                 "status": "failed", "finding_count": 2 } ] } }
+```
+
+**The five categories (fixed run order — GLOSSARY "Model Health Check")**
+
+| Category | Severity | What is asserted (source of truth) |
+|---|---|---|
+| `tie_out` | hard | Committed GL balances per Fiscal Period (Σ`amount_minor` = 0 under the debit-positive/credit-negative store, GL-TEMPLATE-SPEC §3); no committed batch carries `tie_out_status='fail'` |
+| `reference` | hard | Every authored `model_values.formula` passes the whitelist gate; every `model_lines.account_id` resolves to an **active** Account; every `method='driver'` Line resolves to a real Driver |
+| `rounding` | hard / warn | HARD: a `format='money'` cell holding only `amount_text` (money must be exact integer minor units — MONEY-ROUNDING-SPEC §1). WARN: a money Line whose `decimals` disagrees with the Company's Currency Scale (display-only, §3) |
+| `driver_feed` | hard | Every Driver consumed by a `method='driver'` Line has a `driver_values` row for every (scenario, period) the Model actually holds values for |
+| `anomaly` | warn | Driver/Assumption values outside their declared `bounds_low`/`bounds_high`, and period-over-period money moves greater than the declared swing factor (the exact integer constant ANOMALY_SWING_FACTOR = 5 in `commands/health.rs`) times the prior magnitude |
+
+**Semantics (binding)**
+
+- **No auto-fix, ever** (QA-CHECKLIST F-032 item 3). The handler issues no UPDATE or DELETE
+  against Model, Driver or GL data; it only INSERTs into `health_checks`, `health_findings`,
+  `waivers` and `audit_events`. An anomaly is surfaced, never corrected.
+- **A failing Model is a report, not an exception.** `health.run` has no error row in the
+  catalog: findings ride the response and `status` is `passed`/`failed`. `HEALTH_CHECK_BLOCKED`
+  belongs to the **export** path (`export.*`), which raises it at the moment an export is
+  actually attempted, bound to `blocking_count`.
+- **`blocking_count` = unwaived HARD findings.** WARN findings are reported and never block.
+- **The waiver is the only escape and it costs a reason.** `health.waive` requires a
+  non-blank `reason`; blank ⇒ `HEALTH_WAIVER_REASON_REQUIRED (422, retry false)`. The reason
+  and actor are persisted in `waivers` and written to the Company's HMAC audit chain as
+  `health.waive`. The waived finding **stays visible** with its reason and author.
+- **Waivers survive a re-run.** A finding's identity across runs is its fingerprint
+  `category|severity|entity_ref|message`, not its row id, so re-running cannot silently drop
+  a decision the owner already made and audited. The carry-forward copies the original
+  `reason`/`actor`/`created_at` verbatim and writes **no new audit event** — it re-states a
+  recorded decision rather than minting one.
+- **`entity_ref` is a typed pointer**, minted only where a real target exists:
+  `cell:{line_id}:{scenario_id}:{period_id}` · `line:` · `driver:` · `assumption:` ·
+  `period:` · `batch:`. S-071 offers "→ cell" **only** for the `cell:` form; every other
+  prefix is a label, never a fabricated navigation target.
+- **Scope.** `model_id` must belong to the unlocked Company (`VALUE_INVALID` otherwise);
+  `finding_id` must belong to a Model of the unlocked Company. `health.run` needs only an
+  unlocked session (an auditor must be able to check a Model they cannot edit); `health.waive`
+  is a Company-**write** operation and is refused in read-only mode.
+- **Exact arithmetic only.** Money comparisons are integer `amount_minor`; bounds and swing
+  comparisons use `rust_decimal` on the stored decimal strings. No float anywhere (B3/B18-2).
+
+**All errors** — `health.run`: `VALUE_INVALID (422)` (Model not in the unlocked Company) ·
+`SESSION_LOCKED (401)` · `INTERNAL (500, retry true)`. `health.waive`: additionally
+`HEALTH_WAIVER_REASON_REQUIRED (422)` and `READ_ONLY_MODE (403)`.
+
+**Known limitation, stated rather than faked.** The catalog exposes one request/response
+command, so the report is returned complete. The S-071 "partial results" state is driven by
+the per-category rollup plus an **indeterminate** progress indicator — the UI never shows a
+fabricated percentage. True incremental streaming needs a Tauri event channel plus an
+API-SPEC row (Tier-3 change) and is not invented here.

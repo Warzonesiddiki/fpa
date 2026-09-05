@@ -2128,6 +2128,119 @@ export const AuditListData = z
   .strict();
 export type AuditListData = z.infer<typeof AuditListData>;
 
+/* ── Model Health Check (F-032 · API-SPEC §7 `health.*` · SCREENS-SPEC S-071 · M6-7) ─ */
+
+/**
+ * The five documented categories, in run order (GLOSSARY "Model Health Check"). Mirrors the
+ * `health_findings.category` CHECK constraint and `HEALTH_CATEGORIES` in
+ * `src-tauri/src/commands/health.rs` — the two must stay identical (B14).
+ */
+export const HEALTH_CATEGORIES = [
+  "tie_out",
+  "reference",
+  "rounding",
+  "driver_feed",
+  "anomaly",
+] as const;
+export const HealthCategory = z.enum(HEALTH_CATEGORIES);
+export type HealthCategory = z.infer<typeof HealthCategory>;
+
+/** `hard` blocks export until fixed or waived; `warn` is reported and never blocks. */
+export const HealthSeverity = z.enum(["hard", "warn"]);
+export type HealthSeverity = z.infer<typeof HealthSeverity>;
+
+export const HealthRunArgs = z.object({ model_id: Uuid }).strict();
+export type HealthRunArgs = z.infer<typeof HealthRunArgs>;
+
+/**
+ * D-010 friction, encoded in the contract: the reason is required and cannot be blank, so
+ * an empty waiver never reaches the native command (US-033 — a finding is never silently
+ * dismissed). `HEALTH_WAIVER_REASON_REQUIRED` remains the server-side gate.
+ */
+export const HealthWaiveArgs = z
+  .object({
+    finding_id: Uuid,
+    reason: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+export type HealthWaiveArgs = z.infer<typeof HealthWaiveArgs>;
+
+/** A recorded waiver — reason and author stay visible next to the waived finding. */
+export const HealthWaiverRecord = z
+  .object({
+    reason: z.string().min(1),
+    actor: z.string().min(1),
+    created_at: z.string().min(1),
+  })
+  .strict();
+export type HealthWaiverRecord = z.infer<typeof HealthWaiverRecord>;
+
+/**
+ * One finding. `entity_ref` is a typed pointer minted by the engine
+ * (`cell:{line}:{scenario}:{period}` · `line:` · `driver:` · `assumption:` · `period:` ·
+ * `batch:`); the screen offers "→ cell" only for the `cell:` form and never fabricates a
+ * navigation target for the others.
+ */
+export const HealthFindingRecord = z
+  .object({
+    id: Uuid,
+    category: HealthCategory,
+    severity: HealthSeverity,
+    message: z.string().min(1),
+    entity_ref: z.string().min(1).nullable(),
+    waiver: HealthWaiverRecord.nullable(),
+  })
+  .strict();
+export type HealthFindingRecord = z.infer<typeof HealthFindingRecord>;
+
+/** Per-category rollup — the S-071 category rows, counted by the engine, never by the UI. */
+export const HealthCategoryResult = z
+  .object({
+    category: HealthCategory,
+    status: z.enum(["passed", "warnings", "failed"]),
+    finding_count: z.number().int().min(0),
+    blocking_count: z.number().int().min(0),
+    warning_count: z.number().int().min(0),
+  })
+  .strict();
+export type HealthCategoryResult = z.infer<typeof HealthCategoryResult>;
+
+export const HealthRunSummary = z
+  .object({
+    check_id: Uuid,
+    run_at: z.string().min(1),
+    status: z.enum(["running", "passed", "failed"]),
+    finding_count: z.number().int().min(0),
+  })
+  .strict();
+export type HealthRunSummary = z.infer<typeof HealthRunSummary>;
+
+export const HealthRunData = z
+  .object({
+    check_id: Uuid,
+    model_id: Uuid,
+    run_at: z.string().min(1),
+    status: z.enum(["running", "passed", "failed"]),
+    findings: z.array(HealthFindingRecord),
+    categories: z.array(HealthCategoryResult).length(HEALTH_CATEGORIES.length),
+    /** Unwaived HARD findings — the export gate count (HEALTH_CHECK_BLOCKED). */
+    blocking_count: z.number().int().min(0),
+    warning_count: z.number().int().min(0),
+    waived_count: z.number().int().min(0),
+    history: z.array(HealthRunSummary),
+  })
+  .strict();
+export type HealthRunData = z.infer<typeof HealthRunData>;
+
+export const HealthWaiveData = z
+  .object({
+    waived: z.literal(true),
+    finding_id: Uuid,
+    audit_id: z.number().int().positive(),
+  })
+  .strict();
+export type HealthWaiveData = z.infer<typeof HealthWaiveData>;
+
 export const CommandArgs = {
   "session.status": SessionStatusArgs,
   "session.unlock": SessionUnlockArgs,
@@ -2193,6 +2306,8 @@ export const CommandArgs = {
   "alerts.list": AlertsListArgs,
   "alerts.create_rule": AlertsCreateRuleArgs,
   "audit.list": AuditListArgs,
+  "health.run": HealthRunArgs,
+  "health.waive": HealthWaiveArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

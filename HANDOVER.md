@@ -1,13 +1,14 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next milestone task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. The current session shipped **M6-8a (F-033) Audit
-> Trail** — the `audit.list` native read handler (`src-tauri/src/commands/audit.rs`) plus the S-070
-> Audit Trail screen at `/app/governance/audit` — on working branch `arena/01a07141-fpa`. It is
-> **PARTIAL/NATIVE-UNVERIFIED**: this sandbox has no Rust toolchain and no network to install one, so
-> `audit.rs` (like `statement.rs` and `alerts.rs` before it) has never been compiled. M3-6's native
-> follow-on was verified on the Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12).
-> The authoritative tracker is the root `TASKBOARD.md` (82 files / 1002 tests; JS gates pass; native
+> state, design decisions, gates, and pitfalls. The current session shipped **M6-7 (F-032) Model
+> Health Check** — the five-category engine (`src-tauri/src/commands/health.rs`, `health.run` +
+> `health.waive`) plus the S-071 screen at `/app/governance/health` — after **M6-8a (F-033) Audit
+> Trail**, both on working branch `arena/01a07141-fpa`. Both are **PARTIAL/NATIVE-UNVERIFIED**: this
+> sandbox has no Rust toolchain and no network to install one, so `health.rs` (like `audit.rs`,
+> `statement.rs` and `alerts.rs` before it) has never been compiled. M3-6's native follow-on was
+> verified on the Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12).
+> The authoritative tracker is the root `TASKBOARD.md` (85 files / 1056 tests; JS gates pass; native
 > gates unavailable in-sandbox).
 
 ---
@@ -22,7 +23,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~8 min) — all must PASS before you edit:
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
-   Expect the current **82 files / 1002 tests** after the M6-8a slice. Counts drift as tests are added —
+   Expect the current **85 files / 1056 tests** after the M6-7 slice. Counts drift as tests are added —
    the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
    gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
    or it will dip red again.
@@ -31,7 +32,55 @@
 
 ## 1. STATE OF THE WORK
 
-### Latest — M6-8a Audit Trail: `audit.list` + S-070 (2026-09-05, `arena/01a07141-fpa`)
+### Latest — M6-7 Model Health Check: engine + waiver + S-071 (2026-09-05, `arena/01a07141-fpa`)
+
+- **Why this unit:** the next unblocked P0 row in dependency order. Both catalog rows (`health.run`,
+  `health.waive`), both error codes (`HEALTH_CHECK_BLOCKED`, `HEALTH_WAIVER_REASON_REQUIRED`) and all three
+  tables (`health_checks`, `health_findings`, `waivers`) were already locked — so the whole slice ran against
+  real persisted data with no new schema and no Tier-3 RFC.
+- **Contract (`docs/API-SPEC.md` §16, new):** `health.run {model_id}` → `{check_id, model_id, run_at, status,
+findings[], categories[5], blocking_count, warning_count, waived_count, history[]}`;
+  `health.waive {finding_id, reason}` → `{waived, finding_id, audit_id}`.
+- **The design decisions worth knowing (do not "fix" any of these):**
+  1. **A failing Model is a REPORT, not an exception.** `health.run` has no error row in the catalog and never
+     throws on findings. `HEALTH_CHECK_BLOCKED` is mapped in `core/error.rs` for the **export** path (M6-6) to
+     raise when an export is actually attempted, bound to `blocking_count` — the check itself never raises it.
+  2. **Waivers are keyed by fingerprint, not row id.** `category|severity|entity_ref|message`. Findings get a
+     fresh row id on every run, so a row-id key would silently drop an audited decision on the next re-run. The
+     carry-forward copies the original reason/actor/created_at verbatim and mints **no new audit event** — it
+     re-states a recorded decision rather than creating one (a test asserts the event count stays at 1).
+  3. **The waiver panel is never inline on the finding row.** The friction is the requirement (D-010 / US-033),
+     not an oversight. Confirm stays disabled until a non-blank reason exists AND the Company is writable.
+  4. **Loading is indeterminate.** The command answers once; any percentage would be fabricated. Streaming
+     needs a Tauri event channel + an API-SPEC row (Tier-3).
+- **Rust (`src-tauri/src/commands/health.rs`, registered in `lib.rs` → 64 handlers):** five categories in fixed
+  order over persisted rows — `tie_out` (committed GL sums to exactly 0 per Fiscal Period under the
+  debit-positive/credit-negative store; committed batches with `tie_out_status='fail'`), `reference` (formula
+  whitelist via `core::model::validate_formula` — the SAME gate the grid uses, B14; active Account; resolvable
+  Driver), `rounding` (HARD: money cell holding text instead of exact minor units; WARN: Line `decimals` ≠
+  Currency Scale), `driver_feed` (every consumed Driver fed for every (scenario, period) the Model uses, exact
+  missing count), `anomaly` (declared-bounds breaches + >`ANOMALY_SWING_FACTOR`(=5)× period swings, WARN only).
+  **No UPDATE/DELETE against Model/Driver/GL data exists in the module** — nothing is auto-fixed. Integer
+  `amount_minor` for money, `rust_decimal` for bounds/swings, never float. `health.run` needs only an unlocked
+  session (an auditor must be able to check a Model they cannot edit); `health.waive` is Company-write.
+  21 unit tests included (each category isolated, clean baseline, excluded/uncommitted GL, carry-forward,
+  single-audit-event rule, cross-Company refusal, both error bodies verbatim).
+- **TS:** `HealthRunArgs`/`HealthWaiveArgs`/`HealthRunData`/`HealthWaiveData`/`HealthFindingRecord`/
+  `HealthCategoryResult`/`HEALTH_CATEGORIES` in `src/api/schema.ts` (`.strict()`; `reason` is `.trim().min(1)` so
+  a blank waiver cannot reach the wire); dev mirror in `src/api/mock.ts` with a session-lived waiver ledger and
+  stable per-fingerprint ids so carry-forward is exercised; `src/stores/health.ts` (report-vs-error rule, local
+  D-010 gate, re-run after waive so every count comes from the engine, `parseEntityRef`).
+- **Screen (`src/pages/s071-health/`, code-split, `/app/governance/health`):** five category rows, finding table,
+  D-010 waiver panel, blocking/warning footstrip + export verdict. `→ cell` is rendered **only** for a `cell:`
+  `entity_ref`; `line:`/`driver:`/`period:`/`batch:` refs get no fabricated navigation target (asserted). No
+  fix/repair/dismiss control exists anywhere (asserted).
+- **Tests:** 54 new (24 page incl. 4 axe states, 15 store, 15 contract). Full run: **85 files / 1056 tests**.
+- **Open (why M6-7 stays PARTIAL):** cargo + clippy + fmt over `commands/health.rs` and a desktop round-trip —
+  no Rust toolchain in this sandbox and no network to install one. Also open: raising `HEALTH_CHECK_BLOCKED`
+  from `export.*` (blocked on M6-6), and true streaming partial results (needs a Tauri event channel + an
+  API-SPEC row).
+
+### Previous — M6-8a Audit Trail: `audit.list` + S-070 (2026-09-05, `arena/01a07141-fpa`)
 
 - **Why this unit:** it was the highest-value _unblocked_ row left. `audit.list` sat in the locked catalog with no handler,
   S-070 was ❗ TODO, and F-033 is a P0 story (US-034) whose data (`audit_events`) was already fully written by every other
@@ -372,13 +421,14 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **Native completion sweep (statement.rs · alerts.rs · audit.rs)** — on a Rust-equipped machine run
-   `cargo test`/`clippy`/`fmt` over `commands/statement.rs` (r#type arg, tagged `BuScope`),
-   `commands/alerts.rs` (dedupe SQL, draft-only firing, audit tx) and the NEW `commands/audit.rs`
-   (bound filter params, single-snapshot paging, `verify_company_chain` wiring); add largest-remainder
-   oracle fixtures vs MONEY-ROUNDING-SPEC §3–5; desktop round-trips. Then flip the M6-1/M5-4/M6-8
-   native rows and build the remaining S-060 elements (period selector, BU/Group scope UI, export via
-   M6-6, drill-down).
+1. **Native completion sweep (statement.rs · alerts.rs · audit.rs · health.rs)** — on a Rust-equipped
+   machine run `cargo test`/`clippy`/`fmt` over `commands/statement.rs` (r#type arg, tagged `BuScope`),
+   `commands/alerts.rs` (dedupe SQL, draft-only firing, audit tx), `commands/audit.rs` (bound filter
+   params, single-snapshot paging, `verify_company_chain` wiring) and the NEW `commands/health.rs`
+   (five-category SQL, waiver carry-forward by fingerprint, HMAC-audited waive tx); add
+   largest-remainder oracle fixtures vs MONEY-ROUNDING-SPEC §3–5; desktop round-trips. Then flip the
+   M6-1/M5-4/M6-7/M6-8 native rows and build the remaining S-060 elements (period selector, BU/Group
+   scope UI, export via M6-6, drill-down).
 2. **M6-2 GAAP/IFRS presets + segment report (S-060/061)** — next unblocked feature unit.
 3. **Tier-3 RFC needed (do NOT implement silently):** `alerts.dismiss` + `alerts.mute_rule` catalog
    rows (S-056 ships the buttons disabled until then); `model.inspect`/`driver.import` handlers (B3).
