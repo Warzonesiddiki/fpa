@@ -59,11 +59,24 @@ export interface CycleStoreState {
   // Actions
   setActiveTab: (tab: CycleTab) => void;
   loadChecklist: (modelId: string, periodId?: string) => Promise<void>;
-  startCycle: (modelId: string, kind: "budget" | "forecast" | "rolling", name: string, due: string) => Promise<boolean>;
-  updateTaskStatus: (taskId: string, status: "pending" | "done" | "blocked", note?: string) => Promise<boolean>;
+  startCycle: (
+    modelId: string,
+    kind: "budget" | "forecast" | "rolling",
+    name: string,
+    due: string,
+  ) => Promise<boolean>;
+  updateTaskStatus: (
+    taskId: string,
+    status: "pending" | "done" | "blocked",
+    note?: string,
+  ) => Promise<boolean>;
   exportCollectionSheet: (driverIds: string[], template?: string) => Promise<boolean>;
   importCollectionSheet: (filePath: string, mappingId?: string) => Promise<boolean>;
-  resolveConflict: (conflictId: string, choice: "choose_a" | "choose_b" | "average", note?: string) => Promise<boolean>;
+  resolveConflict: (
+    conflictId: string,
+    choice: "choose_a" | "choose_b" | "average",
+    note?: string,
+  ) => Promise<boolean>;
   advanceMilestone: (nextMilestone: CycleMilestone) => void;
   reset: () => void;
 }

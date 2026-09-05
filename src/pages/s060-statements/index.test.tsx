@@ -44,13 +44,21 @@ const PL_ROWS = [
   {
     section: "Revenue",
     lines: [
-      { account_id: "a-rev", label: "Sales Revenue", values: { fp_2026_p01: 1000000, fp_2026_p02: 1200000 } },
+      {
+        account_id: "a-rev",
+        label: "Sales Revenue",
+        values: { fp_2026_p01: 1000000, fp_2026_p02: 1200000 },
+      },
     ],
   },
   {
     section: "Cost of Goods Sold",
     lines: [
-      { account_id: "a-cogs", label: "Direct Materials", values: { fp_2026_p01: -600000, fp_2026_p02: -700000 } },
+      {
+        account_id: "a-cogs",
+        label: "Direct Materials",
+        values: { fp_2026_p01: -600000, fp_2026_p02: -700000 },
+      },
     ],
   },
 ];
@@ -187,14 +195,15 @@ describe("S-060 Statements", () => {
     renderPage();
 
     // Rows show the engine's exact values through MoneyCell (format-only).
+    // 1,000,000 minor units of USD = 10,000.00 major — the formatter is the only owner.
     expect(screen.getByText("Sales Revenue")).toBeInTheDocument();
     expect(screen.getByText("Direct Materials")).toBeInTheDocument();
-    // MoneyCell formats minor units: USD 1,000,000.00 and (USD 600,000.00) (paren default).
-    expect(screen.getByText("USD 1,000,000.00")).toBeInTheDocument();
-    expect(screen.getByText("USD 1,200,000.00")).toBeInTheDocument();
-    expect(screen.getByText("(USD 600,000.00)")).toBeInTheDocument();
+    // MoneyCell formats minor units: USD 10,000.00 and (USD 6,000.00) (paren default).
+    expect(screen.getByText("USD 10,000.00")).toBeInTheDocument();
+    expect(screen.getByText("USD 12,000.00")).toBeInTheDocument();
+    expect(screen.getByText("(USD 6,000.00)")).toBeInTheDocument();
     // Engine totals render the same way.
-    expect(screen.getByText("USD 2,200,000.00")).toBeInTheDocument();
+    expect(screen.getByText("USD 22,000.00")).toBeInTheDocument();
     // Integrity chips mirror the engine status.
     expect(screen.getByText("Tie-out: Pass")).toBeInTheDocument();
     expect(screen.getByText("Rounding: Exact")).toBeInTheDocument();
@@ -207,15 +216,33 @@ describe("S-060 Statements", () => {
       rows: [
         {
           section: "Current Assets",
-          lines: [{ account_id: "a-asset", label: "Cash", values: { fp_2026_p01: 500000, fp_2026_p02: 760000 } }],
+          lines: [
+            {
+              account_id: "a-asset",
+              label: "Cash",
+              values: { fp_2026_p01: 500000, fp_2026_p02: 760000 },
+            },
+          ],
         },
         {
           section: "Current Liabilities",
-          lines: [{ account_id: "a-liab", label: "Accounts Payable", values: { fp_2026_p01: -200000, fp_2026_p02: -300000 } }],
+          lines: [
+            {
+              account_id: "a-liab",
+              label: "Accounts Payable",
+              values: { fp_2026_p01: -200000, fp_2026_p02: -300000 },
+            },
+          ],
         },
         {
           section: "Equity",
-          lines: [{ account_id: "a-equity", label: "Retained Earnings", values: { fp_2026_p01: -300000, fp_2026_p02: -460000 } }],
+          lines: [
+            {
+              account_id: "a-equity",
+              label: "Retained Earnings",
+              values: { fp_2026_p01: -300000, fp_2026_p02: -460000 },
+            },
+          ],
         },
       ],
       totals: {
@@ -236,19 +263,16 @@ describe("S-060 Statements", () => {
     renderPage();
     expect(screen.getByText("Current Assets")).toBeInTheDocument();
     expect(screen.getByText("Total Assets")).toBeInTheDocument();
-    expect(screen.getByText("USD 1,260,000.00")).toBeInTheDocument();
-    // Signed per §5: liabilities/equity display in parentheses.
-    expect(screen.getByText("(USD 500,000.00)")).toBeInTheDocument();
-    expect(screen.getByText("(USD 760,000.00)")).toBeInTheDocument();
+    expect(screen.getByText("USD 12,600.00")).toBeInTheDocument();
+    // Signed per §5: liabilities/equity display in parentheses (minor units ÷ 100).
+    expect(screen.getByText("(USD 5,000.00)")).toBeInTheDocument();
+    expect(screen.getByText("(USD 7,600.00)")).toBeInTheDocument();
   });
 
   it("switches the presentation preset through the select", async () => {
     const setPresetSpy = vi.spyOn(storeState(), "setPreset");
     renderPage();
-    await userEvent.selectOptions(
-      screen.getByLabelText("Presentation preset"),
-      "ifrs",
-    );
+    await userEvent.selectOptions(screen.getByLabelText("Presentation preset"), "ifrs");
     expect(setPresetSpy).toHaveBeenCalledWith("ifrs");
   });
 

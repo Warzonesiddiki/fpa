@@ -52,7 +52,9 @@ describe("useCycleStore", () => {
     const s = useCycleStore.getState();
     expect(s.state).toBe("error");
     expect(s.errorCode).toBe("CYCLE_TASK_BLOCKED");
-    expect(s.errorMessage).toContain("This task is blocked by unfinished tasks: Run GL tie-out and reconcile accounts.");
+    expect(s.errorMessage).toContain(
+      "This task is blocked by unfinished tasks: Run GL tie-out and reconcile accounts.",
+    );
   });
 
   it("exports driver collection sheet", async () => {
@@ -62,7 +64,9 @@ describe("useCycleStore", () => {
   });
 
   it("imports collection sheet with conflict detection", async () => {
-    const ok = await useCycleStore.getState().importCollectionSheet("collection_upload_conflict.xlsx");
+    const ok = await useCycleStore
+      .getState()
+      .importCollectionSheet("collection_upload_conflict.xlsx");
     expect(ok).toBe(true);
     const s = useCycleStore.getState();
     expect(s.conflicts.length).toBe(1);
@@ -73,13 +77,17 @@ describe("useCycleStore", () => {
     await useCycleStore.getState().importCollectionSheet("collection_upload_conflict.xlsx");
     expect(useCycleStore.getState().conflicts.length).toBe(1);
 
-    const ok = await useCycleStore.getState().resolveConflict("conf-1", "choose_a", "Accepted North America actuals");
+    const ok = await useCycleStore
+      .getState()
+      .resolveConflict("conf-1", "choose_a", "Accepted North America actuals");
     expect(ok).toBe(true);
     expect(useCycleStore.getState().conflicts.length).toBe(0);
   });
 
   it("starts a new cycle and resets to kickoff milestone", async () => {
-    const ok = await useCycleStore.getState().startCycle("m-main", "forecast", "Q4 Rolling Forecast", "2026-11-30");
+    const ok = await useCycleStore
+      .getState()
+      .startCycle("m-main", "forecast", "Q4 Rolling Forecast", "2026-11-30");
     expect(ok).toBe(true);
     const s = useCycleStore.getState();
     expect(s.cycleName).toBe("Q4 Rolling Forecast");

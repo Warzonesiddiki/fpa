@@ -1,13 +1,15 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next milestone task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. The current session shipped the **M3-6 (F-016)
-> Headcount/S-045 TypeScript slice** — strict audited schedule response, exact Decimal/day-count
-> model, session store, five-state page, org/schedule/import/rollup UI, tests, and synchronized docs —
-> on working branch `arena/01a06a46-fpa`. The browser mock/session cache remain in the product path;
-> native schedule persistence/calculation and cargo gates are **PARTIAL/NATIVE-UNVERIFIED**. Older
-> content below is history; the authoritative tracker is the root `TASKBOARD.md` (59 files / 653
-> tests; JS gates pass; native gates unavailable).
+> state, design decisions, gates, and pitfalls. The current session shipped the **M6-1 (F-027)
+> statement-suite TypeScript slice + full-suite gate restoration** — S-060 repaired to green,
+> store/contract/edge test suites, the `bu_scope` zod gate, hand-reviewed fixes to
+> `commands/statement.rs`, and repo-wide prettier sync — on working branch `arena/01a070a4-fpa`.
+> M6-1 is **PARTIAL/NATIVE-UNVERIFIED** (no Rust toolchain in this sandbox; the hand-reviewed
+> statement.rs fixes have never been compiled). M3-6's native follow-on was verified on the
+> Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12). The authoritative
+> tracker is the root `TASKBOARD.md` (76 files / 920 tests; JS gates pass; native gates
+> unavailable in-sandbox).
 
 ---
 
@@ -19,16 +21,49 @@
    mid-session** (it is excluded from snapshots). This is normal, not an error. Expect it to
    happen again _during_ your session: if `npx vitest` suddenly reports `eslint: not found`,
    reinstall first and re-run the gates — do not chase phantom code failures.
-3. Baseline gates (~3 min) — all must PASS before you edit:
+3. Baseline gates (~8 min) — all must PASS before you edit:
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
-   Expect the current **59 files / 653 tests** after the M3-6 slice. Counts drift as tests are added —
-   the invariant is that every gate PASSES on a clean tree, not the exact number.
+   Expect the current **76 files / 920 tests** after the M6-1 slice. Counts drift as tests are added —
+   the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
+   gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
+   or it will dip red again.
 
 ---
 
 ## 1. STATE OF THE WORK
 
-### Latest — M3-6 Headcount/S-045 (F-016), TypeScript slice (2026-09-04)
+### Latest — M6-1 Statement suite, TS slice + gate restoration (2026-09-05, `arena/01a070a4-fpa`)
+
+- **S-060 page (`src/pages/s060-statements/`):** was broken against the real `StatePanel` API (it passed a
+  nonexistent `variant` prop) and failed the installed axe ruleset (missing region-level headings). Now: five
+  canonical states; h2-sectioned tables; every monetary value renders ONLY through `MoneyCell`/`formatMinor`
+  from engine `amount_text`/minor strings (B6 — no arithmetic or re-derivation in the UI); "Tie-out: Pass/Fail"
+  and "Rounding: Exact/Approximate" chips; IFRS/US-GAAP preset with URL round-trip (`?preset=`),
+  zero-decimals/thousands toggles + LRA switch; CF/SoCE/segment honestly disabled "(pending)". Preset &
+  route-param branches run through `MemoryRouter` fixtures (BrowserRouter+pushState without a matching `<Route>`
+  leaves `useParams()` empty — branches silently never executed). 20 + 5 edge tests, axe-clean.
+- **Stores/contracts:** `src/stores/statements.test.ts` (13) covers state machine, typed `BridgeError` mapping
+  (`STATEMENT_TIE_OUT_FAILED` fix_list detail), stale-row clearing on failed retry, reset, selectors;
+  `src/api/statements.test.ts` (11) pins typed args + populated P&L/BS envelopes + `STATEMENT_SOURCE_MIXED`
+  dev triggers; new `StatementGetArgsSchema` refine makes `bu_scope.kind:"single"` require `bu_id` (VALUE_INVALID
+  at the boundary — +1 schema test). Store edge suites added for FVA (13) and What-if (12); model-history guard
+  tests and a bridge `{code: undefined}` normalization test close the coverage gap.
+- **Rust (hand-review only — never compiled here):** `commands/statement.rs` flat command arg renamed `r#type`
+  (Tauri 2 `unraw()` maps it to the catalog key `type`; struct-destructured single-arg payloads would NOT —
+  verified against tauri-macros 2.6.3 `parse_arg`) and `BuScope` switched to internally tagged `{kind:…}` to
+  match the wire shape. `npm run check` includes the Rust brace-balance hand gate (26/26) — that is NOT a
+  compile claim.
+- **Gate restoration:** the tree arrived failing global branches coverage (79.17% vs 80) and prettier (~28
+  legacy files + TASKBOARD.md itself). Prettier-synced everything (`pnpm-lock.yaml` added to
+  `.prettierignore` — prettier reformats it and `--write` on it is FORBIDDEN), then added the real tests above.
+  Final: 76 files / 920 tests; coverage 87.9/80.07/87.03/89.74 (≥85/80/80/85); critical 98.46/97.15/100/98.92;
+  build/lint/tsc/prettier/docs:verify 60/42/97/99/money:ast/security all green.
+- **Still open (why M6-1 is PARTIAL):** cargo compile + native round-trip for `statement.get.v1`;
+  largest-remainder oracle fixtures vs MONEY-ROUNDING-SPEC §3–5; SCREENS-SPEC S-060 elements not built —
+  period selector (single/YTD/FY/PY), BU/Group scope UI, per-line decimals/sign style, export (M6-6),
+  line drill-down; dev-only trigger paths in `mock.ts` stay dev-only (no padding tests).
+
+### Previous — M3-6 Headcount/S-045 (F-016), TypeScript slice (2026-09-04) — native since verified; ✅ DONE per TASKBOARD §12
 
 - **Contract:** `model.schedule.upsert` is specialized to `schedule_type: "headcount"` with strict
   row fields and strict `{schedule_id, recalc, audit_id}` success data. `audit_id` is a positive
@@ -55,7 +90,7 @@
   native HMAC audit wiring, desktop IPC, and cargo tests remain **NATIVE-UNVERIFIED/PARTIAL**. Do not
   mark M3-6 DONE while the browser mock is involved.
 
-### Previous — M4-2 scenario lifecycle (F-022), PR A/A2/B (2026-09-04)
+### Earlier — M4-2 scenario lifecycle (F-022), PR A/A2/B (2026-09-04)
 
 Typed scenario contract + mock state machine (`model.list`, `scenario.create|duplicate|submit|approve|lock|
 reopen|delete`, `baseline.set`), `stores/scenarios.ts`, grid-store `setScenario` + `activeScenarioId()`, the
@@ -271,17 +306,16 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **M3-6 native completion is the immediate follow-on:** implement and cargo-verify the native
-   `model.schedule.upsert` handler, SQLite schedule/model-value persistence, authoritative Decimal/day-count
-   calculation, HMAC audit event, and desktop IPC round-trip. Until then M3-6 remains PARTIAL and the
-   browser mock/session cache must not be described as production persistence. After that, resume the
-   dependency-order TODOs (M4-1 Budget/Forecast/Rolling, S-051 `model.diff`, etc.); Tier-3 scenario
-   `kind`/`created_at` decisions and other native gaps remain explicitly deferred.
-2. ~~**M3-1 DB persistence (DoD gate (i))**~~ — the real `model_values` upsert needs the **Rust
-   toolchain**. Check early in the session (`cargo --version`); if present, resume M3-1 first (it
-   is the older BLOCKED unit); if not, leave it `PARTIAL`/`BLOCKED` and keep shipping unblocked
-   units.
-3. ~~**M3-2 Formula inspection**~~ **DONE** (see §1).
+1. **M5-4 Alerts engine + center + rules (S-056)** — the only open unit before M6-2 in dependency
+   order. `alerts.*` commands are catalogued but unshipped; check API-SPEC for the exact rows and
+   ERROR-HANDLING for admissible codes (catalog is locked at 99 — invent nothing).
+2. **M6-1 native completion** — on a Rust-equipped machine: `cargo test`/`clippy`/`fmt` over the
+   hand-reviewed `commands/statement.rs` fixes (r#type arg, tagged `BuScope`), largest-remainder
+   oracle fixtures vs MONEY-ROUNDING-SPEC §3–5, desktop round-trip. Then flip M6-1/S-060 to DONE
+   alongside building the remaining S-060 elements (period selector, BU/Group scope UI, export via
+   M6-6, drill-down).
+3. ~~**M3-6 native completion**~~ — DONE 2026-09-04 on the Windows desktop (see TASKBOARD §12);
+   M3-1 DB persistence likewise landed via `model_schedule_upsert`'s `model_values` writes.
 4. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.

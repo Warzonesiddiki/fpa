@@ -1706,4 +1706,3 @@ describe("dev mock — scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–
     });
   });
 });
-

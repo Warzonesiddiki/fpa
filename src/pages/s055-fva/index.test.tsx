@@ -130,7 +130,9 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
     it("renders success state confirmation", () => {
       render(<FvaPage initialState="success" initialLines={mockLines} />);
       expect(
-        screen.getByText(/FVA scores recomputed successfully. All lines scored against current restatements/i),
+        screen.getByText(
+          /FVA scores recomputed successfully. All lines scored against current restatements/i,
+        ),
       ).toBeInTheDocument();
     });
 
@@ -142,7 +144,9 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
         />,
       );
 
-      expect(screen.getByRole("heading", { name: /Forecast Value Added \(FVA\)/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /Forecast Value Added \(FVA\)/i }),
+      ).toBeInTheDocument();
       expect(screen.getByText("Subscription Revenue")).toBeInTheDocument();
       expect(screen.getByText("Cloud Infrastructure COGS")).toBeInTheDocument();
 
@@ -250,7 +254,9 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
       const banner = screen.getByRole("alert");
       expect(banner).toBeInTheDocument();
       expect(
-        screen.getByText(/Actuals were restated for these periods — FVA recomputed; versions unchanged\./i),
+        screen.getByText(
+          /Actuals were restated for these periods — FVA recomputed; versions unchanged\./i,
+        ),
       ).toBeInTheDocument();
 
       // Banner is accessible
@@ -262,7 +268,9 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
       await userEvent.click(dismissBtn);
 
       expect(
-        screen.queryByText(/Actuals were restated for these periods — FVA recomputed; versions unchanged\./i),
+        screen.queryByText(
+          /Actuals were restated for these periods — FVA recomputed; versions unchanged\./i,
+        ),
       ).not.toBeInTheDocument();
     });
   });
@@ -309,7 +317,9 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
       expect(rollupRegion).toBeInTheDocument();
 
       // 3 BUs in mock: North America (2 lines), EMEA (1 line), Corporate (1 line)
-      expect(screen.getByRole("heading", { name: /Business Unit Rollup Strip/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /Business Unit Rollup Strip/i }),
+      ).toBeInTheDocument();
       expect(rollupRegion).toHaveTextContent("North America");
       expect(rollupRegion).toHaveTextContent("2 lines");
       expect(rollupRegion).toHaveTextContent("EMEA");

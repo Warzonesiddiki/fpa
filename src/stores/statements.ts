@@ -118,25 +118,25 @@ export const useStatementStore = create<StatementStoreState>((set, get) => ({
 
   loadStatement: async (params) => {
     const current = get();
-    const companyId =
-      params?.companyId ?? current.companyId;
+    const companyId = params?.companyId ?? current.companyId;
     const type = params?.type ?? current.type;
     const periodScope = params?.periodScope ?? current.periodScope;
     const preset = params?.preset ?? current.preset;
     const rounding = params?.rounding ?? current.rounding;
-    const buScope = params?.buScope ?? current.buScope;      if (!companyId) {
-        set({
-          status: "empty",
-          error: null,
-          rows: [],
-          totals: null,
-          tieoutStatus: null,
-          roundingStatus: null,
-          findings: [],
-          currency: null,
-        });
-        return false;
-      }
+    const buScope = params?.buScope ?? current.buScope;
+    if (!companyId) {
+      set({
+        status: "empty",
+        error: null,
+        rows: [],
+        totals: null,
+        tieoutStatus: null,
+        roundingStatus: null,
+        findings: [],
+        currency: null,
+      });
+      return false;
+    }
 
     set({
       status: "loading",
@@ -150,14 +150,14 @@ export const useStatementStore = create<StatementStoreState>((set, get) => ({
     });
 
     try {
-      const response = (await call("statement.get.v1" as never, {
+      const response = (await call("statement.get.v1", {
         company_id: companyId,
         type,
         period_scope: periodScope,
         preset,
         rounding,
         bu_scope: buScope,
-      } as never)) as StatementGetData;
+      })) as StatementGetData;
 
       const tieoutStatus = response.tieout_status === "pass" ? "pass" : "fail";
       const roundingStatus = response.rounding_status;

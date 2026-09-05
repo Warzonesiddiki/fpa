@@ -230,7 +230,9 @@ export function FvaPage({
   const [errorDetail, setErrorDetail] = useState<FvaErrorDetail | null>(initialError);
 
   // Active formula modal: null | 'mape' | 'bias' | 'hit_rate'
-  const [activeFormulaModal, setActiveFormulaModal] = useState<"mape" | "bias" | "hit_rate" | null>(null);
+  const [activeFormulaModal, setActiveFormulaModal] = useState<"mape" | "bias" | "hit_rate" | null>(
+    null,
+  );
 
   // Determine canonical 5 states
   const currentState: FvaScreenState = useMemo(() => {
@@ -308,7 +310,15 @@ export function FvaPage({
 
   // CSV Export
   const handleExportCsv = useCallback(() => {
-    const headers = ["Line Name", "Business Unit", "Versions Scored", "MAPE", "Bias", "Hit Rate", "Trend"];
+    const headers = [
+      "Line Name",
+      "Business Unit",
+      "Versions Scored",
+      "MAPE",
+      "Bias",
+      "Hit Rate",
+      "Trend",
+    ];
     const rows = lines.map((l) => [
       `"${l.line_name.replace(/"/g, '""')}"`,
       `"${l.business_unit.replace(/"/g, '""')}"`,
@@ -340,7 +350,8 @@ export function FvaPage({
             Forecast Value Added (FVA)
           </h1>
           <p className="text-xs text-[var(--color-onetextsecondary)] mt-0.5">
-            Forecast-versus-actual accuracy scoring across planning cycles (F-025 · SCREENS-SPEC S-055).
+            Forecast-versus-actual accuracy scoring across planning cycles (F-025 · SCREENS-SPEC
+            S-055).
           </p>
         </div>
 
@@ -348,7 +359,10 @@ export function FvaPage({
         <div className="flex flex-wrap items-center gap-3">
           {/* Horizon Selector */}
           <div className="flex items-center gap-1.5 text-xs">
-            <label htmlFor="fva-horizon-select" className="font-medium text-[var(--color-onetextsecondary)]">
+            <label
+              htmlFor="fva-horizon-select"
+              className="font-medium text-[var(--color-onetextsecondary)]"
+            >
               Horizon:
             </label>
             <select
@@ -371,7 +385,9 @@ export function FvaPage({
             variant="secondary"
             size="sm"
             onClick={handleExportCsv}
-            disabled={currentState === "loading" || currentState === "empty" || currentState === "error"}
+            disabled={
+              currentState === "loading" || currentState === "empty" || currentState === "error"
+            }
             aria-label="Export FVA scores as CSV"
             className="flex items-center gap-1.5 text-xs"
           >
@@ -388,7 +404,9 @@ export function FvaPage({
       >
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-[var(--color-onetext)]">Forecast Versions (≥3 required):</span>
+            <span className="font-medium text-[var(--color-onetext)]">
+              Forecast Versions (≥3 required):
+            </span>
             <span
               role="status"
               aria-label={`Selected versions count: ${selectedVersions.length}`}
@@ -408,7 +426,11 @@ export function FvaPage({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Version options">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Version options"
+        >
           {DEFAULT_VERSIONS.map((v) => {
             const isChecked = selectedVersions.includes(v.id);
             return (
@@ -442,8 +464,13 @@ export function FvaPage({
           className="flex items-center justify-between gap-3 p-3.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-200 text-xs font-medium"
         >
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
-            <span>Actuals were restated for these periods — FVA recomputed; versions unchanged.</span>
+            <AlertTriangle
+              className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0"
+              aria-hidden="true"
+            />
+            <span>
+              Actuals were restated for these periods — FVA recomputed; versions unchanged.
+            </span>
           </div>
           <button
             type="button"
@@ -581,16 +608,33 @@ export function FvaPage({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse" aria-label="FVA Scores by Line">
+              <table
+                className="w-full text-left text-xs border-collapse"
+                aria-label="FVA Scores by Line"
+              >
                 <thead>
                   <tr className="border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] font-medium text-[var(--color-onetextsecondary)]">
-                    <th scope="col" className="p-3 pl-4">Line Name</th>
-                    <th scope="col" className="p-3">Business Unit</th>
-                    <th scope="col" className="p-3 text-right">Versions Scored</th>
-                    <th scope="col" className="p-3 text-right">MAPE</th>
-                    <th scope="col" className="p-3 text-right">Bias</th>
-                    <th scope="col" className="p-3 text-right">Hit Rate</th>
-                    <th scope="col" className="p-3 pr-4 text-center">Trend</th>
+                    <th scope="col" className="p-3 pl-4">
+                      Line Name
+                    </th>
+                    <th scope="col" className="p-3">
+                      Business Unit
+                    </th>
+                    <th scope="col" className="p-3 text-right">
+                      Versions Scored
+                    </th>
+                    <th scope="col" className="p-3 text-right">
+                      MAPE
+                    </th>
+                    <th scope="col" className="p-3 text-right">
+                      Bias
+                    </th>
+                    <th scope="col" className="p-3 text-right">
+                      Hit Rate
+                    </th>
+                    <th scope="col" className="p-3 pr-4 text-center">
+                      Trend
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-oneborder)]">
@@ -689,7 +733,10 @@ export function FvaPage({
         >
           <div className="w-full max-w-md rounded-lg border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--color-oneborder)] pb-3">
-              <h2 id={formulaModalTitleId} className="text-base font-semibold text-[var(--color-onetext)]">
+              <h2
+                id={formulaModalTitleId}
+                className="text-base font-semibold text-[var(--color-onetext)]"
+              >
                 {FORMULA_EXPLANATIONS[activeFormulaModal].title}
               </h2>
               <button

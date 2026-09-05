@@ -88,9 +88,11 @@ impl RoundingRequest {
     }
 }
 
-/// BU/Group scope for multi-entity statements (API-SPEC §6).
+/// BU/Group scope for multi-entity statements (API-SPEC §6). Internally tagged on the
+/// wire (`{kind: "all"}` / `{kind: "group"}` / `{kind: "single", bu_id}` — the exact
+/// TS/Zod shape; unit variants ignore a present-but-null `bu_id`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BuScope {
     All,
     Group,
@@ -446,7 +448,6 @@ pub fn statement_get_internal(
         period_scope,
         statement_type,
     );
-    let _ = period_scope;
 
     // 7. Display rounding at the section level (largest-remainder per section+period).
     let rows = if display_unit <= 1 {
@@ -865,11 +866,15 @@ fn compute_totals(rows: &[StatementSection], statement_type: &str) -> StatementT
 }
 
 /// `statement.get.v1` — typed Tauri command (API-SPEC §6). Read-only: no audit event.
+/// The statement-kind argument is named `r#type` on purpose: Tauri 2 strips the raw
+/// identifier (`syn::ext::IdentExt::unraw`) so the payload key is exactly `type` — the
+/// locked API-SPEC §6 arg name (the Rust binding stays `statement`-flavoured in the body
+/// only because `type` is a keyword).
 #[tauri::command(name = "statement.get.v1", rename_all = "snake_case")]
 pub fn statement_get(
     app: tauri::AppHandle,
     company_id: String,
-    statement_type: String,
+    r#type: String,
     period_scope: Vec<String>,
     preset: StatementPreset,
     rounding: RoundingRequest,
@@ -884,7 +889,7 @@ pub fn statement_get(
     statement_get_internal(
         &conn,
         &company_id,
-        &statement_type,
+        &r#type,
         &period_scope,
         &preset,
         &rounding,
@@ -1180,7 +1185,7 @@ mod tests {
     }
 
     #[test]
-    fn perid_not_found_when_scope_has_foreign_period() {
+    fn period_not_found_when_scope_has_foreign_period() {
         let (conn, company_id, _) = seed();
         let (preset, rounding) = us_gaap_twodp();
         let err = statement_get_internal(

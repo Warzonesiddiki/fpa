@@ -45,7 +45,7 @@
 - [ ] **M3-3** Driver tables + federation precedence + bounds (S-043)
 - [ ] **M3-4** Assumption Register + hardcode detection (S-044) — persisted `assumption.list/upsert/find_usages` (exact decimal values, audited writes, Company/Model scoping, five UI states, usage lookup) AND TS hardcode detection are implemented: engine `findHardcodedLiterals`/`scanHardcoded`/`convertHardcoded` + worker ops, store `scanHardcoded`/`convertHardcoded`/`waiveHardcoded` (session-scoped reason; audited event is a native follow-on) + `assumptionEffectiveForPeriod`/`diffAssumptionValues`, and the S-044 hardcoded-values panel + edit-form change diff. Remaining: converted named-range references resolve once M3-10 named ranges land; Rust audited waiver event; cargo gates.
 - [ ] **M3-5** Planning methods + period spreading + bootstrap/copy (S-041 part; MODELING-METHODS-SPEC)
-- [ ] **M3-6** Headcount plan (S-045) — TS Decimal/day-count/rollup/UI slice and typed audited response are implemented; native schedule handler, SQLite persistence, HMAC audit, cargo and desktop IPC gates remain (PARTIAL/NATIVE-UNVERIFIED).
+- [x] **M3-6** Headcount plan (S-045) — DONE (2026-09-04): TS Decimal/day-count/rollup/UI slice + native `model_schedule_upsert` handler (`commands/schedule.rs`) with SQLite persistence (`model_schedules`, `model_values`), exact Decimal proration, HMAC audit trail, `HC_DATE_INVALID`/`HC_OVERLAP`; 156 cargo + 653 vitest tests, clippy/fmt green on a Rust-equipped desktop.
 - [ ] **M3-7** Capital/debt/WC/13-week cash + covenant gauges (S-046)
 - [ ] **M3-8** Production/inventory/backlog + rev rec schedules (S-047/048)
 - [ ] **M3-9** Excel-parity grid UX: keys/fill/paste/undo-redo 100+ (S-041)
@@ -69,7 +69,7 @@
 
 ## M6 — REPORTING & GOV (F-027…F-033)
 
-- [ ] **M6-1** Statement engine (P&L/BS/CF/SoCE) + tie-outs + rounding largest-remainder (S-060)
+- [ ] **M6-1** Statement engine (P&L/BS/CF/SoCE) + tie-outs + rounding largest-remainder (S-060) — 🚧 TS slice DONE (2026-09-05): S-060 page repaired to green (typed engine totals, MoneyCell-only, five states, 25 tests), `statements` store suite (13) + `statement.get.v1` contract tests (11) + `bu_scope` zod gate; Rust `commands/statement.rs` hand-reviewed fixes (`r#type` arg key, internally-tagged `BuScope`) — cargo compile/round-trip + oracles still pending (NATIVE-UNVERIFIED). Remaining S-060 UI: period selector, BU/Group scope, export (M6-6), drill-down.
 - [ ] **M6-2** GAAP/IFRS presets + segment report (S-060/061)
 - [ ] **M6-3** Consolidation: rollup maps, IC Tie-Out + Elimination, Balance Translation, NCI (S-021/S-061)
 - [ ] **M6-4** Report Builder + KPI Builder (S-062/063)

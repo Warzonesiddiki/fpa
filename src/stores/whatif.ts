@@ -231,7 +231,9 @@ export const useWhatIfStore = create<WhatIfStoreState>((set, get) => ({
       ...(params?.lo !== undefined ? { sensitivityLo: params.lo } : {}),
       ...(params?.hi !== undefined ? { sensitivityHi: params.hi } : {}),
       ...(params?.steps !== undefined ? { sensitivitySteps: params.steps } : {}),
-      ...(params?.target_lines !== undefined ? { sensitivityTargetLines: params.target_lines } : {}),
+      ...(params?.target_lines !== undefined
+        ? { sensitivityTargetLines: params.target_lines }
+        : {}),
     });
 
     try {

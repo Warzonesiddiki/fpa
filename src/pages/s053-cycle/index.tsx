@@ -78,7 +78,9 @@ export default function S053PlanningCyclePage(): React.ReactElement {
 
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [activeConflictId, setActiveConflictId] = useState<string | null>(null);
-  const [resolutionChoice, setResolutionChoice] = useState<"choose_a" | "choose_b" | "average">("choose_a");
+  const [resolutionChoice, setResolutionChoice] = useState<"choose_a" | "choose_b" | "average">(
+    "choose_a",
+  );
   const [resolutionNote, setResolutionNote] = useState("");
 
   const modelId = activeModelId();
@@ -110,11 +112,16 @@ export default function S053PlanningCyclePage(): React.ReactElement {
 
   const currentMilestoneIndex = MILESTONES.findIndex((m) => m.key === currentMilestone);
 
-  const submittedCount = contributors.filter((c) => c.status === "submitted" || c.status === "approved").length;
+  const submittedCount = contributors.filter(
+    (c) => c.status === "submitted" || c.status === "approved",
+  ).length;
   const totalContributors = contributors.length;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 text-slate-900" data-testid="s053-planning-cycle">
+    <div
+      className="flex flex-col h-full bg-slate-50 text-slate-900"
+      data-testid="s053-planning-cycle"
+    >
       {/* ── Page Header ─────────────────────────────────────────────── */}
       <header className="px-6 py-4 bg-white border-b border-slate-200 flex items-center justify-between">
         <div>
@@ -122,19 +129,13 @@ export default function S053PlanningCyclePage(): React.ReactElement {
             <span className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-800">
               S-053
             </span>
-            <span className="text-xs font-medium text-slate-500 uppercase">
-              {cycleKind} Cycle
-            </span>
+            <span className="text-xs font-medium text-slate-500 uppercase">{cycleKind} Cycle</span>
           </div>
           <h1 className="text-xl font-bold text-slate-900 mt-1">{cycleName}</h1>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setNewCycleModalOpen(true)}
-          >
+          <Button variant="secondary" size="sm" onClick={() => setNewCycleModalOpen(true)}>
             + New Cycle
           </Button>
           <Button
@@ -157,9 +158,7 @@ export default function S053PlanningCyclePage(): React.ReactElement {
         >
           <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <span className="font-semibold text-sm">
-              {errorCode ? `[${errorCode}] ` : ""}
-            </span>
+            <span className="font-semibold text-sm">{errorCode ? `[${errorCode}] ` : ""}</span>
             <span className="text-sm">{errorMessage}</span>
           </div>
         </div>
@@ -176,10 +175,7 @@ export default function S053PlanningCyclePage(): React.ReactElement {
             const isCurrent = idx === currentMilestoneIndex;
 
             return (
-              <li
-                key={m.key}
-                className="flex items-center gap-3 flex-1 last:flex-none"
-              >
+              <li key={m.key} className="flex items-center gap-3 flex-1 last:flex-none">
                 <div className="flex flex-col items-center">
                   <button
                     type="button"
@@ -188,20 +184,16 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                       isCompleted
                         ? "bg-green-600 border-green-600 text-white"
                         : isCurrent
-                        ? "bg-blue-600 border-blue-600 text-white ring-4 ring-blue-100"
-                        : "bg-slate-100 border-slate-300 text-slate-500"
+                          ? "bg-blue-600 border-blue-600 text-white ring-4 ring-blue-100"
+                          : "bg-slate-100 border-slate-300 text-slate-500"
                     }`}
                     aria-label={`Milestone: ${m.label} (${m.desc})`}
                     aria-current={isCurrent ? "step" : undefined}
                   >
                     {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
                   </button>
-                  <span className="text-xs font-medium text-slate-900 mt-1">
-                    {m.label}
-                  </span>
-                  <span className="text-[10px] text-slate-500">
-                    {milestoneDates[m.key]}
-                  </span>
+                  <span className="text-xs font-medium text-slate-900 mt-1">{m.label}</span>
+                  <span className="text-[10px] text-slate-500">{milestoneDates[m.key]}</span>
                 </div>
                 {idx < MILESTONES.length - 1 && (
                   <div
@@ -304,7 +296,9 @@ export default function S053PlanningCyclePage(): React.ReactElement {
         {state === "error" && (
           <StatePanel
             state="error"
-            message={errorMessage || "An unexpected error occurred while loading planning cycle details."}
+            message={
+              errorMessage || "An unexpected error occurred while loading planning cycle details."
+            }
             errorCode={errorCode || undefined}
             onRetry={() => loadChecklist(modelId)}
           />
@@ -341,7 +335,10 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                       {submittedCount} / {totalContributors}
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      {totalContributors > 0 ? formatPercent(submittedCount / totalContributors, 0, false) : "0%"} departmental compliance
+                      {totalContributors > 0
+                        ? formatPercent(submittedCount / totalContributors, 0, false)
+                        : "0%"}{" "}
+                      departmental compliance
                     </div>
                   </div>
 
@@ -363,11 +360,11 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                       <span>Collection Conflicts</span>
                       <AlertTriangle className="w-4 h-4 text-amber-600" />
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-2">
-                      {conflicts.length}
-                    </div>
+                    <div className="text-2xl font-bold text-slate-900 mt-2">{conflicts.length}</div>
                     <div className="text-xs text-slate-500 mt-1">
-                      {conflicts.length === 0 ? "No active driver collisions" : "Resolution required before approve"}
+                      {conflicts.length === 0
+                        ? "No active driver collisions"
+                        : "Resolution required before approve"}
                     </div>
                   </div>
                 </div>
@@ -378,11 +375,12 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                     <h2 className="text-sm font-semibold text-slate-900">
                       Departmental Contributors
                     </h2>
-                    <span className="text-xs text-slate-500">
-                      4 active reporting entities
-                    </span>
+                    <span className="text-xs text-slate-500">4 active reporting entities</span>
                   </div>
-                  <table className="w-full text-left text-sm" aria-label="Departmental contributors">
+                  <table
+                    className="w-full text-left text-sm"
+                    aria-label="Departmental contributors"
+                  >
                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
                       <tr>
                         <th className="px-5 py-3">Contributor</th>
@@ -402,17 +400,19 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                                 cnt.status === "approved"
                                   ? "bg-green-100 text-green-800"
                                   : cnt.status === "submitted"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : cnt.status === "conflict"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-slate-100 text-slate-600"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : cnt.status === "conflict"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-slate-100 text-slate-600"
                               }`}
                             >
                               {cnt.status}
                             </span>
                           </td>
                           <td className="px-5 py-3 text-right text-xs text-slate-500">
-                            {cnt.last_submitted_at ? new Date(cnt.last_submitted_at).toLocaleDateString() : "—"}
+                            {cnt.last_submitted_at
+                              ? new Date(cnt.last_submitted_at).toLocaleDateString()
+                              : "—"}
                           </td>
                         </tr>
                       ))}
@@ -435,8 +435,9 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                   <div>
                     <h3 className="font-semibold">Period Close Sequencing Invariants</h3>
                     <p className="text-xs text-blue-800 mt-0.5">
-                      Tasks must be resolved in strict dependency order. Attempting to complete a task before its
-                      predecessors are marked done surfaces <code className="font-mono">CYCLE_TASK_BLOCKED</code>.
+                      Tasks must be resolved in strict dependency order. Attempting to complete a
+                      task before its predecessors are marked done surfaces{" "}
+                      <code className="font-mono">CYCLE_TASK_BLOCKED</code>.
                     </p>
                   </div>
                 </div>
@@ -466,7 +467,9 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                           </button>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm font-semibold ${isDone ? "line-through text-slate-400" : "text-slate-900"}`}>
+                              <span
+                                className={`text-sm font-semibold ${isDone ? "line-through text-slate-400" : "text-slate-900"}`}
+                              >
                                 {task.title}
                               </span>
                               {task.depends_on_id && (
@@ -488,8 +491,8 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                               isDone
                                 ? "bg-green-100 text-green-800"
                                 : isBlocked
-                                ? "bg-red-100 text-red-800"
-                                : "bg-slate-100 text-slate-700"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-slate-100 text-slate-700"
                             }`}
                           >
                             {task.status}
@@ -519,7 +522,8 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                         Export Collection Template
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        Distribute standardized CSV templates containing current driver lines and horizons to BU contributors.
+                        Distribute standardized CSV templates containing current driver lines and
+                        horizons to BU contributors.
                       </p>
                     </div>
                     <div className="mt-4 flex items-center justify-between">
@@ -545,7 +549,8 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                         Ingest Returned Sheet
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        Upload completed collection workbook. Automated validation checks structure and detects driver collisions.
+                        Upload completed collection workbook. Automated validation checks structure
+                        and detects driver collisions.
                       </p>
                     </div>
                     <div className="mt-4 flex items-center gap-2">
@@ -576,15 +581,14 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                         Driver Conflict Resolution Queue
                       </h2>
                     </div>
-                    <span className="text-xs text-slate-500">
-                      {conflicts.length} unresolved
-                    </span>
+                    <span className="text-xs text-slate-500">{conflicts.length} unresolved</span>
                   </div>
 
                   {conflicts.length === 0 ? (
                     <div className="p-8 text-center text-slate-500 text-sm">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                      No driver value conflicts detected. All contributor submissions reconcile cleanly.
+                      No driver value conflicts detected. All contributor submissions reconcile
+                      cleanly.
                     </div>
                   ) : (
                     <table className="w-full text-left text-sm" aria-label="Driver conflict queue">
@@ -607,12 +611,20 @@ export default function S053PlanningCyclePage(): React.ReactElement {
                               {conf.period_id}
                             </td>
                             <td className="px-5 py-3">
-                              <div className="text-xs font-medium text-slate-900">{conf.contributor_a}</div>
-                              <div className="text-xs text-slate-600 font-mono mt-0.5">{conf.value_a}</div>
+                              <div className="text-xs font-medium text-slate-900">
+                                {conf.contributor_a}
+                              </div>
+                              <div className="text-xs text-slate-600 font-mono mt-0.5">
+                                {conf.value_a}
+                              </div>
                             </td>
                             <td className="px-5 py-3">
-                              <div className="text-xs font-medium text-slate-900">{conf.contributor_b}</div>
-                              <div className="text-xs text-slate-600 font-mono mt-0.5">{conf.value_b}</div>
+                              <div className="text-xs font-medium text-slate-900">
+                                {conf.contributor_b}
+                              </div>
+                              <div className="text-xs text-slate-600 font-mono mt-0.5">
+                                {conf.value_b}
+                              </div>
                             </td>
                             <td className="px-5 py-3 text-right">
                               <Button
@@ -642,7 +654,10 @@ export default function S053PlanningCyclePage(): React.ReactElement {
       <footer className="px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-4 text-xs text-slate-600">
           <span>
-            <strong>{submittedCount} / {totalContributors}</strong> departmental plans submitted
+            <strong>
+              {submittedCount} / {totalContributors}
+            </strong>{" "}
+            departmental plans submitted
           </span>
           <span>•</span>
           <span>
@@ -701,13 +716,18 @@ export default function S053PlanningCyclePage(): React.ReactElement {
               </div>
 
               <div>
-                <label htmlFor="cycle-kind" className="block text-xs font-semibold text-slate-700 mb-1">
+                <label
+                  htmlFor="cycle-kind"
+                  className="block text-xs font-semibold text-slate-700 mb-1"
+                >
                   Cycle Kind
                 </label>
                 <select
                   id="cycle-kind"
                   value={newCycleKind}
-                  onChange={(e) => setNewCycleKind(e.target.value as "budget" | "forecast" | "rolling")}
+                  onChange={(e) =>
+                    setNewCycleKind(e.target.value as "budget" | "forecast" | "rolling")
+                  }
                   className="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="budget">Annual Operating Budget</option>
@@ -769,7 +789,8 @@ export default function S053PlanningCyclePage(): React.ReactElement {
             </div>
 
             {(() => {
-              const activeConflict = conflicts.find((c) => c.id === activeConflictId) ?? conflicts[0];
+              const activeConflict =
+                conflicts.find((c) => c.id === activeConflictId) ?? conflicts[0];
               const contribA = activeConflict?.contributor_a ?? "Contributor A";
               const valA = activeConflict?.value_a ?? "—";
               const contribB = activeConflict?.contributor_b ?? "Contributor B";
@@ -778,7 +799,8 @@ export default function S053PlanningCyclePage(): React.ReactElement {
               return (
                 <form onSubmit={handleResolveConflictSubmit} className="space-y-4 mt-4">
                   <p className="text-xs text-slate-600">
-                    Choose authoritative value or calculate average. All resolutions write an HMAC-chained audit entry.
+                    Choose authoritative value or calculate average. All resolutions write an
+                    HMAC-chained audit entry.
                   </p>
 
                   <div className="space-y-2">

@@ -88,8 +88,20 @@ describe("S-055 FVA Store (useFvaStore)", () => {
   // State 2: empty (when line has < 3 versions)
   it("transitions to empty state when all returned lines have < 3 versions", async () => {
     const unqualifyingRows: FvaScoreItem[] = [
-      mockFvaScore({ line_id: "ln-1", version_count: 2, mape_pct: null, bias_pct: null, hit_rate_pct: null }),
-      mockFvaScore({ line_id: "ln-2", version_count: 1, mape_pct: null, bias_pct: null, hit_rate_pct: null }),
+      mockFvaScore({
+        line_id: "ln-1",
+        version_count: 2,
+        mape_pct: null,
+        bias_pct: null,
+        hit_rate_pct: null,
+      }),
+      mockFvaScore({
+        line_id: "ln-2",
+        version_count: 1,
+        mape_pct: null,
+        bias_pct: null,
+        hit_rate_pct: null,
+      }),
     ];
     callMock.mockResolvedValueOnce({
       scores: unqualifyingRows,
@@ -189,7 +201,9 @@ describe("S-055 FVA Store (useFvaStore)", () => {
     expect(s.status).toBe("error");
     expect(s.error?.code).toBe("FVA_RESTATEMENT_FLAG");
     expect(s.hasRestatementBanner).toBe(true);
-    expect(s.restatementMessage).toBe("Actuals were restated for these periods — FVA recomputed; versions unchanged.");
+    expect(s.restatementMessage).toBe(
+      "Actuals were restated for these periods — FVA recomputed; versions unchanged.",
+    );
   });
 
   it("sets persistent banner state when response payload includes restated: true", async () => {
@@ -234,7 +248,16 @@ describe("S-055 FVA Store (useFvaStore)", () => {
   });
 
   it("clearError clears error without resetting other state", () => {
-    useFvaStore.setState({ error: { code: "ERR", userMessage: "test", httpStatus: 500, retryable: false, retryAfterMs: null, details: {} } });
+    useFvaStore.setState({
+      error: {
+        code: "ERR",
+        userMessage: "test",
+        httpStatus: 500,
+        retryable: false,
+        retryAfterMs: null,
+        details: {},
+      },
+    });
     useFvaStore.getState().clearError();
     expect(useFvaStore.getState().error).toBeNull();
   });
@@ -343,7 +366,13 @@ describe("S-055 FVA Store (useFvaStore)", () => {
     it("getKpiAggregate returns nulls when no qualifying lines exist", () => {
       useFvaStore.setState({
         scores: [
-          mockFvaScore({ line_id: "ln-1", version_count: 2, mape_pct: null, bias_pct: null, hit_rate_pct: null }),
+          mockFvaScore({
+            line_id: "ln-1",
+            version_count: 2,
+            mape_pct: null,
+            bias_pct: null,
+            hit_rate_pct: null,
+          }),
         ],
       });
 

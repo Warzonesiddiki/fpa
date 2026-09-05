@@ -19,3 +19,4 @@ src-tauri/build.rs
 .claude
 .codex
 CONTINUE-PROMPT.md
+pnpm-lock.yaml

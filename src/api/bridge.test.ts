@@ -98,4 +98,10 @@ describe("toBridgeError — defensive error shape (B12)", () => {
     expect(toBridgeError(null).code).toBe("INTERNAL");
     expect(toBridgeError(undefined).code).toBe("INTERNAL");
   });
+
+  it("normalizes an error whose code is explicitly undefined", () => {
+    const err = toBridgeError({ code: undefined });
+    expect(err.code).toBe("INTERNAL");
+    expect(err.userMessage).toBe("An unexpected error occurred.");
+  });
 });

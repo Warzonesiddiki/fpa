@@ -315,11 +315,27 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     };
     expect(CommandArgs["statement.get.v1"].safeParse(stmtArgs).success).toBe(true);
     // Empty period scope is allowed — the engine resolves the Company's current period.
-    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, period_scope: [] }).success).toBe(true);
-    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, type: "nope" }).success).toBe(false);
-    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, preset: "nope" }).success).toBe(false);
-    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, rounding: { mode: "nope", largest_remainder: true } }).success).toBe(false);
-    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, bu_scope: { kind: "nope", bu_id: null } }).success).toBe(false);
+    expect(
+      CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, period_scope: [] }).success,
+    ).toBe(true);
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, type: "nope" }).success).toBe(
+      false,
+    );
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, preset: "nope" }).success).toBe(
+      false,
+    );
+    expect(
+      CommandArgs["statement.get.v1"].safeParse({
+        ...stmtArgs,
+        rounding: { mode: "nope", largest_remainder: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      CommandArgs["statement.get.v1"].safeParse({
+        ...stmtArgs,
+        bu_scope: { kind: "nope", bu_id: null },
+      }).success,
+    ).toBe(false);
   });
 
   it("company.archive_year validates {company_id, fy_label}", () => {
@@ -1543,7 +1559,9 @@ describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
       note: "Volume spike due to new customer onboarding",
     };
     expect(VarianceSetReasonCodeArgs.safeParse(validSetReasonArgs).success).toBe(true);
-    expect(CommandArgs["variance.set_reason_code"].safeParse(validSetReasonArgs).success).toBe(true);
+    expect(CommandArgs["variance.set_reason_code"].safeParse(validSetReasonArgs).success).toBe(
+      true,
+    );
     expect(
       VarianceSetReasonCodeArgs.safeParse({
         line_id: "ln-rev",
@@ -1656,4 +1674,3 @@ describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
     ).toBe(false);
   });
 });
-
