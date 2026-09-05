@@ -1818,6 +1818,39 @@ export const VarianceSetReasonCodeData = z.object({
 });
 export type VarianceSetReasonCodeData = z.infer<typeof VarianceSetReasonCodeData>;
 
+/* ── FVA (Forecast Value Add) (F-025, S-055) ────────────────────── */
+
+export const FvaTrend = z.enum(["improving", "worsening", "neutral"]);
+export type FvaTrend = z.infer<typeof FvaTrend>;
+
+export const FvaScoreItem = z.object({
+  line_id: z.string(),
+  line_name: z.string(),
+  business_unit_id: z.string().optional(),
+  business_unit_name: z.string().optional(),
+  version_count: z.number().int(),
+  mape_pct: z.number().nullable(),
+  bias_pct: z.number().nullable(),
+  hit_rate_pct: z.number().nullable(),
+  trend: FvaTrend,
+  sparkline: z.array(z.number()),
+});
+export type FvaScoreItem = z.infer<typeof FvaScoreItem>;
+
+export const FvaGetArgs = z
+  .object({
+    company_id: z.string(),
+    line_ids: z.array(z.string()).optional(),
+  })
+  .strict();
+export type FvaGetArgs = z.infer<typeof FvaGetArgs>;
+
+export const FvaGetData = z.object({
+  scores: z.array(FvaScoreItem),
+  restated: z.boolean().optional(),
+});
+export type FvaGetData = z.infer<typeof FvaGetData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1880,6 +1913,7 @@ export const CommandArgs = {
   "collection.resolve_conflict": CollectionResolveConflictArgs,
   "variance.get": VarianceGetArgs,
   "variance.set_reason_code": VarianceSetReasonCodeArgs,
+  "fva.get": FvaGetArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

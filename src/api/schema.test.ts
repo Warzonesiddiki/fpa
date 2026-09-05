@@ -70,6 +70,10 @@ import {
   VarianceRow,
   VarianceAttributionItem,
   VarianceThreewayItem,
+  FvaGetArgs,
+  FvaGetData,
+  FvaScoreItem,
+  FvaTrend,
 } from "./schema";
 
 describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
@@ -1541,6 +1545,97 @@ describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
     expect(VarianceSetReasonCodeData.safeParse({ saved: true }).success).toBe(true);
     expect(VarianceSetReasonCodeData.safeParse({ saved: false }).success).toBe(true);
     expect(VarianceSetReasonCodeData.safeParse({ saved: "yes" }).success).toBe(false);
+  });
+
+  it("fva.get args and return data schemas validate correctly", () => {
+    // 1. FvaGetArgs
+    const validArgs = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      line_ids: ["ln-rev", "ln-cogs"],
+    };
+    expect(FvaGetArgs.safeParse(validArgs).success).toBe(true);
+    expect(CommandArgs["fva.get"].safeParse(validArgs).success).toBe(true);
+
+    // optional line_ids
+    const minimalArgs = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+    };
+    expect(FvaGetArgs.safeParse(minimalArgs).success).toBe(true);
+    expect(CommandArgs["fva.get"].safeParse(minimalArgs).success).toBe(true);
+
+    // strictness — extra fields rejected
+    expect(
+      FvaGetArgs.safeParse({
+        ...validArgs,
+        extra_prop: 123,
+      }).success,
+    ).toBe(false);
+
+    // missing company_id rejected
+    expect(FvaGetArgs.safeParse({ line_ids: ["ln-rev"] }).success).toBe(false);
+
+    // 2. FvaScoreItem
+    const validScoreItem: FvaScoreItem = {
+      line_id: "ln-rev",
+      line_name: "Gross Revenue",
+      business_unit_id: "bu-us",
+      business_unit_name: "North America",
+      version_count: 4,
+      mape_pct: 4.2,
+      bias_pct: -1.5,
+      hit_rate_pct: 75.0,
+      trend: "improving",
+      sparkline: [6.1, 5.5, 4.8, 4.2],
+    };
+    expect(FvaScoreItem.safeParse(validScoreItem).success).toBe(true);
+
+    // version_count < 3 with null metrics
+    const fewVersionsScoreItem: FvaScoreItem = {
+      line_id: "ln-cogs",
+      line_name: "Cost of Goods Sold",
+      version_count: 2,
+      mape_pct: null,
+      bias_pct: null,
+      hit_rate_pct: null,
+      trend: "neutral",
+      sparkline: [12.0, 11.5],
+    };
+    expect(FvaScoreItem.safeParse(fewVersionsScoreItem).success).toBe(true);
+
+    // trend enum validation
+    expect(FvaTrend.safeParse("improving").success).toBe(true);
+    expect(FvaTrend.safeParse("worsening").success).toBe(true);
+    expect(FvaTrend.safeParse("neutral").success).toBe(true);
+    expect(FvaTrend.safeParse("unknown").success).toBe(false);
+
+    // version_count must be integer
+    expect(
+      FvaScoreItem.safeParse({
+        ...validScoreItem,
+        version_count: 3.5,
+      }).success,
+    ).toBe(false);
+
+    // 3. FvaGetData
+    const validData: FvaGetData = {
+      scores: [validScoreItem, fewVersionsScoreItem],
+      restated: false,
+    };
+    expect(FvaGetData.safeParse(validData).success).toBe(true);
+
+    // optional restated
+    expect(
+      FvaGetData.safeParse({
+        scores: [validScoreItem],
+      }).success,
+    ).toBe(true);
+
+    // invalid score item rejected
+    expect(
+      FvaGetData.safeParse({
+        scores: [{ invalid: true }],
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ import { ComparePage } from "@/pages/s051-compare/lazy";
 import { WhatIfPage } from "@/pages/s052-whatif/lazy";
 import { PlanningCyclePage } from "@/pages/s053-cycle/lazy";
 import { VariancePage } from "@/pages/s054-variance/lazy";
+import { FvaPage } from "@/pages/s055-fva/lazy";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -120,6 +121,15 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
             <VariancePage />
+          </Suspense>
+        ),
+      },
+      // S-055 (F-025): FVA screen under /analyze/fva
+      {
+        path: "analyze/fva",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <FvaPage />
           </Suspense>
         ),
       },

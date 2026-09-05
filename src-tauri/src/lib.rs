@@ -23,6 +23,7 @@ use commands::cycle::{
     cycle_start, cycle_task_update,
 };
 use commands::driver::{driver_set_value, driver_upsert};
+use commands::fva::fva_get;
 use commands::import::{
     ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
     import_rollback, import_tieout, import_validate,
@@ -119,6 +120,7 @@ pub fn run() {
             collection_resolve_conflict,
             variance_get,
             variance_set_reason_code,
+            fva_get,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

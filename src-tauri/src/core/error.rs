@@ -170,6 +170,9 @@ pub enum AppError {
     VarianceSourceMixed,
     #[error("attribution unavailable for these lines")]
     VarianceNoAttributionData,
+    // ── FVA Forecast Value Add (F-025 · M5-3 · ERROR-HANDLING §E) ──────────────────────────
+    #[error("actuals were restated for these periods")]
+    FvaRestatementFlag,
 }
 
 impl AppError {
@@ -253,6 +256,7 @@ impl AppError {
             AppError::VarianceNoAttributionData => {
                 ("VARIANCE_NO_ATTRIBUTION_DATA", 200, false, None)
             }
+            AppError::FvaRestatementFlag => ("FVA_RESTATEMENT_FLAG", 200, true, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -668,6 +672,9 @@ impl AppError {
             AppError::VarianceNoAttributionData => {
                 "Attribution unavailable for these lines — no unit/driver data. Show $ variance only."
             }
+            AppError::FvaRestatementFlag => {
+                "Actuals were restated for these periods — FVA recomputed; versions unchanged."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -906,6 +913,10 @@ impl AppError {
 
     pub fn variance_no_attribution_data() -> Self {
         AppError::VarianceNoAttributionData
+    }
+
+    pub fn fva_restatement_flag() -> Self {
+        AppError::FvaRestatementFlag
     }
 }
 
@@ -1176,6 +1187,15 @@ mod tests {
         assert_eq!(
             var_no_attr.user_message,
             "Attribution unavailable for these lines — no unit/driver data. Show $ variance only."
+        );
+
+        let fva_restated = AppError::fva_restatement_flag().body();
+        assert_eq!(fva_restated.code, "FVA_RESTATEMENT_FLAG");
+        assert_eq!(fva_restated.http_status, 200);
+        assert!(fva_restated.retryable);
+        assert_eq!(
+            fva_restated.user_message,
+            "Actuals were restated for these periods — FVA recomputed; versions unchanged."
         );
     }
 }

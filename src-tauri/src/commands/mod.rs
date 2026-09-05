@@ -4,6 +4,7 @@ pub mod coa;
 pub mod company;
 pub mod cycle;
 pub mod driver;
+pub mod fva;
 pub mod import;
 pub mod license;
 pub mod model;

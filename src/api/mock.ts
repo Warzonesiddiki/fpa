@@ -26,6 +26,7 @@ import {
   type VarianceRow,
   type VarianceAttributionItem,
   type VarianceThreewayItem,
+  type FvaScoreItem,
 } from "./schema";
 import {
   validateHeadcountRows,
@@ -3020,6 +3021,130 @@ export async function mockInvoke<C extends CommandName>(
       return {
         data: {
           saved: true,
+        },
+      };
+    }
+    /* ── FVA (Forecast Value Add) (F-025 · M5-3 · S-055) ───────────── */
+    case "fva.get": {
+      const fvaArgs = (args ?? {}) as {
+        company_id?: string;
+        line_ids?: string[];
+      };
+      const companyId = fvaArgs.company_id ?? "";
+      const argsStr = JSON.stringify(fvaArgs);
+
+      // Dev trigger: restatement banner test
+      if (companyId.includes("restated") || argsStr.includes("restated")) {
+        return mockError(
+          "FVA_RESTATEMENT_FLAG",
+          "actuals were restated for these periods — FVA recomputed; versions unchanged",
+          "Actuals were restated for these periods — FVA recomputed; versions unchanged.",
+          200,
+          true,
+          { company_id: companyId },
+        );
+      }
+
+      // Count locked versions across all scenarios for this active model/company
+      const totalVersionCount = [...mockScenarioVersions.values()].reduce(
+        (acc, vers) => acc + vers.length,
+        0,
+      );
+
+      // S-055 Empty state when version count < 3: "Need >= 3 Forecast Versions to score a line"
+      if (totalVersionCount < 3) {
+        return {
+          data: {
+            scores: [],
+            restated: false,
+          },
+        };
+      }
+
+      // When versions >= 3, compute realistic MAPE (e.g. 6.4%), bias (e.g. +1.8%), hit rate (e.g. 71%), and sparkline points
+      // Line-level and BU rollup FVA scores:
+      const allScores: FvaScoreItem[] = [
+        // Line 1: Product Revenue
+        {
+          line_id: "ln-rev-product",
+          line_name: "Product Revenue",
+          business_unit_id: "bu-na",
+          business_unit_name: "North America",
+          version_count: totalVersionCount,
+          mape_pct: 6.4,
+          bias_pct: 1.8,
+          hit_rate_pct: 71.0,
+          trend: "improving",
+          sparkline: [8.5, 7.8, 7.1, 6.9, 6.4],
+        },
+        // Line 2: Services Revenue
+        {
+          line_id: "ln-rev-service",
+          line_name: "Services Revenue",
+          business_unit_id: "bu-na",
+          business_unit_name: "North America",
+          version_count: totalVersionCount,
+          mape_pct: 5.2,
+          bias_pct: -0.9,
+          hit_rate_pct: 78.0,
+          trend: "improving",
+          sparkline: [7.2, 6.5, 5.9, 5.4, 5.2],
+        },
+        // Line 3: Cost of Goods Sold
+        {
+          line_id: "ln-cogs-direct",
+          line_name: "Direct COGS",
+          business_unit_id: "bu-emea",
+          business_unit_name: "EMEA",
+          version_count: totalVersionCount,
+          mape_pct: 9.1,
+          bias_pct: 3.4,
+          hit_rate_pct: 62.0,
+          trend: "worsening",
+          sparkline: [6.8, 7.2, 7.9, 8.4, 9.1],
+        },
+        // BU Rollup 1: North America (Group rollup strip)
+        {
+          line_id: "bu-rollup-na",
+          line_name: "North America Rollup",
+          business_unit_id: "bu-na",
+          business_unit_name: "North America",
+          version_count: totalVersionCount,
+          mape_pct: 5.8,
+          bias_pct: 0.5,
+          hit_rate_pct: 75.0,
+          trend: "improving",
+          sparkline: [7.9, 7.2, 6.5, 6.2, 5.8],
+        },
+        // BU Rollup 2: EMEA (Group rollup strip)
+        {
+          line_id: "bu-rollup-emea",
+          line_name: "EMEA Rollup",
+          business_unit_id: "bu-emea",
+          business_unit_name: "EMEA",
+          version_count: totalVersionCount,
+          mape_pct: 9.1,
+          bias_pct: 3.4,
+          hit_rate_pct: 62.0,
+          trend: "worsening",
+          sparkline: [6.8, 7.2, 7.9, 8.4, 9.1],
+        },
+      ];
+
+      const requestedLineIds = fvaArgs.line_ids;
+      const scores =
+        requestedLineIds && requestedLineIds.length > 0
+          ? allScores.filter(
+              (s) =>
+                requestedLineIds.includes(s.line_id) ||
+                (s.business_unit_id && requestedLineIds.includes(s.business_unit_id)),
+            )
+          : allScores;
+
+      return {
+        data: {
+          scores,
+          restated: false,
         },
       };
     }

@@ -3,7 +3,16 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
-### Added
+- **M5-3 FVA Engine & S-055 Screen (F-025 · SCREENS-SPEC S-055 · API-SPEC fva.get, 2026-09-05):**
+  Added Forecast Value Add (FVA) scoring via native Rust command `fva_get` (`fva.get` in `src-tauri/src/commands/fva.rs`).
+  Implemented exact Decimal arithmetic for MAPE (Mean Absolute Percentage Error), Bias (Mean Directional Error), and Hit Rate
+  (within $\pm 5\%$ tolerance band) with MidpointAwayFromZero rounding, version count threshold ($\ge 3$ forecast versions required
+  to score a line, returning empty state when $<3$), and `FVA_RESTATEMENT_FLAG` detection when actuals batches are rolled back or
+  restated. Added Zod schemas in `src/api/schema.ts` and dev mock bridges in `src/api/mock.ts`. Built `useFvaStore` (`src/stores/fva.ts`)
+  supporting all 5 canonical screen states, horizon and version set selection, KPI aggregations, and BU rollup strips. Implemented
+  accessible S-055 FVA screen (`src/pages/s055-fva/`) with 3-up KPI score cards, accessible formula modal, persistent restatement
+  banner above MAIN, by-line table with accessible trend chips (never color alone), BU rollup strip, CSV export, lazy routing
+  at `/app/analyze/fva`, and full test coverage (3 cargo tests, 32 vitest tests across schema, mock, store, and S-055 page, vitest-axe clean).
 - **M5-1 Variance Engine & M5-2 Attribution & Reason Codes (F-024 · SCREENS-SPEC S-054 · API-SPEC variance.*, 2026-09-05):**
   Added variance calculation and attribution decomposition via native Rust commands (`variance_get` and `variance_set_reason_code`
   in `src-tauri/src/commands/variance.rs`). Implemented exact integer-minor arithmetic, Decimal percentages (`calculate_decimal_pct`

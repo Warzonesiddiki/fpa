@@ -1564,5 +1564,146 @@ describe("dev mock — scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–
       );
     });
   });
+
+  describe("fva.get (F-025 · M5-3 · S-055)", () => {
+    beforeEach(() => {
+      resetMockScenarioState();
+    });
+
+    it("returns empty scores when version count < 3", async () => {
+      // Base scenario exists by default with 0 locked versions
+      const res = (await mockInvoke("fva.get", {
+        company_id: "c-01",
+      })) as {
+        data: {
+          scores: unknown[];
+          restated?: boolean;
+        };
+      };
+      expect(res.data).toBeDefined();
+      expect(res.data.scores).toEqual([]);
+      expect(res.data.restated).toBe(false);
+    });
+
+    it("returns realistic line-level and BU rollup scores when versions >= 3", async () => {
+      // Create 3 locked versions on Base scenario
+      await mockInvoke("session.unlock", {
+        pin: "Meridian2026",
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      });
+      const scenarios = await listScenarios();
+      const scenId = scenarios[0].id;
+
+      // Transition 1: Draft -> Review -> Approved -> Locked (creates v1)
+      await mockInvoke("scenario.submit", { scenario_id: scenId });
+      await mockInvoke("scenario.approve", { scenario_id: scenId });
+      await mockInvoke("scenario.lock", { scenario_id: scenId });
+
+      // Transition 2: Reopen -> Draft -> Review -> Approved -> Locked (creates v2)
+      await mockInvoke("scenario.reopen", { scenario_id: scenId, reason: "forecast update 1" });
+      await mockInvoke("scenario.submit", { scenario_id: scenId });
+      await mockInvoke("scenario.approve", { scenario_id: scenId });
+      await mockInvoke("scenario.lock", { scenario_id: scenId });
+
+      // Transition 3: Reopen -> Draft -> Review -> Approved -> Locked (creates v3)
+      await mockInvoke("scenario.reopen", { scenario_id: scenId, reason: "forecast update 2" });
+      await mockInvoke("scenario.submit", { scenario_id: scenId });
+      await mockInvoke("scenario.approve", { scenario_id: scenId });
+      await mockInvoke("scenario.lock", { scenario_id: scenId });
+
+      const res = (await mockInvoke("fva.get", {
+        company_id: "c-01",
+      })) as {
+        data: {
+          scores: Array<{
+            line_id: string;
+            line_name: string;
+            business_unit_id?: string;
+            business_unit_name?: string;
+            version_count: number;
+            mape_pct: number | null;
+            bias_pct: number | null;
+            hit_rate_pct: number | null;
+            trend: string;
+            sparkline: number[];
+          }>;
+          restated?: boolean;
+        };
+      };
+
+      expect(res.data).toBeDefined();
+      expect(res.data.scores.length).toBe(5);
+      expect(res.data.restated).toBe(false);
+
+      // Line 1: Product Revenue
+      const prodRev = res.data.scores.find((s) => s.line_id === "ln-rev-product")!;
+      expect(prodRev).toBeDefined();
+      expect(prodRev.line_name).toBe("Product Revenue");
+      expect(prodRev.business_unit_name).toBe("North America");
+      expect(prodRev.version_count).toBeGreaterThanOrEqual(3);
+      expect(prodRev.mape_pct).toBe(6.4);
+      expect(prodRev.bias_pct).toBe(1.8);
+      expect(prodRev.hit_rate_pct).toBe(71.0);
+      expect(prodRev.trend).toBe("improving");
+      expect(prodRev.sparkline).toEqual([8.5, 7.8, 7.1, 6.9, 6.4]);
+
+      // Line 2: Services Revenue
+      const srvRev = res.data.scores.find((s) => s.line_id === "ln-rev-service")!;
+      expect(srvRev).toBeDefined();
+      expect(srvRev.mape_pct).toBe(5.2);
+      expect(srvRev.bias_pct).toBe(-0.9);
+      expect(srvRev.hit_rate_pct).toBe(78.0);
+      expect(srvRev.trend).toBe("improving");
+
+      // BU Rollup North America
+      const naRollup = res.data.scores.find((s) => s.line_id === "bu-rollup-na")!;
+      expect(naRollup).toBeDefined();
+      expect(naRollup.business_unit_id).toBe("bu-na");
+      expect(naRollup.mape_pct).toBe(5.8);
+      expect(naRollup.bias_pct).toBe(0.5);
+      expect(naRollup.hit_rate_pct).toBe(75.0);
+
+      // Filter by line_ids
+      const filteredRes = (await mockInvoke("fva.get", {
+        company_id: "c-01",
+        line_ids: ["ln-rev-product"],
+      })) as {
+        data: {
+          scores: Array<{ line_id: string }>;
+        };
+      };
+      expect(filteredRes.data.scores.length).toBe(1);
+      expect(filteredRes.data.scores[0].line_id).toBe("ln-rev-product");
+    });
+
+    it("triggers FVA_RESTATEMENT_FLAG error when company_id or args contains 'restated'", async () => {
+      const errCompany = (await mockInvoke("fva.get", {
+        company_id: "c-restated",
+      })) as {
+        error: {
+          code: string;
+          httpStatus: number;
+          retryable: boolean;
+          userMessage: string;
+        };
+      };
+      expect(errCompany.error.code).toBe("FVA_RESTATEMENT_FLAG");
+      expect(errCompany.error.httpStatus).toBe(200);
+      expect(errCompany.error.retryable).toBe(true);
+      expect(errCompany.error.userMessage).toBe(
+        "Actuals were restated for these periods — FVA recomputed; versions unchanged.",
+      );
+
+      const errLine = (await mockInvoke("fva.get", {
+        company_id: "c-01",
+        line_ids: ["ln-restated"],
+      })) as {
+        error: {
+          code: string;
+        };
+      };
+      expect(errLine.error.code).toBe("FVA_RESTATEMENT_FLAG");
+    });
+  });
 });
 
