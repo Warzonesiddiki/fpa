@@ -304,6 +304,24 @@ describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
     expect(CompanyCloneData.safeParse({ company_id: "nope" }).success).toBe(false);
   });
 
+  it("statement.get.v1 parses typed args and rejects invalid shapes (F-027)", () => {
+    const stmtArgs = {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      type: "pl",
+      period_scope: ["3f9f2c9e-9f8b-4e2d-9a1c-200000000001"],
+      preset: "us_gaap",
+      rounding: { mode: "thousands", largest_remainder: true },
+      bu_scope: { kind: "all", bu_id: null },
+    };
+    expect(CommandArgs["statement.get.v1"].safeParse(stmtArgs).success).toBe(true);
+    // Empty period scope is allowed — the engine resolves the Company's current period.
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, period_scope: [] }).success).toBe(true);
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, type: "nope" }).success).toBe(false);
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, preset: "nope" }).success).toBe(false);
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, rounding: { mode: "nope", largest_remainder: true } }).success).toBe(false);
+    expect(CommandArgs["statement.get.v1"].safeParse({ ...stmtArgs, bu_scope: { kind: "nope", bu_id: null } }).success).toBe(false);
+  });
+
   it("company.archive_year validates {company_id, fy_label}", () => {
     const valid = { company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001", fy_label: "FY2027" };
     expect(CommandArgs["company.archive_year"].safeParse(valid).success).toBe(true);

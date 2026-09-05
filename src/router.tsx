@@ -13,6 +13,7 @@ import { WhatIfPage } from "@/pages/s052-whatif/lazy";
 import { PlanningCyclePage } from "@/pages/s053-cycle/lazy";
 import { VariancePage } from "@/pages/s054-variance/lazy";
 import { FvaPage } from "@/pages/s055-fva/lazy";
+import { StatementsPage } from "@/pages/s060-statements/lazy";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -134,6 +135,20 @@ export const router = createBrowserRouter([
         ),
       },
       // S-073 (F-035): the shell's "Governance" nav target. S-074 (Backup) lands here in M2.
+      // S-060 (F-027): Statement suite under /reports/statements. Bounded here: pl/bs/cf skeleton.
+      { path: "reports", element: <Navigate to="/app/reports/statements/pl" replace /> },
+      {
+        path: "reports/statements",
+        element: <Navigate to="/app/reports/statements/pl" replace />,
+      },
+      {
+        path: "reports/statements/:type",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <StatementsPage />
+          </Suspense>
+        ),
+      },
       { path: "governance", element: <Navigate to="/app/governance/license" replace /> },
       { path: "governance/license", element: <LicensePage /> },
       { path: "settings", element: <SettingsPage /> },

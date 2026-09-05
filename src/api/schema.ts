@@ -1818,6 +1818,91 @@ export const VarianceSetReasonCodeData = z.object({
 });
 export type VarianceSetReasonCodeData = z.infer<typeof VarianceSetReasonCodeData>;
 
+/* ── Statements (F-027, M6-1, S-060) ────────────────────────────── */
+
+export const StatementType = z.enum(["pl", "bs", "cf", "soce", "segment"]);
+export type StatementType = z.infer<typeof StatementType>;
+
+export const StatementPreset = z.enum(["us_gaap", "ifrs"]);
+export type StatementPreset = z.infer<typeof StatementPreset>;
+
+export const RoundingMode = z.enum(["major_units", "thousands", "two_decimals"]);
+export type RoundingMode = z.infer<typeof RoundingMode>;
+
+export const RoundingRequest = z.object({
+  mode: RoundingMode,
+  largest_remainder: z.boolean(),
+});
+export type RoundingRequest = z.infer<typeof RoundingRequest>;
+
+export const BuScope = z.object({
+  kind: z.enum(["all", "group", "single"]),
+  bu_id: Uuid.nullable().optional(),
+});
+export type BuScope = z.infer<typeof BuScope>;
+
+export const StatementLineValues = z.record(
+  z.string(),
+  MoneyMinor,
+);
+export type StatementLineValues = z.infer<typeof StatementLineValues>;
+
+export const StatementLine = z.object({
+  account_id: Uuid,
+  label: z.string(),
+  values: StatementLineValues,
+});
+export type StatementLine = z.infer<typeof StatementLine>;
+
+export const StatementSection = z.object({
+  section: z.string(),
+  lines: z.array(StatementLine),
+});
+export type StatementSection = z.infer<typeof StatementSection>;
+
+export const StatementTotals = z.object({
+  revenue: MoneyMinor.nullable(),
+  gross_profit: MoneyMinor.nullable(),
+  operating_income: MoneyMinor.nullable(),
+  net_income: MoneyMinor.nullable(),
+  total_assets: MoneyMinor.nullable(),
+  total_liabilities: MoneyMinor.nullable(),
+  total_equity: MoneyMinor.nullable(),
+  net_cash_change: MoneyMinor.nullable(),
+  ending_cash: MoneyMinor.nullable(),
+});
+export type StatementTotals = z.infer<typeof StatementTotals>;
+
+export const StatementTieOutFinding = z.object({
+  code: z.string(),
+  message: z.string(),
+  detail: z.string(),
+});
+export type StatementTieOutFinding = z.infer<typeof StatementTieOutFinding>;
+
+export const StatementGetData = z.object({
+  rows: z.array(StatementSection),
+  totals: StatementTotals,
+  tieout_status: z.enum(["pass", "fail"]),
+  rounding_status: z.enum(["exact", "approximate"]),
+  findings: z.array(StatementTieOutFinding).default([]),
+  /** ISO 4217 reporting-currency code — rows/totals are exact minor units of it. */
+  currency: z.string().default("USD"),
+});
+export type StatementGetData = z.infer<typeof StatementGetData>;
+
+export const StatementGetArgs = z.object({
+  company_id: Uuid,
+  type: StatementType,
+  // Empty scope = the engine resolves the Company's current (latest with committed
+  // Actuals) fiscal period (API-SPEC §6 single-period scope).
+  period_scope: z.array(Uuid),
+  preset: StatementPreset,
+  rounding: RoundingRequest,
+  bu_scope: BuScope,
+});
+export type StatementGetArgs = z.infer<typeof StatementGetArgs>;
+
 /* ── FVA (Forecast Value Add) (F-025, S-055) ────────────────────── */
 
 export const FvaTrend = z.enum(["improving", "worsening", "neutral"]);
@@ -1914,6 +1999,7 @@ export const CommandArgs = {
   "variance.get": VarianceGetArgs,
   "variance.set_reason_code": VarianceSetReasonCodeArgs,
   "fva.get": FvaGetArgs,
+  "statement.get.v1": StatementGetArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

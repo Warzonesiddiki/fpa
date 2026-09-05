@@ -173,6 +173,14 @@ pub enum AppError {
     // ── FVA Forecast Value Add (F-025 · M5-3 · ERROR-HANDLING §E) ──────────────────────────
     #[error("actuals were restated for these periods")]
     FvaRestatementFlag,
+    // ── Statement suite (F-027 · M6-1 · ERROR-HANDLING) ────────────────────────────────────
+    #[error("statement tie-out failed: {detail}")]
+    StatementTieOutFailed {
+        detail: String,
+        findings: serde_json::Value,
+    },
+    #[error("statement scope mixes periods, calendars or currencies")]
+    StatementSourceMixed,
 }
 
 impl AppError {
@@ -257,6 +265,12 @@ impl AppError {
                 ("VARIANCE_NO_ATTRIBUTION_DATA", 200, false, None)
             }
             AppError::FvaRestatementFlag => ("FVA_RESTATEMENT_FLAG", 200, true, None),
+            // ERROR-HANDLING: statement codes are 422, never retryable (the fix is in the
+            // data/scope, not the call).
+            AppError::StatementTieOutFailed { .. } => {
+                ("STATEMENT_TIE_OUT_FAILED", 422, false, None)
+            }
+            AppError::StatementSourceMixed => ("STATEMENT_SOURCE_MIXED", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -675,6 +689,24 @@ impl AppError {
             AppError::FvaRestatementFlag => {
                 "Actuals were restated for these periods — FVA recomputed; versions unchanged."
             }
+            // Exact documented text (ERROR-HANDLING §G, verbatim with the placeholders).
+            AppError::StatementTieOutFailed { detail, findings } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Statement does not tie ({detail}). Export blocked — fix {findings} first.",
+                        findings = findings_text(findings)
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "findings": findings }),
+                };
+            }
+            AppError::StatementSourceMixed => {
+                "Period/currency mix in scope is not comparable. Align scope or use Group translation."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -917,6 +949,39 @@ impl AppError {
 
     pub fn fva_restatement_flag() -> Self {
         AppError::FvaRestatementFlag
+    }
+
+    pub fn statement_tie_out_failed(
+        detail: impl Into<String>,
+        findings: serde_json::Value,
+    ) -> Self {
+        AppError::StatementTieOutFailed {
+            detail: detail.into(),
+            findings,
+        }
+    }
+
+    pub fn statement_source_mixed() -> Self {
+        AppError::StatementSourceMixed
+    }
+}
+
+/// Render a statement finding list for the documented STATEMENT_TIE_OUT_FAILED template
+/// (ERROR-HANDLING §G): short codes joined, never raw JSON in a user message.
+fn findings_text(findings: &serde_json::Value) -> String {
+    match findings.as_array() {
+        Some(list) if !list.is_empty() => {
+            let codes: Vec<String> = list
+                .iter()
+                .filter_map(|f| f.get("code").and_then(|c| c.as_str()).map(str::to_string))
+                .collect();
+            if codes.is_empty() {
+                format!("{} findings", list.len())
+            } else {
+                codes.join(", ")
+            }
+        }
+        _ => "the listed findings".to_string(),
     }
 }
 

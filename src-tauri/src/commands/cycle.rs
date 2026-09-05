@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn default_tasks_have_expected_sequence() {
-        let task_titles = vec![
+        let task_titles = [
             "Import all BU actuals",
             "Run GL tie-out and reconcile accounts",
             "Execute Health Check and review integrity rules",

@@ -1289,5 +1289,80 @@
     "errors": {
       "load": "Compare could not be loaded."
     }
+  },
+  "statementsPage": {
+    "title": "Statements",
+    "subtitle": "Profit & Loss, Balance Sheet, Cash Flow",
+    "tabsNav": "Statement tabs",
+    "types": {
+      "pl": "Profit & Loss",
+      "bs": "Balance Sheet",
+      "cf": "Cash Flow",
+      "soce": "Statement of Changes in Equity",
+      "segment": "Segment Report"
+    },
+    "typeShort": {
+      "pl": "P&L",
+      "bs": "Balance Sheet",
+      "cf": "Cash Flow"
+    },
+    "pending": "(pending)",
+    "presetLabel": "Preset",
+    "presetSelectAria": "Presentation preset",
+    "presets": {
+      "us_gaap": "US GAAP",
+      "ifrs": "IFRS"
+    },
+    "presetBadge": {
+      "us_gaap": "GAAP",
+      "ifrs": "IFRS"
+    },
+    "roundingLabel": "Rounding",
+    "roundingSelectAria": "Rounding mode",
+    "roundingModes": {
+      "two_decimals": "2 decimals",
+      "major_units": "Major units",
+      "thousands": "000s"
+    },
+    "largestRemainderAria": "Largest remainder allocation",
+    "largestRemainderOn": "Largest remainder: on",
+    "largestRemainderOff": "Largest remainder: off",
+    "periodLabel": "Period",
+    "periodSelectAria": "Statement period",
+    "noPeriods": "No periods",
+    "totalsLabel": "Totals (periods in scope)",
+    "totals": {
+      "revenue": "Revenue",
+      "gross_profit": "Gross Profit",
+      "operating_income": "Operating Income",
+      "net_income": "Net Income",
+      "total_assets": "Total Assets",
+      "total_liabilities": "Total Liabilities",
+      "total_equity": "Total Equity",
+      "net_cash_change": "Net Cash Change",
+      "ending_cash": "Ending Cash"
+    },
+    "bodyLabel": "Statement body",
+    "metaLabel": "Statement metadata",
+    "meta": "{{type}} · {{preset}} · {{count}} period · {{currency}}",
+    "meta_other": "{{type}} · {{preset}} · {{count}} periods · {{currency}}",
+    "emptyTitle": "No data for period",
+    "emptyBody": "There are no Actuals for the selected period yet. Import a GL dump or Excel/CSV to populate this statement.",
+    "noCompanyTitle": "No Company open",
+    "noCompanyBody": "Open a Company to view its financial statements.",
+    "loadingLabel": "Loading statement",
+    "errorTitle": "Statement error",
+    "findingsLabel": "Tie-out findings",
+    "tieout": {
+      "pass": "Tie-out: Pass",
+      "fail": "Tie-out: Fail"
+    },
+    "rounding": {
+      "exact": "Rounding: Exact",
+      "approximate": "Rounding: Approximate"
+    },
+    "integrityLabel": "Statement integrity",
+    "retry": "Retry",
+    "footer": "Values are exact minor units of the reporting currency; display rounding is largest-remainder allocated so subtotals tie to totals."
   }
 }

@@ -3024,7 +3024,138 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
-    /* ── FVA (Forecast Value Add) (F-025 · M5-3 · S-055) ───────────── */
+    /* ── Statements (F-027 · M6-1 · S-060) ─────────────────────────── */
+    // Mirrors the Rust `statement.get.v1` engine contract: canonical rows (one line per
+    // account with a per-period value map), presentation signs per MONEY-ROUNDING-SPEC §5
+    // (P&L credit income positive / debit costs negative; BS keeps the ledger sign so
+    // Assets + Liabilities + Equity == 0), totals aggregated over the whole period scope.
+    case "statement.get.v1": {
+      const sArgs = (args ?? {}) as {
+        company_id: string;
+        type: string;
+        period_scope: string[];
+        preset: string;
+        rounding: { mode: string; largest_remainder: boolean };
+        bu_scope: { kind: string; bu_id?: string };
+      };
+      if (sArgs.company_id.includes("tieout_fail") || sArgs.period_scope.includes("bad")) {
+        return mockError(
+          "STATEMENT_TIE_OUT_FAILED",
+          "statement does not tie (assets != liabilities + equity)",
+          "Statement does not tie (Assets ≠ Liabilities + Equity). Export blocked — fix findings first.",
+          422,
+          false,
+          { section: "Balance Sheet" },
+        );
+      }
+      if (sArgs.company_id.includes("source_mixed") || sArgs.bu_scope?.kind === "group") {
+        return mockError(
+          "STATEMENT_SOURCE_MIXED",
+          "period/currency mix in scope is not comparable",
+          "Period/currency mix in scope is not comparable. Align scope or use Group translation.",
+          422,
+          false,
+        );
+      }
+      if (sArgs.type !== "pl" && sArgs.type !== "bs") {
+        // cf/soce/segment are not computed in M6-1 — never fabricate rows.
+        return {
+          data: {
+            rows: [],
+            totals: {
+              revenue: null,
+              gross_profit: null,
+              operating_income: null,
+              net_income: null,
+              total_assets: null,
+              total_liabilities: null,
+              total_equity: null,
+              net_cash_change: null,
+              ending_cash: null,
+            },
+            tieout_status: "pass",
+            rounding_status: "exact",
+            findings: [],
+            currency: "USD",
+          },
+        };
+      }
+      const isPl = sArgs.type === "pl";
+      const pl = [
+        {
+          section: "Revenue",
+          lines: [
+            { account_id: "a-rev", label: "Sales Revenue", values: { fp_2026_p01: 1000000, fp_2026_p02: 1200000 } },
+          ],
+        },
+        {
+          section: "Cost of Goods Sold",
+          lines: [
+            { account_id: "a-cogs", label: "Direct Materials", values: { fp_2026_p01: -600000, fp_2026_p02: -700000 } },
+          ],
+        },
+        {
+          section: "Operating Expenses",
+          lines: [
+            { account_id: "a-opex", label: "Salaries & Wages", values: { fp_2026_p01: -200000, fp_2026_p02: -200000 } },
+          ],
+        },
+      ];
+      const bs = [
+        {
+          section: "Current Assets",
+          lines: [
+            { account_id: "a-asset", label: "Cash", values: { fp_2026_p01: 500000, fp_2026_p02: 760000 } },
+          ],
+        },
+        {
+          section: "Current Liabilities",
+          lines: [
+            { account_id: "a-liab", label: "Accounts Payable", values: { fp_2026_p01: -200000, fp_2026_p02: -300000 } },
+          ],
+        },
+        {
+          section: "Equity",
+          lines: [
+            { account_id: "a-equity", label: "Retained Earnings", values: { fp_2026_p01: -300000, fp_2026_p02: -460000 } },
+          ],
+        },
+      ];
+      const rows = isPl ? pl : bs;
+      const totals = isPl
+        ? {
+            revenue: 2200000,
+            gross_profit: 900000,
+            operating_income: 500000,
+            net_income: 500000,
+            total_assets: null,
+            total_liabilities: null,
+            total_equity: null,
+            net_cash_change: null,
+            ending_cash: null,
+          }
+        : {
+            revenue: null,
+            gross_profit: null,
+            operating_income: null,
+            net_income: null,
+            total_assets: 1260000,
+            total_liabilities: -500000,
+            total_equity: -760000,
+            net_cash_change: null,
+            ending_cash: null,
+          };
+      return {
+        data: {
+          rows,
+          totals,
+          tieout_status: "pass",
+          rounding_status: sArgs.rounding.largest_remainder ? "exact" : "approximate",
+          findings: [],
+          currency: "USD",
+        },
+      };
+    }
     case "fva.get": {
       const fvaArgs = (args ?? {}) as {
         company_id?: string;
