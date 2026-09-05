@@ -98,9 +98,7 @@ describe("S-051 Model Compare page (F-022 · M4-3 · SCREENS-SPEC S-051)", () =>
     });
     render(<ComparePage />);
 
-    expect(
-      screen.getByText(/Cannot compare: Models\/COAs differ/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Cannot compare: Models\/COAs differ/i)).toBeInTheDocument();
     expect(screen.getByText(/COMPARE_INCOMPATIBLE/i)).toBeInTheDocument();
 
     const retryBtn = screen.getByRole("button", { name: /Retry/i });

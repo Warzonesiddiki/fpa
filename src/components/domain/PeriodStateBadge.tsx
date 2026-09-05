@@ -9,10 +9,14 @@ import { useTranslation } from "react-i18next";
 import { useModelGridStore, type PeriodState } from "@/stores/model";
 
 const PERIOD_STATE_TONE: Record<PeriodState, string> = {
-  ACTUAL: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200 border-sky-300 dark:border-sky-800",
-  FORECAST: "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200 border-indigo-300 dark:border-indigo-800",
-  PLAN_ONLY: "bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)] border-[var(--color-oneborder)]",
-  HYBRID: "bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-800",
+  ACTUAL:
+    "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200 border-sky-300 dark:border-sky-800",
+  FORECAST:
+    "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200 border-indigo-300 dark:border-indigo-800",
+  PLAN_ONLY:
+    "bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)] border-[var(--color-oneborder)]",
+  HYBRID:
+    "bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-800",
 };
 
 export function PeriodStateBadge() {
@@ -38,4 +42,3 @@ export function PeriodStateBadge() {
     </span>
   );
 }
-

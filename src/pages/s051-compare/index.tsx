@@ -127,7 +127,9 @@ function exportCsv(rows: ModelDiffRow[]): void {
     formatPercent(r.delta_pct),
     r.is_changed ? "Y" : "N",
   ]);
-  const csv = [header, ...csvRows].map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csv = [header, ...csvRows]
+    .map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))
+    .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -214,9 +216,7 @@ export function ComparePage() {
     return (
       <main className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">{t("comparePage.title")}</h1>
-        <p className="text-sm text-[var(--color-onetextsecondary)]">
-          {t("comparePage.lead")}
-        </p>
+        <p className="text-sm text-[var(--color-onetextsecondary)]">{t("comparePage.lead")}</p>
 
         {/* Scenario selectors */}
         <div className="flex flex-wrap items-end gap-3">
@@ -224,7 +224,10 @@ export function ComparePage() {
             label={t("comparePage.scenarioA")}
             scenarios={scenarios}
             value={localA}
-            onChange={(id) => { setLocalA(id); setLocalVersionA(null); }}
+            onChange={(id) => {
+              setLocalA(id);
+              setLocalVersionA(null);
+            }}
           />
           <VersionSelect
             label={t("comparePage.versionA")}
@@ -247,7 +250,10 @@ export function ComparePage() {
             label={t("comparePage.scenarioB")}
             scenarios={scenarios}
             value={localB}
-            onChange={(id) => { setLocalB(id); setLocalVersionB(null); }}
+            onChange={(id) => {
+              setLocalB(id);
+              setLocalVersionB(null);
+            }}
           />
           <VersionSelect
             label={t("comparePage.versionB")}
@@ -309,7 +315,10 @@ export function ComparePage() {
           label={t("comparePage.scenarioA")}
           scenarios={scenarios}
           value={localA}
-          onChange={(id) => { setLocalA(id); setLocalVersionA(null); }}
+          onChange={(id) => {
+            setLocalA(id);
+            setLocalVersionA(null);
+          }}
         />
         <VersionSelect
           label={t("comparePage.versionA")}
@@ -324,7 +333,10 @@ export function ComparePage() {
           label={t("comparePage.scenarioB")}
           scenarios={scenarios}
           value={localB}
-          onChange={(id) => { setLocalB(id); setLocalVersionB(null); }}
+          onChange={(id) => {
+            setLocalB(id);
+            setLocalVersionB(null);
+          }}
         />
         <VersionSelect
           label={t("comparePage.versionB")}
@@ -337,9 +349,7 @@ export function ComparePage() {
         </Button>
       </div>
 
-      {status === "success" && (
-        <StatePanel state="success" message={t("comparePage.identical")} />
-      )}
+      {status === "success" && <StatePanel state="success" message={t("comparePage.identical")} />}
 
       {status === "populated" && (
         <>

@@ -100,14 +100,46 @@ export interface VarianceErrorDetail {
 }
 
 const REASON_CODE_OPTIONS: { code: ReasonCode; label: string; description: string }[] = [
-  { code: "VOLUME_SURGE", label: "Volume Surge", description: "Unexpected high demand or order intake" },
-  { code: "PRICE_RENEGOTIATION", label: "Price Change", description: "Contract pricing adjustment or inflation pass-through" },
-  { code: "PRODUCT_MIX_SHIFT", label: "Mix Shift", description: "Higher/lower proportion of high-margin offerings" },
-  { code: "FX_HEADWIND", label: "FX Movement", description: "Currency rate fluctuation vs plan exchange rates" },
-  { code: "LABOR_EFFICIENCY", label: "Efficiency Gain/Loss", description: "Productivity, overtime, or operational waste delta" },
-  { code: "SUPPLIER_DISRUPTION", label: "Supply Chain", description: "Input price surge or freight expedited charges" },
-  { code: "ONE_OFF_TIMING", label: "Timing Difference", description: "Billing or project delivery milestone shifted across periods" },
-  { code: "UNEXPLAINED", label: "Unexplained / Pending", description: "Under investigation by FP&A and business unit lead" },
+  {
+    code: "VOLUME_SURGE",
+    label: "Volume Surge",
+    description: "Unexpected high demand or order intake",
+  },
+  {
+    code: "PRICE_RENEGOTIATION",
+    label: "Price Change",
+    description: "Contract pricing adjustment or inflation pass-through",
+  },
+  {
+    code: "PRODUCT_MIX_SHIFT",
+    label: "Mix Shift",
+    description: "Higher/lower proportion of high-margin offerings",
+  },
+  {
+    code: "FX_HEADWIND",
+    label: "FX Movement",
+    description: "Currency rate fluctuation vs plan exchange rates",
+  },
+  {
+    code: "LABOR_EFFICIENCY",
+    label: "Efficiency Gain/Loss",
+    description: "Productivity, overtime, or operational waste delta",
+  },
+  {
+    code: "SUPPLIER_DISRUPTION",
+    label: "Supply Chain",
+    description: "Input price surge or freight expedited charges",
+  },
+  {
+    code: "ONE_OFF_TIMING",
+    label: "Timing Difference",
+    description: "Billing or project delivery milestone shifted across periods",
+  },
+  {
+    code: "UNEXPLAINED",
+    label: "Unexplained / Pending",
+    description: "Under investigation by FP&A and business unit lead",
+  },
 ];
 
 /** F/U Badge with aria-label, text label, and distinct icon (never color alone - B11 / WCAG 1.4.1). */
@@ -193,11 +225,17 @@ function exportVarianceCsv(rows: VarianceRow[], showThreeWay: boolean): void {
     String(r.delta_minor ?? ""),
     formatPercent(r.delta_pct),
     r.direction === "favorable" ? "F" : r.direction === "unfavorable" ? "U" : "—",
-    r.attribution.is_attributable && r.attribution.volume != null ? String(r.attribution.volume) : "N/A",
-    r.attribution.is_attributable && r.attribution.price != null ? String(r.attribution.price) : "N/A",
+    r.attribution.is_attributable && r.attribution.volume != null
+      ? String(r.attribution.volume)
+      : "N/A",
+    r.attribution.is_attributable && r.attribution.price != null
+      ? String(r.attribution.price)
+      : "N/A",
     r.attribution.is_attributable && r.attribution.mix != null ? String(r.attribution.mix) : "N/A",
     r.attribution.is_attributable && r.attribution.fx != null ? String(r.attribution.fx) : "N/A",
-    r.attribution.is_attributable && r.attribution.efficiency != null ? String(r.attribution.efficiency) : "N/A",
+    r.attribution.is_attributable && r.attribution.efficiency != null
+      ? String(r.attribution.efficiency)
+      : "N/A",
     r.reason_code ?? "",
     r.note ?? "",
   ]);
@@ -269,7 +307,12 @@ export function VarianceWaterfallChart({
       }
     }
 
-    list.push({ label: "Actual End", delta: totals.actual, cumulative: totals.actual, isTotal: true });
+    list.push({
+      label: "Actual End",
+      delta: totals.actual,
+      cumulative: totals.actual,
+      isTotal: true,
+    });
     return list;
   }, [totals]);
 
@@ -348,14 +391,7 @@ export function VarianceWaterfallChart({
 
           return (
             <g key={`step-${idx}-${step.label}`}>
-              <rect
-                x={barX}
-                y={barTop}
-                width={barWidth}
-                height={barHeight}
-                rx={2}
-                fill={fill}
-              >
+              <rect x={barX} y={barTop} width={barWidth} height={barHeight} rx={2} fill={fill}>
                 <title>{`${step.label}: ${renderMinor(step.delta, currency)} (Level: ${renderMinor(step.cumulative, currency)})`}</title>
               </rect>
               <text
@@ -376,7 +412,9 @@ export function VarianceWaterfallChart({
                 fill="var(--color-onetext)"
                 className="font-mono"
               >
-                {step.isTotal ? renderMinor(step.cumulative, currency) : (step.delta > 0 ? "+" : "") + renderMinor(step.delta, currency)}
+                {step.isTotal
+                  ? renderMinor(step.cumulative, currency)
+                  : (step.delta > 0 ? "+" : "") + renderMinor(step.delta, currency)}
               </text>
             </g>
           );
@@ -396,9 +434,7 @@ export function CommentaryModal({
   onSave: (accountId: string, reasonCode: ReasonCode, note: string) => void;
   onClose: () => void;
 }) {
-  const [selectedCode, setSelectedCode] = useState<ReasonCode>(
-    row.reason_code ?? "VOLUME_SURGE",
-  );
+  const [selectedCode, setSelectedCode] = useState<ReasonCode>(row.reason_code ?? "VOLUME_SURGE");
   const [noteText, setNoteText] = useState<string>(row.note ?? "");
   const modalTitleId = useId();
   const modalDescId = useId();
@@ -437,7 +473,10 @@ export function CommentaryModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="reason-code-select" className="text-xs font-semibold text-[var(--color-onetextsecondary)]">
+          <label
+            htmlFor="reason-code-select"
+            className="text-xs font-semibold text-[var(--color-onetextsecondary)]"
+          >
             Reason Code (Categorization)
           </label>
           <select
@@ -455,7 +494,10 @@ export function CommentaryModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="variance-narrative-note" className="text-xs font-semibold text-[var(--color-onetextsecondary)]">
+          <label
+            htmlFor="variance-narrative-note"
+            className="text-xs font-semibold text-[var(--color-onetextsecondary)]"
+          >
             Narrative Explanation
           </label>
           <textarea
@@ -498,9 +540,7 @@ export function VariancePage({
 
   // Screen State
   const [state, setState] = useState<VarianceScreenState>(initialState);
-  const [error, setError] = useState<VarianceErrorDetail | null>(
-    initialError ?? null,
-  );
+  const [error, setError] = useState<VarianceErrorDetail | null>(initialError ?? null);
 
   // Filters & Toggles
   const [filters, setFilters] = useState<VarianceFilterState>({
@@ -666,13 +706,18 @@ export function VariancePage({
       <main className="flex flex-col gap-6 p-6" aria-busy="true">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">Variance & Attribution</h1>
+            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">
+              Variance & Attribution
+            </h1>
             <p className="text-sm text-[var(--color-onetextsecondary)]">
               Period financial decomposition and attribution bridge
             </p>
           </div>
         </header>
-        <StatePanel state="loading" message="Loading variance data and recalculating driver attribution…" />
+        <StatePanel
+          state="loading"
+          message="Loading variance data and recalculating driver attribution…"
+        />
       </main>
     );
   }
@@ -683,7 +728,9 @@ export function VariancePage({
       <main className="flex flex-col gap-6 p-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">Variance & Attribution</h1>
+            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">
+              Variance & Attribution
+            </h1>
             <p className="text-sm text-[var(--color-onetextsecondary)]">
               Period financial decomposition and attribution bridge
             </p>
@@ -708,7 +755,9 @@ export function VariancePage({
       <main className="flex flex-col gap-6 p-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">Variance & Attribution</h1>
+            <h1 className="text-xl font-semibold text-[var(--color-onetext)]">
+              Variance & Attribution
+            </h1>
             <p className="text-sm text-[var(--color-onetextsecondary)]">
               Period financial decomposition and attribution bridge
             </p>
@@ -726,7 +775,10 @@ export function VariancePage({
 
   /* ── 4 & 5. SUCCESS & POPULATED STATES ── */
   return (
-    <main className="flex flex-col gap-5 p-6 min-w-0" aria-label="Variance and Attribution Analysis">
+    <main
+      className="flex flex-col gap-5 p-6 min-w-0"
+      aria-label="Variance and Attribution Analysis"
+    >
       {/* HEADER & TOP ACTIONS */}
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -734,7 +786,8 @@ export function VariancePage({
             Variance & Attribution
           </h1>
           <p className="text-xs text-[var(--color-onetextsecondary)]">
-            S-054 · F-024 3-Way Plan/Commit/Actuals with Volume, Price, Mix, FX & Efficiency decomposition
+            S-054 · F-024 3-Way Plan/Commit/Actuals with Volume, Price, Mix, FX & Efficiency
+            decomposition
           </p>
         </div>
 
@@ -923,7 +976,8 @@ export function VariancePage({
       >
         <table className="w-full border-collapse text-left text-xs">
           <caption className="sr-only">
-            Detailed financial variance with attribution decomposition (Volume, Price, Mix, FX, Efficiency) and reason codes
+            Detailed financial variance with attribution decomposition (Volume, Price, Mix, FX,
+            Efficiency) and reason codes
           </caption>
           <thead>
             <tr className="border-b border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)]">
@@ -940,7 +994,10 @@ export function VariancePage({
                 Plan
               </th>
               {filters.showThreeWay && (
-                <th scope="col" className="px-3 py-2.5 text-right font-semibold bg-blue-50/50 dark:bg-blue-950/20">
+                <th
+                  scope="col"
+                  className="px-3 py-2.5 text-right font-semibold bg-blue-50/50 dark:bg-blue-950/20"
+                >
                   Commit
                 </th>
               )}
@@ -954,19 +1011,34 @@ export function VariancePage({
                 F/U
               </th>
               {/* Attribution Columns */}
-              <th scope="col" className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]">
+              <th
+                scope="col"
+                className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]"
+              >
                 Volume
               </th>
-              <th scope="col" className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]">
+              <th
+                scope="col"
+                className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]"
+              >
                 Price
               </th>
-              <th scope="col" className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]">
+              <th
+                scope="col"
+                className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]"
+              >
                 Mix
               </th>
-              <th scope="col" className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]">
+              <th
+                scope="col"
+                className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]"
+              >
                 FX
               </th>
-              <th scope="col" className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]">
+              <th
+                scope="col"
+                className="px-3 py-2.5 text-right font-semibold text-[var(--color-oneprimary)]"
+              >
                 Efficiency
               </th>
               <th scope="col" className="px-3 py-2.5 font-semibold">
@@ -980,7 +1052,10 @@ export function VariancePage({
           <tbody className="divide-y divide-[var(--color-oneborder)] text-[var(--color-onetext)]">
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={filters.showThreeWay ? 16 : 15} className="py-8 text-center text-sm text-[var(--color-onetextmuted)]">
+                <td
+                  colSpan={filters.showThreeWay ? 16 : 15}
+                  className="py-8 text-center text-sm text-[var(--color-onetextmuted)]"
+                >
                   No records match the active filters.
                 </td>
               </tr>
@@ -992,9 +1067,13 @@ export function VariancePage({
                 >
                   <td className="px-3 py-2 font-medium">
                     <div>{row.account_name}</div>
-                    <div className="font-mono text-[10px] text-[var(--color-onetextmuted)]">{row.account_code}</div>
+                    <div className="font-mono text-[10px] text-[var(--color-onetextmuted)]">
+                      {row.account_code}
+                    </div>
                   </td>
-                  <td className="px-3 py-2 text-[var(--color-onetextsecondary)]">{row.business_unit}</td>
+                  <td className="px-3 py-2 text-[var(--color-onetextsecondary)]">
+                    {row.business_unit}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono font-medium">
                     {renderMinor(row.actual_minor)}
                   </td>
@@ -1110,4 +1189,3 @@ export function VariancePage({
 }
 
 export default VariancePage;
-

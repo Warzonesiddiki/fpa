@@ -175,4 +175,3 @@ export function formatPercent(
   const prefix = showPlus && dec.greaterThan(0) ? "+" : "";
   return `${prefix}${formatted}%`;
 }
-

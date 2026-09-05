@@ -209,7 +209,8 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
   it("maps VARIANCE_NO_ATTRIBUTION_DATA error via toBridgeError", async () => {
     const rawError = {
       code: "VARIANCE_NO_ATTRIBUTION_DATA",
-      userMessage: "Attribution unavailable for these lines — no unit/driver data. Show $ variance only.",
+      userMessage:
+        "Attribution unavailable for these lines — no unit/driver data. Show $ variance only.",
       httpStatus: 200,
       retryable: false,
     };
@@ -277,8 +278,18 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
   /* ── 6. 3-Way View toggle & modes ──────────────────────────────── */
   it("supports toggling 3-Way view and filtering by statement type", async () => {
     const plRow = mockVarianceRow({ line_id: "ln-pl", statement_type: "pl" });
-    const bsRow = mockVarianceRow({ line_id: "ln-bs", statement_type: "bs", account_code: "1010", account_name: "Cash" });
-    const cfRow = mockVarianceRow({ line_id: "ln-cf", statement_type: "cf", account_code: "3010", account_name: "Operating CF" });
+    const bsRow = mockVarianceRow({
+      line_id: "ln-bs",
+      statement_type: "bs",
+      account_code: "1010",
+      account_name: "Cash",
+    });
+    const cfRow = mockVarianceRow({
+      line_id: "ln-cf",
+      statement_type: "cf",
+      account_code: "3010",
+      account_name: "Operating CF",
+    });
 
     callMock.mockResolvedValueOnce({
       rows: [plRow, bsRow, cfRow],
@@ -422,12 +433,9 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
 
     callMock.mockResolvedValueOnce({ saved: true });
 
-    const success = await useVarianceStore.getState().saveReasonCode(
-      "ln-rev",
-      PERIOD_ID,
-      "volume",
-      "Shortfall due to customer contract delay",
-    );
+    const success = await useVarianceStore
+      .getState()
+      .saveReasonCode("ln-rev", PERIOD_ID, "volume", "Shortfall due to customer contract delay");
 
     expect(success).toBe(true);
     expect(callMock).toHaveBeenCalledWith("variance.set_reason_code", {
@@ -463,12 +471,9 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
     };
     callMock.mockRejectedValueOnce(rawError);
 
-    const success = await useVarianceStore.getState().saveReasonCode(
-      "ln-rev-prod",
-      PERIOD_ID,
-      "price",
-      "Price change",
-    );
+    const success = await useVarianceStore
+      .getState()
+      .saveReasonCode("ln-rev-prod", PERIOD_ID, "price", "Price change");
 
     expect(success).toBe(false);
     expect(useVarianceStore.getState().error?.code).toBe("SESSION_LOCKED");

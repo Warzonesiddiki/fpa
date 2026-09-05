@@ -607,10 +607,12 @@ describe("model grid store — period classification and hybrid labeling (M4-1 �
     expect(s.periodState).toBe("PLAN_ONLY");
     expect(s.hybridLabel).toBeNull();
 
-    useModelGridStore.getState().updatePeriodClassification(
-      ["P01", "P02", "P03", "P04"],
-      ["P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12"],
-    );
+    useModelGridStore
+      .getState()
+      .updatePeriodClassification(
+        ["P01", "P02", "P03", "P04"],
+        ["P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12"],
+      );
     s = useModelGridStore.getState();
     expect(s.periodState).toBe("HYBRID");
     expect(s.hybridLabel).toBe("HYBRID (Actual P01–P04, Forecast P05–P12)");
@@ -630,4 +632,3 @@ describe("model grid store — period classification and hybrid labeling (M4-1 �
     expect(s.hybridLabel).toBeNull();
   });
 });
-

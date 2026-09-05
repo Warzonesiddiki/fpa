@@ -210,12 +210,20 @@ describe("S-052 What-If & Sensitivity page (F-022 · M4-4 · SCREENS-SPEC S-052)
     expect(screen.getByRole("heading", { name: "What-If & Sensitivity" })).toBeInTheDocument();
 
     // 3 Panes
-    expect(screen.getByRole("region", { name: "Scenario Overlay Time-Series" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Waterfall Attribution Decomposition" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Sensitivity and Goal Seek Analysis" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Scenario Overlay Time-Series" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Waterfall Attribution Decomposition" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Sensitivity and Goal Seek Analysis" }),
+    ).toBeInTheDocument();
 
     // Footstrip
-    expect(screen.getByRole("contentinfo", { name: "What-If Audit and Safety Footstrip" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("contentinfo", { name: "What-If Audit and Safety Footstrip" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Model is NOT modified")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Apply to new Scenario/i })).toBeInTheDocument();
   });
@@ -230,7 +238,9 @@ describe("S-052 What-If & Sensitivity page (F-022 · M4-4 · SCREENS-SPEC S-052)
     render(<WhatIfPage />);
 
     // Find table toggle for overlay
-    const tableBtn = screen.getByRole("button", { name: /Switch scenario overlay to accessible table view/i });
+    const tableBtn = screen.getByRole("button", {
+      name: /Switch scenario overlay to accessible table view/i,
+    });
     await userEvent.click(tableBtn);
 
     // Should display accessible table
@@ -310,7 +320,8 @@ describe("S-052 What-If & Sensitivity page (F-022 · M4-4 · SCREENS-SPEC S-052)
       if (cmd === "plan.goal_seek") {
         return Promise.reject({
           code: "GOAL_SEEK_NO_CONVERGE",
-          userMessage: "Goal Seek did not converge in 100 iterations. Last value 285.4, target 300.0. Adjust bounds.",
+          userMessage:
+            "Goal Seek did not converge in 100 iterations. Last value 285.4, target 300.0. Adjust bounds.",
           httpStatus: 422,
           retryable: false,
           retryAfterMs: null,

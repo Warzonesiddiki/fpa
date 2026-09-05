@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWhatIfStore } from "./whatif";
-import type {
-  PlanGoalSeekData,
-  PlanSensitivityData,
-  PlanWhatifOverlayData,
-} from "@/api/schema";
+import type { PlanGoalSeekData, PlanSensitivityData, PlanWhatifOverlayData } from "@/api/schema";
 import type { BridgeError } from "@/api/bridge";
 
 const callMock = vi.fn();
@@ -400,7 +396,8 @@ describe("useWhatIfStore (F-022 · M4-4 · S-052 · SCENARIO-VERSION-SPEC §5)",
   it("runGoalSeek transitions to error on GOAL_SEEK_NO_CONVERGE", async () => {
     const error: BridgeError = {
       code: "GOAL_SEEK_NO_CONVERGE",
-      userMessage: "Goal Seek did not converge in 100 iterations. Last value 285.4, target 300.0. Adjust bounds.",
+      userMessage:
+        "Goal Seek did not converge in 100 iterations. Last value 285.4, target 300.0. Adjust bounds.",
       httpStatus: 422,
       retryable: false,
       retryAfterMs: null,

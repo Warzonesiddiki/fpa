@@ -36,11 +36,7 @@ import { useWhatIfStore } from "@/stores/whatif";
 import { activeModelId } from "@/stores/model";
 import { call, type BridgeError } from "@/api/bridge";
 import { formatMinor } from "@/utils/money";
-import type {
-  TornadoBar,
-  WaterfallStep,
-  WhatifSeries,
-} from "@/api/schema";
+import type { TornadoBar, WaterfallStep, WhatifSeries } from "@/api/schema";
 
 type RightPaneTab = "sensitivity" | "goalseek";
 type ViewMode = "chart" | "table";
@@ -354,14 +350,7 @@ function WaterfallDecompositionChart({
                 />
               )}
 
-              <rect
-                x={barX}
-                y={barTop}
-                width={barWidth}
-                height={barHeight}
-                rx={3}
-                fill={barFill}
-              >
+              <rect x={barX} y={barTop} width={barWidth} height={barHeight} rx={3} fill={barFill}>
                 <title>{`${step.label}: ${step.delta_minor >= 0 ? "+" : ""}${step.delta_text}`}</title>
               </rect>
 
@@ -369,7 +358,12 @@ function WaterfallDecompositionChart({
                 <g transform={`translate(${centerX - 6}, ${barTop - 16})`}>
                   <title>Unallocated manual attribution step</title>
                   <circle cx={6} cy={6} r={7} fill="#FDE68A" stroke="#D97706" strokeWidth={1} />
-                  <text x={6} y={10} textAnchor="middle" className="fill-[#92400E] font-bold text-[9px]">
+                  <text
+                    x={6}
+                    y={10}
+                    textAnchor="middle"
+                    className="fill-[#92400E] font-bold text-[9px]"
+                  >
                     !
                   </text>
                 </g>
@@ -507,14 +501,7 @@ function TornadoSensitivityChart({
                 <title>{`Low wing ${bar.low_value}`}</title>
               </rect>
 
-              <rect
-                x={centerX}
-                y={yPos}
-                width={wingPixels}
-                height={20}
-                rx={2}
-                fill="#16A34A"
-              >
+              <rect x={centerX} y={yPos} width={wingPixels} height={20} rx={2} fill="#16A34A">
                 <title>{`High wing ${bar.high_value}`}</title>
               </rect>
 
@@ -572,7 +559,9 @@ function ApplyScenarioDialog({
       const newId =
         (resRecord.scenario_id as string | undefined) ??
         (resRecord.id as string | undefined) ??
-        ((resRecord.data as Record<string, unknown> | undefined)?.scenario_id as string | undefined) ??
+        ((resRecord.data as Record<string, unknown> | undefined)?.scenario_id as
+          | string
+          | undefined) ??
         ((resRecord.data as Record<string, unknown> | undefined)?.id as string | undefined);
       if (newId) {
         onSuccess(newId);
@@ -597,21 +586,33 @@ function ApplyScenarioDialog({
     >
       <div className="w-full max-w-md rounded-xl border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-6 shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--color-oneborder)] pb-3">
-          <h2 id="apply-scenario-title" className="text-base font-semibold text-[var(--color-onetext)]">
+          <h2
+            id="apply-scenario-title"
+            className="text-base font-semibold text-[var(--color-onetext)]"
+          >
             Apply to New Scenario
           </h2>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy} aria-label="Close dialog">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close dialog"
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         <p className="mt-3 text-xs text-[var(--color-onetextsecondary)]">
-          The working Model and Baseline remain protected and untouched. This action creates a new isolated
-          Draft Scenario containing your What-If parameter variations.
+          The working Model and Baseline remain protected and untouched. This action creates a new
+          isolated Draft Scenario containing your What-If parameter variations.
         </p>
 
         {dialogError && (
-          <div role="alert" className="mt-3 rounded-md bg-[var(--color-oneerror)]/10 p-2.5 text-xs text-[var(--color-oneerror)]">
+          <div
+            role="alert"
+            className="mt-3 rounded-md bg-[var(--color-oneerror)]/10 p-2.5 text-xs text-[var(--color-oneerror)]"
+          >
             {dialogError}
           </div>
         )}
@@ -775,7 +776,8 @@ export function WhatIfPage() {
             What-If & Sensitivity
           </h1>
           <p className="mt-1 text-xs text-[var(--color-onetextsecondary)]">
-            Scenario time-series overlay, waterfall driver attribution, sensitivity tornado, and bounded goal seek.
+            Scenario time-series overlay, waterfall driver attribution, sensitivity tornado, and
+            bounded goal seek.
           </p>
         </div>
 
@@ -868,9 +870,15 @@ export function WhatIfPage() {
                     </caption>
                     <thead>
                       <tr className="border-b border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)]">
-                        <th scope="col" className="px-3 py-2 font-medium">Period</th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Period
+                        </th>
                         {overlayData.series.map((s) => (
-                          <th key={s.scenario_id} scope="col" className="px-3 py-2 text-right font-medium">
+                          <th
+                            key={s.scenario_id}
+                            scope="col"
+                            className="px-3 py-2 text-right font-medium"
+                          >
                             {s.scenario_name}
                           </th>
                         ))}
@@ -878,12 +886,21 @@ export function WhatIfPage() {
                     </thead>
                     <tbody>
                       {overlayData.series[0]?.points.map((pt, pIdx) => (
-                        <tr key={pt.period_id} className="border-b border-[var(--color-oneborder)] last:border-0 hover:bg-[var(--color-onesurfacealt)]">
-                          <th scope="row" className="px-3 py-2 font-mono font-medium text-[var(--color-onetext)]">
+                        <tr
+                          key={pt.period_id}
+                          className="border-b border-[var(--color-oneborder)] last:border-0 hover:bg-[var(--color-onesurfacealt)]"
+                        >
+                          <th
+                            scope="row"
+                            className="px-3 py-2 font-mono font-medium text-[var(--color-onetext)]"
+                          >
                             {pt.period_label}
                           </th>
                           {overlayData.series.map((s) => (
-                            <td key={`${s.scenario_id}-${pt.period_id}`} className="px-3 py-2 text-right font-mono">
+                            <td
+                              key={`${s.scenario_id}-${pt.period_id}`}
+                              className="px-3 py-2 text-right font-mono"
+                            >
                               {formatMinor(s.points[pIdx]?.value_minor ?? 0, "USD")}
                             </td>
                           ))}
@@ -895,9 +912,16 @@ export function WhatIfPage() {
               )
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded border border-dashed border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] p-4 text-center">
-                <BarChart3 aria-hidden="true" className="h-8 w-8 text-[var(--color-onetextsecondary)]" />
-                <p className="mt-2 text-xs font-medium text-[var(--color-onetext)]">No scenario overlay loaded</p>
-                <p className="text-[11px] text-[var(--color-onetextsecondary)]">Select scenarios to display trajectory</p>
+                <BarChart3
+                  aria-hidden="true"
+                  className="h-8 w-8 text-[var(--color-onetextsecondary)]"
+                />
+                <p className="mt-2 text-xs font-medium text-[var(--color-onetext)]">
+                  No scenario overlay loaded
+                </p>
+                <p className="text-[11px] text-[var(--color-onetextsecondary)]">
+                  Select scenarios to display trajectory
+                </p>
               </div>
             )}
           </section>
@@ -945,20 +969,35 @@ export function WhatIfPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-xs">
                     <caption className="sr-only">
-                      Waterfall Attribution Bridge breaking down deltas from Baseline to Scenario Total
+                      Waterfall Attribution Bridge breaking down deltas from Baseline to Scenario
+                      Total
                     </caption>
                     <thead>
                       <tr className="border-b border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)]">
-                        <th scope="col" className="px-3 py-2 font-medium">Attribution Step</th>
-                        <th scope="col" className="px-3 py-2 font-medium">Driver / Kind</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Delta</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Cumulative</th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Attribution Step
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Driver / Kind
+                        </th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium">
+                          Delta
+                        </th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium">
+                          Cumulative
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {overlayData.waterfall.map((step) => (
-                        <tr key={step.step_id} className="border-b border-[var(--color-oneborder)] last:border-0 hover:bg-[var(--color-onesurfacealt)]">
-                          <th scope="row" className="px-3 py-2 font-medium text-[var(--color-onetext)]">
+                        <tr
+                          key={step.step_id}
+                          className="border-b border-[var(--color-oneborder)] last:border-0 hover:bg-[var(--color-onesurfacealt)]"
+                        >
+                          <th
+                            scope="row"
+                            className="px-3 py-2 font-medium text-[var(--color-onetext)]"
+                          >
                             {step.label}
                           </th>
                           <td className="px-3 py-2 text-[var(--color-onetextsecondary)]">
@@ -986,9 +1025,16 @@ export function WhatIfPage() {
               )
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded border border-dashed border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] p-4 text-center">
-                <Sliders aria-hidden="true" className="h-8 w-8 text-[var(--color-onetextsecondary)]" />
-                <p className="mt-2 text-xs font-medium text-[var(--color-onetext)]">No waterfall breakdown available</p>
-                <p className="text-[11px] text-[var(--color-onetextsecondary)]">Select multiple scenarios to calculate driver attribution</p>
+                <Sliders
+                  aria-hidden="true"
+                  className="h-8 w-8 text-[var(--color-onetextsecondary)]"
+                />
+                <p className="mt-2 text-xs font-medium text-[var(--color-onetext)]">
+                  No waterfall breakdown available
+                </p>
+                <p className="text-[11px] text-[var(--color-onetextsecondary)]">
+                  Select multiple scenarios to calculate driver attribution
+                </p>
               </div>
             )}
           </section>
@@ -1201,10 +1247,10 @@ export function WhatIfPage() {
       >
         <div className="flex items-center gap-2 text-xs text-[var(--color-onetextsecondary)]">
           <HelpCircle className="h-4 w-4 text-[var(--color-onewarning)]" aria-hidden="true" />
-          <span className="font-medium text-[var(--color-onetext)]">
-            Model is NOT modified
+          <span className="font-medium text-[var(--color-onetext)]">Model is NOT modified</span>
+          <span className="hidden sm:inline">
+            — [Apply to new Scenario ▸] is the ONLY write path.
           </span>
-          <span className="hidden sm:inline">— [Apply to new Scenario ▸] is the ONLY write path.</span>
         </div>
 
         <div className="flex items-center gap-3">

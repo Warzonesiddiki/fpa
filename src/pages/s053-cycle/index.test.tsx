@@ -118,7 +118,9 @@ describe("S-053 Planning Cycle & Collection Page", () => {
     it("renders empty state when no cycle is active", () => {
       useCycleStore.setState({ state: "empty", cycleId: null });
       render(<S053PlanningCyclePage />);
-      expect(screen.getByText(/Start a new planning cycle to coordinate departmental submissions/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Start a new planning cycle to coordinate departmental submissions/i),
+      ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Start a planning cycle" })).toBeInTheDocument();
     });
 
@@ -130,13 +132,17 @@ describe("S-053 Planning Cycle & Collection Page", () => {
         errorMessage: "Cycle name already exists for this fiscal period.",
       });
       render(<S053PlanningCyclePage />);
-      expect(screen.getByText("Cycle name already exists for this fiscal period.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Cycle name already exists for this fiscal period."),
+      ).toBeInTheDocument();
     });
 
     it("renders success state after cycle baseline approval", () => {
       useCycleStore.setState({ state: "success", cycleId: "cycle-01" });
       render(<S053PlanningCyclePage />);
-      expect(screen.getByText(/All close tasks verified and departmental submissions baseline locked/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/All close tasks verified and departmental submissions baseline locked/i),
+      ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "View Status Board" })).toBeInTheDocument();
     });
 
@@ -220,7 +226,9 @@ describe("S-053 Planning Cycle & Collection Page", () => {
       const user = userEvent.setup();
       render(<S053PlanningCyclePage />);
 
-      const pendingTaskButton = screen.getByRole("button", { name: /Toggle task completion: Headcount Reconciliation/i });
+      const pendingTaskButton = screen.getByRole("button", {
+        name: /Toggle task completion: Headcount Reconciliation/i,
+      });
       await user.click(pendingTaskButton);
 
       expect(callMock).toHaveBeenCalledWith("cycle.task.update", {
@@ -272,9 +280,12 @@ describe("S-053 Planning Cycle & Collection Page", () => {
       const exportBtn = screen.getByRole("button", { name: /Export Template/i });
       await user.click(exportBtn);
 
-      expect(callMock).toHaveBeenCalledWith("collection.export", expect.objectContaining({
-        cycle_id: "cycle-test-01",
-      }));
+      expect(callMock).toHaveBeenCalledWith(
+        "collection.export",
+        expect.objectContaining({
+          cycle_id: "cycle-test-01",
+        }),
+      );
     });
 
     it("opens conflict resolution modal and submits resolution", async () => {

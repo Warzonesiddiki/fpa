@@ -20,7 +20,12 @@ import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 import type { ScreenState } from "@/components/ui/StatePanel";
 
 /** Comparison target types supported by the variance engine */
-export type VarianceCompareTarget = "budget" | "forecast" | "commit" | "prior_period" | "prior_year";
+export type VarianceCompareTarget =
+  | "budget"
+  | "forecast"
+  | "commit"
+  | "prior_period"
+  | "prior_year";
 
 /** 3-way view presentation mode */
 export type ThreeWayViewMode = "all" | "pl" | "bs" | "cf";
@@ -160,7 +165,12 @@ export interface VarianceStoreState {
   retry: () => Promise<boolean>;
 
   /** Save reason code + note for a line/period */
-  saveReasonCode: (lineId: string, periodId: string, code: string, note?: string) => Promise<boolean>;
+  saveReasonCode: (
+    lineId: string,
+    periodId: string,
+    code: string,
+    note?: string,
+  ) => Promise<boolean>;
 
   /** Filtered rows selector */
   getFilteredRows: () => VarianceRow[];
@@ -180,13 +190,37 @@ export interface VarianceStoreState {
 }
 
 const DEFAULT_REASON_CODES: ReasonCodeItem[] = [
-  { id: "rc-1", code: "volume", label: "Volume shortfall / surge", category: "volume", active: true },
+  {
+    id: "rc-1",
+    code: "volume",
+    label: "Volume shortfall / surge",
+    category: "volume",
+    active: true,
+  },
   { id: "rc-2", code: "price", label: "Price / rate realization", category: "price", active: true },
   { id: "rc-3", code: "mix", label: "Product / channel mix shift", category: "mix", active: true },
   { id: "rc-4", code: "fx", label: "Foreign exchange fluctuation", category: "fx", active: true },
-  { id: "rc-5", code: "efficiency", label: "Operational efficiency / scrap", category: "efficiency", active: true },
-  { id: "rc-6", code: "one_time", label: "One-time non-recurring item", category: "one_time", active: true },
-  { id: "rc-7", code: "seasonality", label: "Timing / seasonality shift", category: "seasonality", active: true },
+  {
+    id: "rc-5",
+    code: "efficiency",
+    label: "Operational efficiency / scrap",
+    category: "efficiency",
+    active: true,
+  },
+  {
+    id: "rc-6",
+    code: "one_time",
+    label: "One-time non-recurring item",
+    category: "one_time",
+    active: true,
+  },
+  {
+    id: "rc-7",
+    code: "seasonality",
+    label: "Timing / seasonality shift",
+    category: "seasonality",
+    active: true,
+  },
   { id: "rc-8", code: "other", label: "Other / Uncategorized", category: "other", active: true },
 ];
 
@@ -290,12 +324,15 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
     });
 
     try {
-      const response = (await call("variance.get" as never, {
-        company_id: companyId,
-        period_id: periodId,
-        compare,
-        attribution,
-      } as never)) as {
+      const response = (await call(
+        "variance.get" as never,
+        {
+          company_id: companyId,
+          period_id: periodId,
+          compare,
+          attribution,
+        } as never,
+      )) as {
         rows?: VarianceRow[];
         attribution?: VarianceAttribution[];
         threeway?: ThreeWayRow[];
@@ -354,12 +391,15 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
   saveReasonCode: async (lineId, periodId, code, note) => {
     const trimmedNote = note?.trim() || "";
     try {
-      const response = (await call("variance.set_reason_code" as never, {
-        line_id: lineId,
-        period_id: periodId,
-        code,
-        note: trimmedNote,
-      } as never)) as { saved?: boolean };
+      const response = (await call(
+        "variance.set_reason_code" as never,
+        {
+          line_id: lineId,
+          period_id: periodId,
+          code,
+          note: trimmedNote,
+        } as never,
+      )) as { saved?: boolean };
 
       if (response && response.saved === false) {
         throw new Error("Failed to save reason code");

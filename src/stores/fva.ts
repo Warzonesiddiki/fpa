@@ -75,10 +75,7 @@ export interface FvaStoreState {
   setSelectedLineIds: (lineIds: string[]) => void;
 
   /** Load FVA scores via fva.get */
-  loadFva: (params?: {
-    companyId?: string;
-    lineIds?: string[];
-  }) => Promise<boolean>;
+  loadFva: (params?: { companyId?: string; lineIds?: string[] }) => Promise<boolean>;
 
   /** Retry previous load query */
   retry: () => Promise<boolean>;
@@ -130,7 +127,8 @@ export const useFvaStore = create<FvaStoreState>((set, get) => ({
   loadFva: async (params) => {
     const current = get();
     const companyId = params?.companyId ?? current.companyId;
-    const lineIds = params?.lineIds ?? (current.selectedLineIds.length > 0 ? current.selectedLineIds : undefined);
+    const lineIds =
+      params?.lineIds ?? (current.selectedLineIds.length > 0 ? current.selectedLineIds : undefined);
 
     if (!companyId) {
       set({
@@ -151,10 +149,13 @@ export const useFvaStore = create<FvaStoreState>((set, get) => ({
     });
 
     try {
-      const response = (await call("fva.get" as never, {
-        company_id: companyId,
-        line_ids: lineIds,
-      } as never)) as {
+      const response = (await call(
+        "fva.get" as never,
+        {
+          company_id: companyId,
+          line_ids: lineIds,
+        } as never,
+      )) as {
         scores?: FvaScoreItem[];
         restated?: boolean;
       };

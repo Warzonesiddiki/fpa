@@ -668,7 +668,6 @@ export function resetMockVarianceState(): void {
   mockVarianceReasons.clear();
 }
 
-
 /** Formula reference match for a named assumption (identifier boundaries, with optional @ preview syntax). */
 function formulaReferencesName(formula: string, name: string): boolean {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1618,9 +1617,27 @@ export async function mockInvoke<C extends CommandName>(
       }
       // Generate deterministic diff rows from mocked model cells.
       const mockLines = [
-        { id: "ln-rev", sheet_id: "sh-rev", sheet_name: "Revenue", account_id: "00000000-0000-4000-8000-000000000001", driver_id: null },
-        { id: "ln-cogs", sheet_id: "sh-cogs", sheet_name: "Cost of Goods Sold", account_id: "00000000-0000-4000-8000-000000000003", driver_id: null },
-        { id: "ln-opex", sheet_id: "sh-opex", sheet_name: "Operating Expenses", account_id: null, driver_id: null },
+        {
+          id: "ln-rev",
+          sheet_id: "sh-rev",
+          sheet_name: "Revenue",
+          account_id: "00000000-0000-4000-8000-000000000001",
+          driver_id: null,
+        },
+        {
+          id: "ln-cogs",
+          sheet_id: "sh-cogs",
+          sheet_name: "Cost of Goods Sold",
+          account_id: "00000000-0000-4000-8000-000000000003",
+          driver_id: null,
+        },
+        {
+          id: "ln-opex",
+          sheet_id: "sh-opex",
+          sheet_name: "Operating Expenses",
+          account_id: null,
+          driver_id: null,
+        },
       ];
       const mockPeriods = ["fp-2027-p01", "fp-2027-p02", "fp-2027-p03"];
       const diffRows: unknown[] = [];
@@ -1634,7 +1651,8 @@ export async function mockInvoke<C extends CommandName>(
           const minorB = cellB?.valueMinor ?? null;
           const deltaMinor = (minorB ?? 0) - (minorA ?? 0);
           const deltaPct = minorA != null && minorA !== 0 ? deltaMinor / Math.abs(minorA) : null;
-          const isChanged = minorA !== minorB || cellA?.value !== cellB?.value || cellA?.formula !== cellB?.formula;
+          const isChanged =
+            minorA !== minorB || cellA?.value !== cellB?.value || cellA?.formula !== cellB?.formula;
           diffRows.push({
             line_id: line.id,
             sheet_id: line.sheet_id,
@@ -1668,10 +1686,7 @@ export async function mockInvoke<C extends CommandName>(
         kpis?: string[];
       };
 
-      if (
-        period_scope.includes("incompat") ||
-        scenario_ids.some((id) => id.includes("incompat"))
-      ) {
+      if (period_scope.includes("incompat") || scenario_ids.some((id) => id.includes("incompat"))) {
         return mockError(
           "COMPARE_INCOMPATIBLE",
           "cannot compare: models or COAs differ",
@@ -3085,19 +3100,31 @@ export async function mockInvoke<C extends CommandName>(
         {
           section: "Revenue",
           lines: [
-            { account_id: "a-rev", label: "Sales Revenue", values: { fp_2026_p01: 1000000, fp_2026_p02: 1200000 } },
+            {
+              account_id: "a-rev",
+              label: "Sales Revenue",
+              values: { fp_2026_p01: 1000000, fp_2026_p02: 1200000 },
+            },
           ],
         },
         {
           section: "Cost of Goods Sold",
           lines: [
-            { account_id: "a-cogs", label: "Direct Materials", values: { fp_2026_p01: -600000, fp_2026_p02: -700000 } },
+            {
+              account_id: "a-cogs",
+              label: "Direct Materials",
+              values: { fp_2026_p01: -600000, fp_2026_p02: -700000 },
+            },
           ],
         },
         {
           section: "Operating Expenses",
           lines: [
-            { account_id: "a-opex", label: "Salaries & Wages", values: { fp_2026_p01: -200000, fp_2026_p02: -200000 } },
+            {
+              account_id: "a-opex",
+              label: "Salaries & Wages",
+              values: { fp_2026_p01: -200000, fp_2026_p02: -200000 },
+            },
           ],
         },
       ];
@@ -3105,19 +3132,31 @@ export async function mockInvoke<C extends CommandName>(
         {
           section: "Current Assets",
           lines: [
-            { account_id: "a-asset", label: "Cash", values: { fp_2026_p01: 500000, fp_2026_p02: 760000 } },
+            {
+              account_id: "a-asset",
+              label: "Cash",
+              values: { fp_2026_p01: 500000, fp_2026_p02: 760000 },
+            },
           ],
         },
         {
           section: "Current Liabilities",
           lines: [
-            { account_id: "a-liab", label: "Accounts Payable", values: { fp_2026_p01: -200000, fp_2026_p02: -300000 } },
+            {
+              account_id: "a-liab",
+              label: "Accounts Payable",
+              values: { fp_2026_p01: -200000, fp_2026_p02: -300000 },
+            },
           ],
         },
         {
           section: "Equity",
           lines: [
-            { account_id: "a-equity", label: "Retained Earnings", values: { fp_2026_p01: -300000, fp_2026_p02: -460000 } },
+            {
+              account_id: "a-equity",
+              label: "Retained Earnings",
+              values: { fp_2026_p01: -300000, fp_2026_p02: -460000 },
+            },
           ],
         },
       ];

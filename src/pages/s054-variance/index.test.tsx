@@ -119,7 +119,9 @@ describe("S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2)", () => {
     it("renders the loading state with role=status and aria-busy", () => {
       render(<VariancePage initialState="loading" />);
       expect(screen.getByRole("status")).toBeInTheDocument();
-      expect(screen.getByText(/Loading variance data and recalculating driver attribution/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Loading variance data and recalculating driver attribution/i),
+      ).toBeInTheDocument();
     });
 
     it("renders the empty state (Plan-Only) with guidance and remains axe-clean", async () => {
@@ -156,12 +158,16 @@ describe("S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2)", () => {
     it("renders the success state with confirmation banner", () => {
       render(<VariancePage initialState="success" initialRows={mockRows} />);
       expect(
-        screen.getByText(/All variance reason codes and commentary submitted and reconciled cleanly/i),
+        screen.getByText(
+          /All variance reason codes and commentary submitted and reconciled cleanly/i,
+        ),
       ).toBeInTheDocument();
     });
 
     it("renders the populated state and remains axe-clean", async () => {
-      const { container } = render(<VariancePage initialState="populated" initialRows={mockRows} />);
+      const { container } = render(
+        <VariancePage initialState="populated" initialRows={mockRows} />,
+      );
       expect(screen.getByRole("heading", { name: /Variance & Attribution/i })).toBeInTheDocument();
       expect(screen.getByText("Subscription Revenue")).toBeInTheDocument();
       expect(screen.getByText("Infrastructure COGS")).toBeInTheDocument();
@@ -201,12 +207,16 @@ describe("S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2)", () => {
       render(<VariancePage initialRows={mockRows} />);
 
       expect(screen.getByRole("region", { name: /Variance Data Table/i })).toBeInTheDocument();
-      expect(screen.queryByRole("img", { name: /Waterfall attribution bridge/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("img", { name: /Waterfall attribution bridge/i }),
+      ).not.toBeInTheDocument();
 
       const waterfallRadio = screen.getByRole("radio", { name: /Waterfall/i });
       await userEvent.click(waterfallRadio);
 
-      expect(screen.getByRole("img", { name: /Waterfall attribution bridge/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: /Waterfall attribution bridge/i }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -245,9 +255,9 @@ describe("S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2)", () => {
         screen.getByText("Not attributable — no driver feed for this line."),
       ).toBeInTheDocument();
 
-      expect(
-        screen.getByRole("status", { name: "Attribution completeness" }),
-      ).toHaveTextContent("1 of 3 lines not attributable");
+      expect(screen.getByRole("status", { name: "Attribution completeness" })).toHaveTextContent(
+        "1 of 3 lines not attributable",
+      );
     });
   });
 
@@ -314,4 +324,3 @@ describe("S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2)", () => {
     });
   });
 });
-
