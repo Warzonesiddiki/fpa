@@ -55,7 +55,7 @@
 
 - [x] **M4-1** Budget/Forecast/Rolling + hybrid labeling (S-041/053) — DONE: canonical hybrid period label generator (`generatePeriodLabel`, `ACTUAL`, `FORECAST`, `PLAN_ONLY`, `HYBRID (Actual P01–Pxx, Forecast Pyy–Pzz)`), reactive store tracking in `stores/model.ts`, WCAG 2.2 AA toolbar badge (`PeriodStateBadge`), and AG Grid actual/forecast column classification + boundary separator in S-041.
 - [x] **M4-2** Scenario states + versions + baseline freeze (S-050; SCENARIO-VERSION-SPEC) — DONE: scenario lifecycle commands (`scenario.create/duplicate/submit/approve/lock/reopen/delete`, `baseline.set`, `model.list`), SQLite persistence, HMAC audit chaining, S-050 Scenario Manager page, and S-041 ScenarioPicker.
-- [ ] **M4-3** Model compare (S-051)
+- [x] **M4-3** Model compare (S-051; SCENARIO-VERSION-SPEC §4) — DONE: `model.diff` two-way cell diff between Scenarios/Versions with `COMPARE_INCOMPATIBLE` error handling, integer minor unit arithmetic, and Decimal-based Δ% (`delta_pct = delta / |A|`, null when A=0, never Infinity/NaN); Zustand compare store with 5 screen states, changed-only toggle (default true), and CSV export; accessible S-051 Model Compare page (`/app/plan/compare`); comprehensive unit test coverage across Rust, store, and S-051 UI.
 - [ ] **M4-4** What-if overlay + waterfall + sensitivity tornado + goal seek (S-052)
 - [ ] **M4-5** Planning cycle manager + close checklist (S-053)
 - [ ] **M4-6** Input collection loop (S-053)

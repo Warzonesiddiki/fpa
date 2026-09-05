@@ -158,3 +158,21 @@ function groupDigits(raw: string, locale: LocalePattern): string {
   }
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, locale.group);
 }
+
+/**
+ * Format a percentage value (display only) without floating-point arithmetic in UI components.
+ * e.g. formatPercent(0.125, 1) -> "+12.5%" or formatPercent(-0.05, 1) -> "-5.0%"
+ * Returns "\u2014" (dash) when null/undefined.
+ */
+export function formatPercent(
+  value: number | null | undefined,
+  decimals = 1,
+  showPlus = true,
+): string {
+  if (value == null || !Number.isFinite(value)) return "\u2014";
+  const dec = new Decimal(value).mul(100);
+  const formatted = dec.toFixed(decimals);
+  const prefix = showPlus && dec.greaterThan(0) ? "+" : "";
+  return `${prefix}${formatted}%`;
+}
+

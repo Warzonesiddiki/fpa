@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 ### Added
+- **M4-3 Model Compare & S-051 Screen (F-022 · SCENARIO-VERSION-SPEC §4 · SCREENS-SPEC S-051, 2026-09-05):**
+  Added two-way cell diff between Scenarios and Versions via `model.diff` IPC command. Implemented Rust native handler
+  in `src-tauri/src/commands/model.rs` validating scenario model matching, returning `COMPARE_INCOMPATIBLE` (HTTP 422, non-retryable),
+  calculating integer minor unit deltas, and computing exact Decimal-based Δ% (`delta_pct = delta / |A|`, null when A=0,
+  never Infinity/NaN). Added `useCompareStore` (`src/stores/compare.ts`) supporting all 5 screen states (`loading`, `error`,
+  `empty`, `success`, `populated`), changed-only filtering (default true), and CSV export. Implemented accessible S-051 Model Compare page
+  (`src/pages/s051-compare/`), code-split lazy routing at `/app/plan/compare`, and comprehensive test coverage (162 cargo unit tests,
+  724 vitest tests, axe-clean WCAG 2.2 AA).
 - **Taxonomy truth pass + the review guard (2026-09-05, ADR-027):** the 17 undefined code citations surfaced by the revived
   `docs:verify` guard were classified **against the binary**, and the catalog turned out to be right — admitting them would have
   been the damage. `ERROR-HANDLING.md` gains **§2B** (the seven validator *message prefixes*, each bound to the governing §2 code

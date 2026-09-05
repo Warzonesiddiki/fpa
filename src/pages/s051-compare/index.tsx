@@ -13,6 +13,7 @@ import { ArrowLeftRight, Download, Filter } from "lucide-react";
 import { Button, StatePanel } from "@/components/ui";
 import { useCompareStore } from "@/stores/compare";
 import { useScenarioStore } from "@/stores/scenarios";
+import { formatPercent } from "@/utils/money";
 import type { ScenarioRow, ModelDiffRow } from "@/api/schema";
 
 /** Format i64 minor units as a display string with thousands separators. */
@@ -24,13 +25,6 @@ function fmtMoney(minor: number | null): string {
   const frac = abs % 100;
   const majorStr = major.toLocaleString("en-US");
   return `${sign}${majorStr}.${String(frac).padStart(2, "0")}`;
-}
-
-/** Format a delta percentage as a human-readable string (never Infinity/NaN). */
-function fmtPct(pct: number | null): string {
-  if (pct == null) return "\u2014";
-  const pctVal = pct * 100;
-  return `${pctVal >= 0 ? "+" : ""}${pctVal.toFixed(1)}%`;
 }
 
 /** Scenario selector dropdown. */
@@ -130,7 +124,7 @@ function exportCsv(rows: ModelDiffRow[]): void {
     String(r.value_b_minor ?? ""),
     r.formula_b ?? "",
     String(r.delta_minor),
-    r.delta_pct != null ? `${(r.delta_pct * 100).toFixed(1)}%` : "",
+    formatPercent(r.delta_pct),
     r.is_changed ? "Y" : "N",
   ]);
   const csv = [header, ...csvRows].map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -195,16 +189,16 @@ export function ComparePage() {
 
   if (status === "loading") {
     return (
-      <div className="flex flex-col gap-4">
+      <main className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">{t("comparePage.title")}</h1>
         <StatePanel state="loading" message={t("common.loading")} />
-      </div>
+      </main>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="flex flex-col gap-4">
+      <main className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">{t("comparePage.title")}</h1>
         <StatePanel
           state="error"
@@ -212,13 +206,13 @@ export function ComparePage() {
           errorCode={storeError?.code}
           onRetry={retry}
         />
-      </div>
+      </main>
     );
   }
 
   if (status === "empty") {
     return (
-      <div className="flex flex-col gap-4">
+      <main className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold">{t("comparePage.title")}</h1>
         <p className="text-sm text-[var(--color-onetextsecondary)]">
           {t("comparePage.lead")}
@@ -273,13 +267,13 @@ export function ComparePage() {
           actionLabel={canCompare ? t("comparePage.compare") : undefined}
           onAction={canCompare ? handleCompare : undefined}
         />
-      </div>
+      </main>
     );
   }
 
   // success or populated
   return (
-    <div className="flex flex-col gap-4">
+    <main className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{t("comparePage.title")}</h1>
@@ -415,7 +409,7 @@ export function ComparePage() {
                       {row.delta_minor === 0 ? "\u2014" : fmtMoney(row.delta_minor)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">
-                      {fmtPct(row.delta_pct)}
+                      {formatPercent(row.delta_pct)}
                     </td>
                   </tr>
                 ))}
@@ -424,6 +418,6 @@ export function ComparePage() {
           </div>
         </>
       )}
-    </div>
+    </main>
   );
 }

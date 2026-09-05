@@ -321,21 +321,27 @@ pub fn model_diff(
         .map_err(AppError::from)?;
 
     // Build a map: line_id → period_id → value for scenario A.
-    let mut values_a: std::collections::HashMap<String, std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>> =
-        std::collections::HashMap::new();
+    let mut values_a: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>,
+    > = std::collections::HashMap::new();
 
-    let mut query_a = format!(
-        "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
+    let mut query_a = "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
          FROM model_values mv
          WHERE mv.scenario_id = ?1"
-    );
+        .to_string();
     if let Some(ref va) = version_a {
-        query_a.push_str(&format!(" AND mv.source_version_id = '{}'", va.replace('\'', "''")));
+        query_a.push_str(&format!(
+            " AND mv.source_version_id = '{}'",
+            va.replace('\'', "''")
+        ));
     }
 
     {
         let mut stmt = conn.prepare(&query_a).map_err(AppError::from)?;
-        let mut rows = stmt.query(rusqlite::params![scenario_a]).map_err(AppError::from)?;
+        let mut rows = stmt
+            .query(rusqlite::params![scenario_a])
+            .map_err(AppError::from)?;
         while let Some(row) = rows.next().map_err(AppError::from)? {
             let line_id: String = row.get(0)?;
             let period_id: String = row.get(1)?;
@@ -350,21 +356,27 @@ pub fn model_diff(
     }
 
     // Build a map: line_id → period_id → value for scenario B.
-    let mut values_b: std::collections::HashMap<String, std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>> =
-        std::collections::HashMap::new();
+    let mut values_b: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, Option<(Option<i64>, Option<String>, Option<String>)>>,
+    > = std::collections::HashMap::new();
 
-    let mut query_b = format!(
-        "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
+    let mut query_b = "SELECT mv.line_id, mv.period_id, mv.amount_minor, mv.amount_text, mv.formula
          FROM model_values mv
          WHERE mv.scenario_id = ?1"
-    );
+        .to_string();
     if let Some(ref vb) = version_b {
-        query_b.push_str(&format!(" AND mv.source_version_id = '{}'", vb.replace('\'', "''")));
+        query_b.push_str(&format!(
+            " AND mv.source_version_id = '{}'",
+            vb.replace('\'', "''")
+        ));
     }
 
     {
         let mut stmt = conn.prepare(&query_b).map_err(AppError::from)?;
-        let mut rows = stmt.query(rusqlite::params![scenario_b]).map_err(AppError::from)?;
+        let mut rows = stmt
+            .query(rusqlite::params![scenario_b])
+            .map_err(AppError::from)?;
         while let Some(row) = rows.next().map_err(AppError::from)? {
             let line_id: String = row.get(0)?;
             let period_id: String = row.get(1)?;
@@ -404,14 +416,8 @@ pub fn model_diff(
         sorted_periods.sort();
 
         for pid in &sorted_periods {
-            let val_a = periods_a
-                .and_then(|pa| pa.get(pid))
-                .cloned()
-                .flatten();
-            let val_b = periods_b
-                .and_then(|pb| pb.get(pid))
-                .cloned()
-                .flatten();
+            let val_a = periods_a.and_then(|pa| pa.get(pid)).cloned().flatten();
+            let val_b = periods_b.and_then(|pb| pb.get(pid)).cloned().flatten();
 
             let minor_a = val_a.as_ref().and_then(|v| v.0);
             let text_a = val_a.as_ref().and_then(|v| v.1.clone());
@@ -425,9 +431,19 @@ pub fn model_diff(
             let is_changed = minor_a != minor_b || text_a != text_b || formula_a != formula_b;
 
             // Δ% = Δ / |A| — None when A = 0 (never Infinity/NaN per SPEC §4).
-            let delta_pct = if minor_a.unwrap_or(0) != 0 {
-                let abs_a = minor_a.unwrap_or(0).abs() as f64;
-                Some((delta_minor as f64) / abs_a)
+            let delta_pct = if let Some(ma) = minor_a {
+                if ma != 0 {
+                    let d_delta = rust_decimal::Decimal::from(delta_minor);
+                    let d_abs_a = rust_decimal::Decimal::from(ma.abs());
+                    (d_delta / d_abs_a)
+                        .round_dp(6)
+                        .to_string()
+                        .parse::<serde_json::Number>()
+                        .ok()
+                        .map(serde_json::Value::Number)
+                } else {
+                    None
+                }
             } else {
                 None
             };
