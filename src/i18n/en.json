@@ -1283,8 +1283,8 @@
       "period": "Period",
       "valueA": "Value A",
       "valueB": "Value B",
-      "delta": "\u0394",
-      "deltaPct": "\u0394 %"
+      "delta": "Δ",
+      "deltaPct": "Δ %"
     },
     "errors": {
       "load": "Compare could not be loaded."
@@ -1364,5 +1364,62 @@
     "integrityLabel": "Statement integrity",
     "retry": "Retry",
     "footer": "Values are exact minor units of the reporting currency; display rounding is largest-remainder allocated so subtotals tie to totals."
+  },
+  "alertsPage": {
+    "title": "Alerts",
+    "subtitle": "Threshold alerts on the working model — the list is the record",
+    "filtersLabel": "Alert filters",
+    "filters": {
+      "all": "All",
+      "showDismissed": "Dismissed"
+    },
+    "reload": "Reload",
+    "allClear": "All clear",
+    "listSummary": "{{count}} alert(s) in the last 90 days",
+    "dismissedTag": "dismissed",
+    "dismiss": "Dismiss",
+    "muteRule": "Mute rule",
+    "pendingDismiss": "Requires an alerts.dismiss command — not in the locked API catalog (see TASKBOARD)",
+    "pendingMute": "Requires an alerts.mute_rule command — not in the locked API catalog (see TASKBOARD)",
+    "severity": {
+      "info": "Info",
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "operators": {
+      "lt": "below",
+      "lte": "at or below",
+      "gt": "above",
+      "gte": "at or above",
+      "eq": "equals"
+    },
+    "chain": {
+      "show": "Trigger chain",
+      "hide": "Hide trigger chain",
+      "rule": "Rule",
+      "line": "Line",
+      "driver": "Driver",
+      "period": "Period",
+      "value": "Value",
+      "threshold": "Threshold"
+    },
+    "rule": {
+      "heading": "Rule manager",
+      "name": "Rule name",
+      "target": "Target",
+      "targetLine": "Line",
+      "targetKpi": "KPI",
+      "lineRef": "Model line id",
+      "kpiId": "KPI id",
+      "operator": "Fires when",
+      "threshold": "Threshold (exact decimal, minor units for lines)",
+      "thresholdHint": "Exact decimal string only — no thousands separators, no exponent (B3)",
+      "severity": "Severity",
+      "create": "+ Rule",
+      "creating": "Creating…",
+      "created": "Rule created (audited).",
+      "kpiPending": "KPI-target rules save now and evaluate once the KPI builder (M6-4/5) lands."
+    },
+    "policy": "Digest: at most 1 notification / 24h per rule · log retention: 90 days."
   }
 }

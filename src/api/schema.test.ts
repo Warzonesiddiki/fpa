@@ -1674,3 +1674,48 @@ describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
     ).toBe(false);
   });
 });
+
+describe("alerts schemas (F-026 · M5-4 · API-SPEC §7 alerts.*)", () => {
+  const rule = {
+    name: "Cash floor (13-week)",
+    kpi_id: null,
+    line_ref: "line-cash",
+    threshold_operator: "lt",
+    threshold_value: "2500000000",
+    severity: "warning",
+    active: true,
+  };
+
+  it("accepts the two DB CHECK domains and exact decimal thresholds", () => {
+    const args = CommandArgs["alerts.create_rule"];
+    expect(args.safeParse({ rule }).success).toBe(true);
+    expect(args.safeParse({ rule: { ...rule, kpi_id: "k1", line_ref: null } }).success).toBe(true);
+    expect(args.safeParse({ rule: { ...rule, severity: "info" } }).success).toBe(true);
+    expect(
+      args.safeParse({ rule: { ...rule, severity: "critical", threshold_operator: "gte" } })
+        .success,
+    ).toBe(true);
+    expect(args.safeParse({ rule: { ...rule, threshold_value: "-0.25" } }).success).toBe(true);
+  });
+
+  it("enforces exactly one target and rejects float-formatted thresholds", () => {
+    const args = CommandArgs["alerts.create_rule"];
+    expect(args.safeParse({ rule: { ...rule, kpi_id: null, line_ref: null } }).success).toBe(false);
+    expect(args.safeParse({ rule: { ...rule, kpi_id: "k1" } }).success).toBe(false);
+    for (const bad of ["1.5e3", ".5", "5.", "1,000", "", "NaN"]) {
+      expect(args.safeParse({ rule: { ...rule, threshold_value: bad } }).success, bad).toBe(false);
+    }
+    expect(args.safeParse({ rule: { ...rule, threshold_operator: "ne" } }).success).toBe(false);
+    expect(args.safeParse({ rule: { ...rule, severity: "fatal" } }).success).toBe(false);
+    expect(args.safeParse({ rule: { ...rule, id: "injected" } }).success).toBe(false); // strict
+  });
+
+  it("alerts.list filter is optional with a dismissive default", () => {
+    const args = CommandArgs["alerts.list"];
+    expect(args.safeParse({}).success).toBe(true);
+    const parsed = args.parse({ filter: { severity: "info" } });
+    expect(parsed.filter?.include_dismissed).toBe(false);
+    expect(args.safeParse({ filter: { severity: "fatal" } }).success).toBe(false);
+    expect(args.safeParse({ filter: {}, extra: 1 }).success).toBe(false); // strict
+  });
+});

@@ -1943,6 +1943,95 @@ export type FvaGetData = z.infer<typeof FvaGetData>;
 
 /* ── Registered command table ───────────────────────────────────── */
 
+/* ── Alerts (F-026 · API-SPEC §7 alerts.* · SCREENS-SPEC S-056 · M5-4) ────────────── */
+
+/** Mirrors the `alert_rules` DB CHECK domains (001_initial.sql) — never widen here. */
+export const AlertSeverity = z.enum(["info", "warning", "critical"]);
+export type AlertSeverity = z.infer<typeof AlertSeverity>;
+
+export const AlertThresholdOperator = z.enum(["lt", "lte", "gt", "gte", "eq"]);
+export type AlertThresholdOperator = z.infer<typeof AlertThresholdOperator>;
+
+/** `alerts.list` — `{filter}`: severity narrowing + the dismissed log view (S-056). */
+export const AlertFilter = z
+  .object({
+    severity: AlertSeverity.nullable().optional(),
+    include_dismissed: z.boolean().default(false),
+  })
+  .strict();
+export type AlertFilter = z.infer<typeof AlertFilter>;
+
+export const AlertsListArgs = z.object({ filter: AlertFilter.optional() }).strict();
+export type AlertsListArgs = z.infer<typeof AlertsListArgs>;
+
+/**
+ * Trigger chain persisted with each firing (DATABASE-SCHEMA §alerts `trigger_chain_json`;
+ * chain = rule → value → threshold → period per WIREFRAMES-ANALYTICS S-056). `value` and
+ * `threshold` are exact decimal strings of minor units — never floats (B3/B18-2).
+ */
+export const AlertTriggerChain = z
+  .object({
+    rule: z.string(),
+    line: z.string().optional(),
+    driver: z.string().optional(),
+    period_id: z.string().nullable().optional(),
+    value: DecimalString,
+    threshold: DecimalString,
+  })
+  .strict();
+export type AlertTriggerChain = z.infer<typeof AlertTriggerChain>;
+
+export const AlertRecord = z
+  .object({
+    id: Uuid,
+    rule_id: Uuid,
+    rule_name: z.string(),
+    severity: AlertSeverity,
+    fired_at: z.string().datetime({ offset: true }),
+    trigger_chain: AlertTriggerChain,
+    dismissed_at: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export type AlertRecord = z.infer<typeof AlertRecord>;
+
+export const AlertsListData = z.object({ alerts: z.array(AlertRecord) }).strict();
+export type AlertsListData = z.infer<typeof AlertsListData>;
+
+/**
+ * `alerts.create_rule` rule payload — no `id` (engine-generated). `kpi_id`/`line_ref` are
+ * the DB's TEXT targets (`kpis.id`, model line id; covenants are KPI rules — the locked
+ * schema offers no separate covenant column). Exactly one target: the same gate the native
+ * handler enforces as typed ALERT_RULE_INVALID.
+ */
+export const AlertRuleInput = z
+  .object({
+    name: z.string().min(1).max(120),
+    kpi_id: z.string().min(1).max(120).nullable().optional(),
+    line_ref: z.string().min(1).max(120).nullable().optional(),
+    threshold_operator: AlertThresholdOperator,
+    threshold_value: DecimalString,
+    severity: AlertSeverity.default("warning"),
+    active: z.boolean().default(true),
+  })
+  .strict()
+  .refine((r) => (r.kpi_id != null) !== (r.line_ref != null), {
+    message: "exactly one of kpi_id or line_ref is required",
+    path: ["kpi_id"],
+  });
+export type AlertRuleInput = z.infer<typeof AlertRuleInput>;
+
+export const AlertsCreateRuleArgs = z.object({ rule: AlertRuleInput }).strict();
+export type AlertsCreateRuleArgs = z.infer<typeof AlertsCreateRuleArgs>;
+
+/** Audited mutation response (B4): positive audit_events rowid alongside the id. */
+export const AlertsCreateRuleData = z
+  .object({
+    rule_id: Uuid,
+    audit_id: z.number().int().positive(),
+  })
+  .strict();
+export type AlertsCreateRuleData = z.infer<typeof AlertsCreateRuleData>;
+
 export const CommandArgs = {
   "session.status": SessionStatusArgs,
   "session.unlock": SessionUnlockArgs,
@@ -2005,6 +2094,8 @@ export const CommandArgs = {
   "variance.set_reason_code": VarianceSetReasonCodeArgs,
   "fva.get": FvaGetArgs,
   "statement.get.v1": StatementGetArgs,
+  "alerts.list": AlertsListArgs,
+  "alerts.create_rule": AlertsCreateRuleArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;
