@@ -14,6 +14,7 @@ pub mod storage;
 
 use commands::alerts::{alerts_create_rule, alerts_list};
 use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
+use commands::audit::audit_list;
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
@@ -25,6 +26,7 @@ use commands::cycle::{
 };
 use commands::driver::{driver_set_value, driver_upsert};
 use commands::fva::fva_get;
+use commands::health::{health_run, health_waive};
 use commands::import::{
     ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
     import_rollback, import_tieout, import_validate,
@@ -126,6 +128,9 @@ pub fn run() {
             statement_get,
             alerts_list,
             alerts_create_rule,
+            audit_list,
+            health_run,
+            health_waive,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

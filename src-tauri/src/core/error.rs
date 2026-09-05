@@ -186,6 +186,15 @@ pub enum AppError {
     /// threshold). The catalog user text is "Alert rule invalid: {detail}".
     #[error("alert rule invalid: {detail}")]
     AlertRuleInvalid { detail: String },
+    // ── Health Check (F-032 / ERROR-HANDLING §G) ──────────────────────────────────────────
+    /// A waiver was submitted without a reason. Friction is intentional (US-033): a Health
+    /// Check finding is never silently dismissed — the reason is persisted and audited.
+    #[error("a waiver reason is required")]
+    HealthWaiverReasonRequired,
+    /// Export/save gate: `n` unwaived findings block the action (F-032). Carried so the
+    /// export layer (M6-6) can raise the documented text without re-deriving the count.
+    #[error("export blocked by {count} unwaived Health Check finding(s)")]
+    HealthCheckBlocked { count: i64 },
 }
 
 impl AppError {
@@ -277,6 +286,10 @@ impl AppError {
             }
             AppError::StatementSourceMixed => ("STATEMENT_SOURCE_MIXED", 422, false, None),
             AppError::AlertRuleInvalid { .. } => ("ALERT_RULE_INVALID", 422, false, None),
+            AppError::HealthWaiverReasonRequired => {
+                ("HEALTH_WAIVER_REASON_REQUIRED", 422, false, None)
+            }
+            AppError::HealthCheckBlocked { .. } => ("HEALTH_CHECK_BLOCKED", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -722,6 +735,22 @@ impl AppError {
                     details: serde_json::json!({ "detail": detail }),
                 };
             }
+            AppError::HealthCheckBlocked { count } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    // ERROR-HANDLING §G verbatim, with {n} bound to the unwaived count.
+                    user_message: format!(
+                        "Export blocked by {count} Health Check findings. Fix or waive (reason required)."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "count": count }),
+                };
+            }
+            // ERROR-HANDLING §G verbatim.
+            AppError::HealthWaiverReasonRequired => "A waiver reason is required.",
             AppError::StatementSourceMixed => {
                 "Period/currency mix in scope is not comparable. Align scope or use Group translation."
             }
@@ -981,6 +1010,14 @@ impl AppError {
 
     pub fn statement_source_mixed() -> Self {
         AppError::StatementSourceMixed
+    }
+
+    pub fn health_waiver_reason_required() -> Self {
+        AppError::HealthWaiverReasonRequired
+    }
+
+    pub fn health_check_blocked(count: i64) -> Self {
+        AppError::HealthCheckBlocked { count }
     }
 }
 

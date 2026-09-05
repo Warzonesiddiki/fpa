@@ -10,6 +10,7 @@
 import Decimal from "decimal.js";
 import {
   CANONICAL_MAPPING_ID,
+  HEALTH_CATEGORIES,
   findUnsupportedFunction,
   isLedgerImportKind,
   type CommandInput,
@@ -526,9 +527,190 @@ function mockAlertRows(): MockAlertRow[] {
   }));
 }
 
+/* ── Model Health Check fixtures (F-032 · S-071) ───────────────────────────────────────
+ * A deterministic report that exercises every documented state the screen must render:
+ * all five categories present, HARD and WARN severities, an entity_ref that IS a cell (so
+ * "→ cell" is offered) and refs that are not (so it is correctly withheld), and a running
+ * waiver ledger. The mock stores waivers in memory for the session — the native command
+ * persists them and writes the HMAC audit event; the dev preview cannot and does not
+ * pretend to (no fake audit_id chain beyond a monotonic counter).                        */
+type MockHealthFindingSeed = {
+  category: "tie_out" | "reference" | "rounding" | "driver_feed" | "anomaly";
+  severity: "hard" | "warn";
+  message: string;
+  entity_ref: string | null;
+};
+
+const MOCK_HEALTH_FINDINGS: MockHealthFindingSeed[] = [
+  {
+    category: "tie_out",
+    severity: "hard",
+    message:
+      "Committed GL does not tie for period fp-2026-p02: debits minus credits = 5 minor units (must be 0).",
+    entity_ref: "period:fp-2026-p02",
+  },
+  {
+    category: "reference",
+    severity: "hard",
+    message: "Model Line references Account acc-4999, which is missing or inactive.",
+    entity_ref: "line:ln-rev-saas",
+  },
+  {
+    category: "reference",
+    severity: "hard",
+    message: "Formula is not valid: unsupported function: LAMBDA.",
+    entity_ref: "cell:ln-opex-travel:sc-budget:fp-2026-p03",
+  },
+  {
+    category: "reference",
+    severity: "hard",
+    message: "Model Line references Driver drv-seats, which no longer exists.",
+    entity_ref: "line:ln-rev-seats",
+  },
+  {
+    category: "rounding",
+    severity: "warn",
+    message:
+      "Money Line displays 0 decimals but USD has a Currency Scale of 2 — displayed totals may not match the exact stored amounts.",
+    entity_ref: "line:ln-cogs-hosting",
+  },
+  {
+    category: "driver_feed",
+    severity: "hard",
+    message: 'Driver "New Logos" has no value for 3 of 12 scenario/period slots the Model uses.',
+    entity_ref: "driver:drv-new-logos",
+  },
+  {
+    category: "anomaly",
+    severity: "warn",
+    message:
+      "Value moves from 120000 to 980000 minor units into period fp-2026-p04 — more than 5× the prior magnitude.",
+    entity_ref: "cell:ln-opex-marketing:sc-budget:fp-2026-p04",
+  },
+];
+
+/** finding_id → waiver, for the life of the dev session. */
+const mockHealthWaivers = new Map<string, { reason: string; actor: string; created_at: string }>();
+/** Stable finding ids per fingerprint so a re-run carries waivers forward, as the engine does. */
+const mockHealthFindingIds = new Map<string, string>();
+const mockHealthHistory: {
+  check_id: string;
+  run_at: string;
+  status: "passed" | "failed";
+  finding_count: number;
+}[] = [];
+let mockHealthAuditSeq = 950;
+
+function mockHealthFindingId(seed: MockHealthFindingSeed): string {
+  const key = `${seed.category}|${seed.severity}|${seed.entity_ref ?? ""}|${seed.message}`;
+  const existing = mockHealthFindingIds.get(key);
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  mockHealthFindingIds.set(key, id);
+  return id;
+}
+
 let mockAlertLog: MockAlertRow[] = [];
 
 let mockAlertSeq = 900;
+
+/* ── Audit Trail fixtures (F-033 · S-070) ──────────────────────────────────────────────
+ * Shape mirror of `audit_events` (DATABASE-SCHEMA): append-only, HMAC-chained. The mock
+ * cannot compute real HMACs (the key lives in the OS keychain, Rust side) — the hashes
+ * below are fixed opaque hex strings so the UI can render/verify-display them, and
+ * `chain_status.verified` follows the SAME dev trigger as the rest of the app
+ * (`MOCK_CHAIN_BREAK_PIN` → degraded read-only session), never a random verdict.        */
+/** Page size mirrors the native `AUDIT_PAGE_SIZE` in commands/audit.rs. */
+export const MOCK_AUDIT_PAGE_SIZE = 50;
+
+type MockAuditEvent = {
+  seq: number;
+  actor: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  before_json: string | null;
+  after_json: string | null;
+  prev_hash: string;
+  hash: string;
+  createdOffsetMs: number;
+};
+
+const MOCK_AUDIT_EVENTS: MockAuditEvent[] = [
+  {
+    seq: 1,
+    actor: "owner",
+    action: "company.create",
+    object_type: "company",
+    object_id: "c0000000-0000-4000-8000-000000000001",
+    before_json: null,
+    after_json: '{"name":"Demo Company","default_currency_code":"USD"}',
+    prev_hash: "genesis",
+    hash: "0a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff",
+    createdOffsetMs: -30 * 86400_000,
+  },
+  {
+    seq: 2,
+    actor: "owner",
+    action: "calendar.apply",
+    object_type: "calendar",
+    object_id: "cal-default",
+    before_json: null,
+    after_json: '{"preset":"12month","fy_start_month":4,"years":3}',
+    prev_hash: "0a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff",
+    hash: "112233445566778899aabbccddeeff000a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    createdOffsetMs: -29 * 86400_000,
+  },
+  {
+    seq: 3,
+    actor: "owner",
+    action: "coa.import",
+    object_type: "coa",
+    object_id: "c0000000-0000-4000-8000-000000000001",
+    before_json: null,
+    after_json: '{"created":128,"updated":0,"source":"pack:manufacturing"}',
+    prev_hash: "112233445566778899aabbccddeeff000a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    hash: "223344556677889900aabbccddeeff112c3d4e5f60718293a4b5c6d7e8f90a1b",
+    createdOffsetMs: -21 * 86400_000,
+  },
+  {
+    seq: 4,
+    actor: "owner",
+    action: "import.commit",
+    object_type: "import_batch",
+    object_id: "2026-08-30_001",
+    before_json: null,
+    after_json:
+      '{"name":"2026-08-30_001","rows":48213,"debits_minor":915400000,"credits_minor":915400000,"tie_out_status":"pass"}',
+    prev_hash: "223344556677889900aabbccddeeff112c3d4e5f60718293a4b5c6d7e8f90a1b",
+    hash: "33445566778899aabbccddeeff00112233c3d4e5f60718293a4b5c6d7e8f90a1",
+    createdOffsetMs: -7 * 86400_000,
+  },
+  {
+    seq: 5,
+    actor: "owner",
+    action: "scenario.approve",
+    object_type: "scenario",
+    object_id: "sc-fy27-budget",
+    before_json: '{"state":"review"}',
+    after_json: '{"state":"approved","approved_by":"owner"}',
+    prev_hash: "33445566778899aabbccddeeff00112233c3d4e5f60718293a4b5c6d7e8f90a1",
+    hash: "445566778899aabbccddeeff001122334455d4e5f60718293a4b5c6d7e8f90a1",
+    createdOffsetMs: -2 * 86400_000,
+  },
+  {
+    seq: 6,
+    actor: "owner",
+    action: "scenario.lock",
+    object_type: "scenario",
+    object_id: "sc-fy27-budget",
+    before_json: '{"state":"approved"}',
+    after_json: '{"state":"locked","locked_at":"snapshot"}',
+    prev_hash: "445566778899aabbccddeeff001122334455d4e5f60718293a4b5c6d7e8f90a1",
+    hash: "5566778899aabbccddeeff00112233445566e5f60718293a4b5c6d7e8f90a1b2",
+    createdOffsetMs: -1 * 86400_000,
+  },
+];
 
 /** Reset the browser-preview alerts between isolated store/mock tests. */
 export function resetMockAlertState(): void {
@@ -3527,6 +3709,190 @@ export async function mockInvoke<C extends CommandName>(
       });
       mockAlertSeq += 1;
       return { data: { rule_id: id, audit_id: mockAlertSeq } };
+    }
+    // Mirrors the Rust `audit.list` contract: page of immutable events (newest first),
+    // the Company chain verdict as DATA (so a tampered chain is still readable), pagination
+    // meta and the toolbar facets. Never mutates — S-070 has no edit/delete geometry.
+    case "audit.list": {
+      const auditArgs = (args ?? {}) as {
+        company_id: string;
+        filters?: {
+          from?: string | null;
+          to?: string | null;
+          actor?: string | null;
+          action?: string | null;
+          object_type?: string | null;
+          object_id?: string | null;
+        };
+        page: number;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.company_id && auditArgs.company_id !== session.company_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "AUDIT_COMPANY_MISMATCH: open the requested Company first",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const now = Date.now();
+      const chainEvents = MOCK_AUDIT_EVENTS.map((e) => ({
+        seq: e.seq,
+        actor: e.actor,
+        action: e.action,
+        object_type: e.object_type,
+        object_id: e.object_id,
+        before_json: e.before_json,
+        after_json: e.after_json,
+        prev_hash: e.prev_hash,
+        hash: e.hash,
+        created_at: new Date(now + e.createdOffsetMs).toISOString(),
+      }));
+      const f = auditArgs.filters ?? {};
+      const fromMs = f.from ? Date.parse(f.from) : null;
+      const toMs = f.to ? Date.parse(f.to) : null;
+      const filtered = chainEvents.filter((e) => {
+        const at = Date.parse(e.created_at);
+        if (fromMs !== null && at < fromMs) return false;
+        if (toMs !== null && at > toMs) return false;
+        if (f.actor && e.actor !== f.actor) return false;
+        if (f.action && e.action !== f.action) return false;
+        if (f.object_type && e.object_type !== f.object_type) return false;
+        if (f.object_id && e.object_id !== f.object_id) return false;
+        return true;
+      });
+      const pageSize = MOCK_AUDIT_PAGE_SIZE;
+      const total = filtered.length;
+      const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+      const offset = (auditArgs.page - 1) * pageSize;
+      const events = [...filtered].sort((a, b) => b.seq - a.seq).slice(offset, offset + pageSize);
+      // The chain verdict follows the app's single documented tamper trigger, so the
+      // degraded read-only session and this screen always agree (AUTH-SPEC §2.5).
+      const verified = !session.read_only;
+      return {
+        data: {
+          events,
+          chain_status: {
+            verified,
+            broken_at_seq: verified ? null : chainEvents[chainEvents.length - 1].seq,
+            event_count: chainEvents.length,
+          },
+          meta: { page: auditArgs.page, page_size: pageSize, total, total_pages: totalPages },
+          facets: {
+            actors: [...new Set(chainEvents.map((e) => e.actor))].sort(),
+            actions: [...new Set(chainEvents.map((e) => e.action))].sort(),
+            object_types: [...new Set(chainEvents.map((e) => e.object_type))].sort(),
+          },
+        },
+      };
+    }
+    // Mirrors the Rust `health.run` contract: five categories, findings as data (never an
+    // error), waivers carried forward by fingerprint, and per-category rollups so the screen
+    // never counts anything itself. Blocking is reported, not thrown — HEALTH_CHECK_BLOCKED
+    // belongs to the export path.
+    case "health.run": {
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      const { model_id } = args as { model_id: string };
+      const findings = MOCK_HEALTH_FINDINGS.map((seed) => {
+        const id = mockHealthFindingId(seed);
+        return {
+          id,
+          category: seed.category,
+          severity: seed.severity,
+          message: seed.message,
+          entity_ref: seed.entity_ref,
+          waiver: mockHealthWaivers.get(id) ?? null,
+        };
+      });
+      const blocking = findings.filter((f) => f.severity === "hard" && f.waiver === null).length;
+      const warnings = findings.filter((f) => f.severity === "warn").length;
+      const waived = findings.filter((f) => f.waiver !== null).length;
+      const status: "passed" | "failed" = blocking > 0 ? "failed" : "passed";
+      const categories = HEALTH_CATEGORIES.map((category) => {
+        const mine = findings.filter((f) => f.category === category);
+        const blockingHere = mine.filter((f) => f.severity === "hard" && f.waiver === null).length;
+        return {
+          category,
+          status: blockingHere > 0 ? "failed" : mine.length > 0 ? "warnings" : "passed",
+          finding_count: mine.length,
+          blocking_count: blockingHere,
+          warning_count: mine.filter((f) => f.severity === "warn").length,
+        };
+      });
+      const check_id = crypto.randomUUID();
+      const run_at = new Date().toISOString();
+      mockHealthHistory.unshift({ check_id, run_at, status, finding_count: findings.length });
+      return {
+        data: {
+          check_id,
+          model_id,
+          run_at,
+          status,
+          findings,
+          categories,
+          blocking_count: blocking,
+          warning_count: warnings,
+          waived_count: waived,
+          history: mockHealthHistory.slice(0, 10),
+        },
+      };
+    }
+    case "health.waive": {
+      const { finding_id, reason } = args as { finding_id: string; reason: string };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "READ_ONLY_MODE",
+          "company is read-only",
+          "This Company is open in read-only mode.",
+          403,
+        );
+      }
+      if (typeof reason !== "string" || reason.trim().length === 0) {
+        return mockError(
+          "HEALTH_WAIVER_REASON_REQUIRED",
+          "a waiver reason is required",
+          "A waiver reason is required.",
+          422,
+        );
+      }
+      const known = [...mockHealthFindingIds.values()].includes(finding_id);
+      if (!known) {
+        return mockError(
+          "VALUE_INVALID",
+          "VALUE_INVALID: finding_id is not a Health Check finding of the unlocked Company",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      mockHealthWaivers.set(finding_id, {
+        reason: reason.trim(),
+        actor: "owner",
+        created_at: new Date().toISOString(),
+      });
+      mockHealthAuditSeq += 1;
+      return { data: { waived: true, finding_id, audit_id: mockHealthAuditSeq } };
     }
     default:
       return {
