@@ -23,7 +23,7 @@
  * All 5 states + axe covered by index.test.tsx.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -35,7 +35,6 @@ import {
 import type { StatementLine, StatementSection } from "@/api/schema";
 import { MoneyCell } from "@/components/domain/MoneyCell";
 import { StatePanel } from "@/components/ui/StatePanel";
-import { Button } from "@/components/ui/Button";
 import { useSessionStore } from "@/stores/session";
 import { currencyScale } from "@/utils/money";
 
@@ -91,7 +90,12 @@ function LineRow({
       <span className="flex shrink-0 items-baseline gap-6">
         {columns.map((periodId) => {
           const minor = line.values[periodId];
-          if (minor === undefined) return <span key={periodId} className="w-28 text-right text-[var(--color-onetextmuted)]">—</span>;
+          if (minor === undefined)
+            return (
+              <span key={periodId} className="w-28 text-right text-[var(--color-onetextmuted)]">
+                —
+              </span>
+            );
           return (
             <span key={periodId} className="w-28 text-right">
               <MoneyCell
@@ -179,41 +183,64 @@ export function StatementsPage() {
   };
 
   const setRoundingMode = (mode: RoundingModeValue) => {
-    setRounding({ mode, largest_remainder: useStatementStore.getState().rounding.largest_remainder });
+    setRounding({
+      mode,
+      largest_remainder: useStatementStore.getState().rounding.largest_remainder,
+    });
   };
 
   const toggleLargestRemainder = () => {
-    setRounding({ mode: useStatementStore.getState().rounding.mode, largest_remainder: !largestRemainder });
+    setRounding({
+      mode: useStatementStore.getState().rounding.mode,
+      largest_remainder: !largestRemainder,
+    });
   };
 
   const columns = useMemo(() => periodColumns(rows), [rows]);
   const showInThousands = roundingMode === "thousands";
   const displayDecimals =
-    roundingMode === "major_units" ? 0 : roundingMode === "two_decimals" ? currencyScale(currency) : undefined;
+    roundingMode === "major_units"
+      ? 0
+      : roundingMode === "two_decimals"
+        ? currencyScale(currency)
+        : undefined;
 
-  const totalRows = useMemo(() => rows.reduce((acc, section) => acc + section.lines.length, 0), [rows]);
+  const totalRows = useMemo(
+    () => rows.reduce((acc, section) => acc + section.lines.length, 0),
+    [rows],
+  );
 
   const populated = status === "populated" || (status === "success" && rows.length > 0);
 
-  const totalsEntries: Array<[string, number | null]> = totals
-    ? [
-        ["revenue", store.totals.revenue],
-        ["gross_profit", store.totals.gross_profit],
-        ["operating_income", store.totals.operating_income],
-        ["net_income", store.totals.net_income],
-        ["total_assets", store.totals.total_assets],
-        ["total_liabilities", store.totals.total_liabilities],
-        ["total_equity", store.totals.total_equity],
-        ["net_cash_change", store.totals.net_cash_change],
-        ["ending_cash", store.totals.ending_cash],
-      ].filter(([, value]) => value !== null && value !== undefined)
-    : [];
+  // Engine-provided totals only — the screen never recomputes a money figure (B6).
+  // Null/undefined slots (e.g. BS totals on a P&L statement) are simply not rendered.
+  const totalsEntries = useMemo<Array<[string, number]>>(() => {
+    if (!totals) return [];
+    const entries: Array<[string, number | null]> = [
+      ["revenue", totals.revenue],
+      ["gross_profit", totals.gross_profit],
+      ["operating_income", totals.operating_income],
+      ["net_income", totals.net_income],
+      ["total_assets", totals.total_assets],
+      ["total_liabilities", totals.total_liabilities],
+      ["total_equity", totals.total_equity],
+      ["net_cash_change", totals.net_cash_change],
+      ["ending_cash", totals.ending_cash],
+    ];
+    return entries.filter(
+      (entry): entry is [string, number] => entry[1] !== null && entry[1] !== undefined,
+    );
+  }, [totals]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--color-oneapp)]">
       <header className="border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-6 py-4">
-        <h1 className="text-lg font-semibold text-[var(--color-onetext)]">{t("statementsPage.title")}</h1>
-        <p className="mt-0.5 text-sm text-[var(--color-onetextmuted)]">{t("statementsPage.subtitle")}</p>
+        <h1 className="text-lg font-semibold text-[var(--color-onetext)]">
+          {t("statementsPage.title")}
+        </h1>
+        <p className="mt-0.5 text-sm text-[var(--color-onetextmuted)]">
+          {t("statementsPage.subtitle")}
+        </p>
         <nav className="mt-3 flex flex-wrap gap-2" aria-label={t("statementsPage.tabsNav")}>
           {STATEMENT_TYPES.map((def) => {
             const label = t(`statementsPage.types.${def.value}`);
@@ -245,10 +272,7 @@ export function StatementsPage() {
 
       <div className="flex flex-wrap items-center gap-4 border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-6 py-3">
         <div className="flex items-center gap-2">
-          <label
-            htmlFor="stmt-preset"
-            className="text-sm text-[var(--color-onetextsecondary)]"
-          >
+          <label htmlFor="stmt-preset" className="text-sm text-[var(--color-onetextsecondary)]">
             {t("statementsPage.presetLabel")}
           </label>
           <select
@@ -264,10 +288,7 @@ export function StatementsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label
-            htmlFor="stmt-rounding"
-            className="text-sm text-[var(--color-onetextsecondary)]"
-          >
+          <label htmlFor="stmt-rounding" className="text-sm text-[var(--color-onetextsecondary)]">
             {t("statementsPage.roundingLabel")}
           </label>
           <select
@@ -306,32 +327,32 @@ export function StatementsPage() {
             aria-hidden="true"
           />
           <span className="text-xs font-medium">
-            {t(largestRemainder ? "statementsPage.largestRemainderOn" : "statementsPage.largestRemainderOff")}
+            {t(
+              largestRemainder
+                ? "statementsPage.largestRemainderOn"
+                : "statementsPage.largestRemainderOff",
+            )}
           </span>
         </button>
       </div>
 
       <main className="flex-1 space-y-4 p-6">
         {storeError && (
-          <StatePanel variant="error" title={storeError.userMessage ?? t("statementsPage.errorTitle")}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded border border-[var(--color-oneborder)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-onetextsecondary)]">
-                {storeError.code}
-              </span>
-              {storeError.retryable && (
-                <Button variant="secondary" size="sm" onClick={retry}>
-                  {t("common.retry")}
-                </Button>
-              )}
-            </div>
+          <StatePanel
+            state="error"
+            message={storeError.userMessage || t("statementsPage.errorTitle")}
+            onRetry={storeError.retryable ? () => void retry() : undefined}
+          >
+            <p className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)]">
+              {storeError.code}
+            </p>
             {findings.length > 0 && (
               <ul
-                className="mt-3 space-y-1"
-                role="list"
+                className="mt-1 w-full space-y-1 text-left"
                 aria-label={t("statementsPage.findingsLabel")}
               >
                 {findings.map((f, i) => (
-                  <li key={i} className="text-sm text-[var(--color-onetextmuted)]">
+                  <li key={`${f.code}-${i}`} className="text-sm text-[var(--color-onetextmuted)]">
                     {f.detail || f.message}
                   </li>
                 ))}
@@ -344,13 +365,19 @@ export function StatementsPage() {
           <div role="status" aria-label={t("statementsPage.loadingLabel")} className="space-y-4">
             <div className="h-6 w-48 animate-pulse rounded-md bg-[var(--color-onesurfacealt)]" />
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-10 w-full animate-pulse rounded-md bg-[var(--color-onesurfacealt)]" />
+              <div
+                key={i}
+                className="h-10 w-full animate-pulse rounded-md bg-[var(--color-onesurfacealt)]"
+              />
             ))}
           </div>
         )}
 
         {status === "empty" && !companyId && (
-          <StatePanel variant="empty" title={t("statementsPage.noCompanyTitle")}>
+          <StatePanel state="empty">
+            <h2 className="text-base font-semibold text-[var(--color-onetext)]">
+              {t("statementsPage.noCompanyTitle")}
+            </h2>
             <p className="text-sm text-[var(--color-onetextmuted)]">
               {t("statementsPage.noCompanyBody")}
             </p>
@@ -358,7 +385,10 @@ export function StatementsPage() {
         )}
 
         {status === "empty" && companyId && (
-          <StatePanel variant="empty" title={t("statementsPage.emptyTitle")}>
+          <StatePanel state="empty">
+            <h2 className="text-base font-semibold text-[var(--color-onetext)]">
+              {t("statementsPage.emptyTitle")}
+            </h2>
             <p className="text-sm text-[var(--color-onetextmuted)]">
               {t("statementsPage.emptyBody")}
             </p>
@@ -391,14 +421,10 @@ export function StatementsPage() {
               )}
               <div className="px-4 py-2">
                 {rows.map((section) => (
-                  <section
-                    key={section.section}
-                    className="py-2"
-                    aria-label={section.section}
-                  >
-                    <h3 className="border-b border-[var(--color-oneborder)] pb-1 text-sm font-medium text-[var(--color-onetext)]">
+                  <section key={section.section} className="py-2" aria-label={section.section}>
+                    <h2 className="border-b border-[var(--color-oneborder)] pb-1 text-sm font-medium text-[var(--color-onetext)]">
                       {section.section}
-                    </h3>
+                    </h2>
                     <div className="mt-1 space-y-1">
                       {section.lines.map((line) => (
                         <LineRow
@@ -425,10 +451,12 @@ export function StatementsPage() {
                       key={key}
                       className="flex items-baseline justify-between gap-3 py-1 text-sm"
                     >
-                      <span className="text-[var(--color-onetext)]">{t(`statementsPage.totals.${key}`)}</span>
+                      <span className="text-[var(--color-onetext)]">
+                        {t(`statementsPage.totals.${key}`)}
+                      </span>
                       <span className="w-28 text-right font-medium">
                         <MoneyCell
-                          minor={value as number}
+                          minor={value}
                           currency={currency}
                           showInThousands={showInThousands}
                           displayDecimals={displayDecimals}
@@ -476,7 +504,10 @@ export function StatementsPage() {
         )}
 
         {status === "success" && rows.length === 0 && companyId && (
-          <StatePanel variant="empty" title={t("statementsPage.emptyTitle")}>
+          <StatePanel state="empty">
+            <h2 className="text-base font-semibold text-[var(--color-onetext)]">
+              {t("statementsPage.emptyTitle")}
+            </h2>
             <p className="text-sm text-[var(--color-onetextmuted)]">
               {t("statementsPage.emptyBody")}
             </p>

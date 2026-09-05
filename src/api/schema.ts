@@ -1841,10 +1841,7 @@ export const BuScope = z.object({
 });
 export type BuScope = z.infer<typeof BuScope>;
 
-export const StatementLineValues = z.record(
-  z.string(),
-  MoneyMinor,
-);
+export const StatementLineValues = z.record(z.string(), MoneyMinor);
 export type StatementLineValues = z.infer<typeof StatementLineValues>;
 
 export const StatementLine = z.object({
@@ -1891,16 +1888,24 @@ export const StatementGetData = z.object({
 });
 export type StatementGetData = z.infer<typeof StatementGetData>;
 
-export const StatementGetArgs = z.object({
-  company_id: Uuid,
-  type: StatementType,
-  // Empty scope = the engine resolves the Company's current (latest with committed
-  // Actuals) fiscal period (API-SPEC §6 single-period scope).
-  period_scope: z.array(Uuid),
-  preset: StatementPreset,
-  rounding: RoundingRequest,
-  bu_scope: BuScope,
-});
+export const StatementGetArgs = z
+  .object({
+    company_id: Uuid,
+    type: StatementType,
+    // Empty scope = the engine resolves the Company's current (latest with committed
+    // Actuals) fiscal period (API-SPEC §6 single-period scope).
+    period_scope: z.array(Uuid),
+    preset: StatementPreset,
+    rounding: RoundingRequest,
+    bu_scope: BuScope,
+  })
+  // `kind: "single"` scopes one Business Unit — the id is what makes that scope
+  // executable; without it the native deserializer would fail with an UNTYPED serde
+  // error (B12). The gate rejects it as VALUE_INVALID at the boundary instead.
+  .refine((a) => a.bu_scope.kind !== "single" || typeof a.bu_scope.bu_id === "string", {
+    message: "bu_scope.kind 'single' requires a bu_id",
+    path: ["bu_scope", "bu_id"],
+  });
 export type StatementGetArgs = z.infer<typeof StatementGetArgs>;
 
 /* ── FVA (Forecast Value Add) (F-025, S-055) ────────────────────── */
@@ -2004,4 +2009,3 @@ export const CommandArgs = {
 
 export type CommandName = keyof typeof CommandArgs;
 export type CommandInput<C extends CommandName> = z.infer<(typeof CommandArgs)[C]>;
-

@@ -340,3 +340,52 @@ describe("snapshot round-trip", () => {
     });
   });
 });
+
+describe("modelHistory guards (empty stacks, missing sources, interior blanks)", () => {
+  it("popUndo/popRedo on empty branches answer null", () => {
+    const h = new History();
+    expect(h.popUndo()).toBeNull();
+    expect(h.popRedo()).toBeNull();
+  });
+
+  it("skips interior blank lines when parsing a paste block", () => {
+    const rows = parsePasteBlock("1\t2\n\n3\t4");
+    expect(rows).toHaveLength(2);
+    expect(rows[1][0].value).toBe("3");
+  });
+
+  it("fill down with a missing source cell produces no edits", () => {
+    const edits = buildFillEdits({
+      direction: "down",
+      anchor: { lineId: "L0", periodId: "P0" },
+      focus: { lineId: "L1", periodId: "P0" },
+      lines: LINES,
+      periods: PERIODS,
+      getCell: makeMap({}),
+    });
+    expect(edits).toEqual([]);
+  });
+
+  it("fill right with a missing source cell produces no edits", () => {
+    const edits = buildFillEdits({
+      direction: "right",
+      anchor: { lineId: "L0", periodId: "P0" },
+      focus: { lineId: "L0", periodId: "P0" },
+      lines: LINES,
+      periods: PERIODS,
+      getCell: makeMap({}),
+    });
+    expect(edits).toEqual([]);
+  });
+
+  it("paste with an unknown anchor resolves to zero edits", () => {
+    expect(
+      buildPasteEdits({
+        text: "1\n2",
+        anchor: { lineId: "nope", periodId: "P0" },
+        lines: LINES,
+        periods: PERIODS,
+      }),
+    ).toEqual([]);
+  });
+});
