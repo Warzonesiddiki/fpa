@@ -1,15 +1,15 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next milestone task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. The current session shipped the **M6-1 (F-027)
-> statement-suite TypeScript slice + full-suite gate restoration** — S-060 repaired to green,
-> store/contract/edge test suites, the `bu_scope` zod gate, hand-reviewed fixes to
-> `commands/statement.rs`, and repo-wide prettier sync — on working branch `arena/01a070a4-fpa`.
-> M6-1 is **PARTIAL/NATIVE-UNVERIFIED** (no Rust toolchain in this sandbox; the hand-reviewed
-> statement.rs fixes have never been compiled). M3-6's native follow-on was verified on the
-> Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12). The authoritative
-> tracker is the root `TASKBOARD.md` (76 files / 920 tests; JS gates pass; native gates
-> unavailable in-sandbox).
+> state, design decisions, gates, and pitfalls. The current session shipped **M6-1 (F-027)
+> statement-suite TS slice + gate restoration** (merged as PR #34) and then **M5-4 (F-026) Alerts
+> engine TS slice** — S-056 Alerts Center, `alerts.list`/`alerts.create_rule` typed contracts with a
+> detail-exact mock mirror, and a hand-authored `commands/alerts.rs` — on working branch
+> `arena/01a070a4-fpa`. BOTH are **PARTIAL/NATIVE-UNVERIFIED** (no Rust toolchain in this sandbox;
+> statement.rs/alerts.rs have never been compiled). M3-6's native follow-on was verified on the
+> Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12). The authoritative tracker
+> is the root `TASKBOARD.md` (79 files / 957 tests; JS gates pass; native gates unavailable
+> in-sandbox).
 
 ---
 
@@ -23,7 +23,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~8 min) — all must PASS before you edit:
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
-   Expect the current **76 files / 920 tests** after the M6-1 slice. Counts drift as tests are added —
+   Expect the current **79 files / 957 tests** after the M5-4 slice. Counts drift as tests are added —
    the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
    gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
    or it will dip red again.
@@ -32,7 +32,33 @@
 
 ## 1. STATE OF THE WORK
 
-### Latest — M6-1 Statement suite, TS slice + gate restoration (2026-09-05, `arena/01a070a4-fpa`)
+### Latest — M5-4 Alerts engine + Alerts Center, TS slice (2026-09-05, `arena/01a070a4-fpa`)
+
+- **Contract (locked catalog honored exactly):** only `alerts.list` `{filter}` → `{alerts[]}` and `alerts.create_rule` `{rule}` →
+  audited `{rule_id, audit_id}` exist — so Dismiss/Mute-rule buttons ship DISABLED with explanatory titles; enabling them needs new
+  API-SPEC rows + schema columns = Tier-3 RFC, never invented commands or local-fake persistence. `ALERT_RULE_INVALID` (422,
+  non-retryable, "Alert rule invalid: {detail}") was already catalogued — implemented, not added.
+- **Schemas:** `AlertRuleInput` mirrors the `alert_rules` DB CHECK domains verbatim (ops `lt|lte|gt|gte|eq`; severity
+  `info|warning|critical`), XOR `kpi_id`/`line_ref` via refine, `threshold_value: DecimalString` only (money never floats);
+  `AlertTriggerChain` pins `value`/`threshold` as exact decimal strings. Mock mirrors native `validate_rule` ORDER and detail
+  strings — the contract test asserts equality of every message, so drift is a test failure.
+- **Store (`src/stores/alerts.ts`):** populated/empty("All clear")/error/loading states; filter changes reload; create errors are
+  INLINE (`createError`) and never blank the loaded list; `retry()` re-runs the READ only (no silent mutation replay — B4/audit).
+- **Page (`src/pages/s056-alerts/`):** severity-grouped list with h2 sections (axe), expandable trigger chain (button
+  aria-expanded), `<time dateTime>` stamps, disabled dismiss/mute, rule form with radio target switch, policy copy as facts
+  (digest ≤1/24h · 90-day retention), KPI-evaluation pending note (M6-4/5).
+- **Rust (authored, NEVER compiled here):** `commands/alerts.rs` — list fires due rules before selecting (draft scenarios only:
+  locked/review/approved history never fires, US-027), dedupe = at most one OPEN alert per rule per UTC day (`date(fired_at) =
+date('now')`), 90-day window via `datetime('now','-90 day')`, create = single tx insert + HMAC-chained audit (`next_hash`/
+  `audited_hash` pattern from schedule.rs). `core/error.rs` variant + mapping + §H user text. Brace hand gate 34/34 — NOT a compile
+  claim. `alerts`/`alert_rules` have NO company_id column (001_initial.sql locked) → rules are per-store; firing resolution IS
+  company-scoped (join `models.company_id`); documented in the module header.
+- **Tests:** 34 new (16 page incl. axe, 9 store, 9 contract) + 3 schema cases. Full run: 79 files / 957 tests; coverage
+  88.05/80.19/87.05/89.84 (thresholds 85/80/80/85); critical 98.5/97.15/100/98.95; check/build/prettier green.
+- **Open (why PARTIAL):** cargo + clippy + fmt + desktop round-trip; KPI-target evaluation with M6-4/5; dismiss/mute catalog rows;
+  OS-notification opt-in surface (PRD mentions it; nothing was faked); retention pruning (prune job = native concern).
+
+### Previous — M6-1 Statement suite, TS slice + gate restoration (2026-09-05, `arena/01a070a4-fpa`)
 
 - **S-060 page (`src/pages/s060-statements/`):** was broken against the real `StatePanel` API (it passed a
   nonexistent `variant` prop) and failed the installed axe ruleset (missing region-level headings). Now: five
@@ -63,7 +89,7 @@
   period selector (single/YTD/FY/PY), BU/Group scope UI, per-line decimals/sign style, export (M6-6),
   line drill-down; dev-only trigger paths in `mock.ts` stay dev-only (no padding tests).
 
-### Previous — M3-6 Headcount/S-045 (F-016), TypeScript slice (2026-09-04) — native since verified; ✅ DONE per TASKBOARD §12
+### Earlier — M3-6 Headcount/S-045 (F-016), TS slice (2026-09-04) — native since verified; ✅ DONE per TASKBOARD §12
 
 - **Contract:** `model.schedule.upsert` is specialized to `schedule_type: "headcount"` with strict
   row fields and strict `{schedule_id, recalc, audit_id}` success data. `audit_id` is a positive
@@ -306,17 +332,17 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **M5-4 Alerts engine + center + rules (S-056)** — the only open unit before M6-2 in dependency
-   order. `alerts.*` commands are catalogued but unshipped; check API-SPEC for the exact rows and
-   ERROR-HANDLING for admissible codes (catalog is locked at 99 — invent nothing).
-2. **M6-1 native completion** — on a Rust-equipped machine: `cargo test`/`clippy`/`fmt` over the
-   hand-reviewed `commands/statement.rs` fixes (r#type arg, tagged `BuScope`), largest-remainder
-   oracle fixtures vs MONEY-ROUNDING-SPEC §3–5, desktop round-trip. Then flip M6-1/S-060 to DONE
-   alongside building the remaining S-060 elements (period selector, BU/Group scope UI, export via
-   M6-6, drill-down).
-3. ~~**M3-6 native completion**~~ — DONE 2026-09-04 on the Windows desktop (see TASKBOARD §12);
+1. **M6-1 native completion + alerts.rs verification** — on a Rust-equipped machine run
+   `cargo test`/`clippy`/`fmt` over `commands/statement.rs` (r#type arg, tagged `BuScope`) and the
+   NEW `commands/alerts.rs` (dedupe SQL, draft-only firing, audit tx); add largest-remainder oracle
+   fixtures vs MONEY-ROUNDING-SPEC §3–5; desktop round-trips. Then flip M6-1/M5-4 native rows and
+   build the remaining S-060 elements (period selector, BU/Group scope UI, export via M6-6, drill-down).
+2. **M6-2 GAAP/IFRS presets + segment report (S-060/061)** — next unblocked feature unit.
+3. **Tier-3 RFC needed (do NOT implement silently):** `alerts.dismiss` + `alerts.mute_rule` catalog
+   rows (S-056 ships the buttons disabled until then); `model.inspect`/`driver.import` handlers (B3).
+4. ~~**M3-6 native completion**~~ — DONE 2026-09-04 on the Windows desktop (see TASKBOARD §12);
    M3-1 DB persistence likewise landed via `model_schedule_upsert`'s `model_values` writes.
-4. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
+5. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
 

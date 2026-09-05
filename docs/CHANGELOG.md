@@ -3,6 +3,25 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+- **M5-4 Alerts engine + Alerts Center — TS slice (F-026 · SCREENS-SPEC S-056 · API-SPEC §7 alerts.*, 2026-09-05):**
+  Added the Alerts Center at `/app/analyze/alerts` (`src/pages/s056-alerts/`): alert list grouped by severity with first-class
+  expandable trigger-chain rows (rule → value → threshold → period, exact decimal strings rendered verbatim), severity/dismissed
+  filters, the rule manager (create threshold per KPI or line; digest ≤1/24h and 90-day retention shown as engine facts, never
+  fake toggles), all five canonical states incl. the spec's "All clear" empty copy, and a typed-code error view. Store
+  `src/stores/alerts.ts` (9 tests) owns load lifecycle, filter-driven reload, an inline create-error contract that never blanks
+  the list, retry-as-read, and selectors. Contracts in `src/api/schema.ts`: `AlertRuleInput` mirrors the locked `alert_rules`
+  DB CHECK domains (`lt|lte|gt|gte|eq`, `info|warning|critical`), enforces exactly one of `kpi_id`/`line_ref` via refine, and
+  accepts only exact-decimal thresholds (`DecimalString` — no float path, B3); `alerts.list` → `{alerts[]}`, `alerts.create_rule`
+  → audited `{rule_id, audit_id}`. Dev mock (`src/api/mock.ts`) mirrors the native validation detail-for-detail (9 contract tests
+  pin the exact `ALERT_RULE_INVALID` user texts "Alert rule invalid: …" per ERROR-HANDLING) and the SESSION_LOCKED 401 gate.
+  Native `src-tauri/src/commands/alerts.rs` authored + registered in `lib.rs` (61 handlers): list fires due rules first (draft
+  scenarios only — locked history never fires, US-027; once-per-UTC-day open-alert dedupe), 90-day window, HMAC-chained audit on
+  rule create; `ALERT_RULE_INVALID` mapped in `core/error.rs` (existing catalog row — no new codes). **NATIVE-UNVERIFIED:** no Rust
+  toolchain in this environment (brace-balance hand gate 34/34 only); cargo/clippy/fmt + round-trip pending on a Rust-equipped
+  machine → M5-4 recorded PARTIAL. Deliberately not fabricated: dismiss/mute (no `alerts.dismiss`/`alerts.mute_rule` catalog rows
+  — Tier-3), KPI-rule evaluation (waits for the M6-4/5 KPI engine), OS-notification opt-in (deferred). New tests: 34
+  (16 page incl. axe, 9 store, 9 contract) + 3 schema; full suite 79 files / 957 tests; coverage 88.05/80.19/87.05/89.84;
+  critical 98.5/97.15/100/98.95; lint/tsc/build/prettier/docs:verify green.
 - **M6-1 Statement suite — TS slice & gate restoration (F-027 · SCREENS-SPEC S-060 · API-SPEC `statement.get.v1`, 2026-09-05):**
   Repaired and hardened the S-060 Statements screen (`src/pages/s060-statements/`): the page previously used a nonexistent
   `StatePanel` `variant` API and rendered a heading hierarchy that failed the installed axe ruleset; it now renders the canonical
