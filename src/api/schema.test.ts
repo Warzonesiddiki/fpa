@@ -63,6 +63,13 @@ import {
   findUnsupportedFunction,
   pinPolicyChecks,
   validatePinPolicy,
+  VarianceGetArgs,
+  VarianceGetData,
+  VarianceSetReasonCodeArgs,
+  VarianceSetReasonCodeData,
+  VarianceRow,
+  VarianceAttributionItem,
+  VarianceThreewayItem,
 } from "./schema";
 
 describe("IPC schemas — the validation gate (ARCHITECTURE §1b)", () => {
@@ -1416,4 +1423,124 @@ describe("IPC schemas — scenario lifecycle (F-022 · API-SPEC §3)", () => {
       expect(CommandArgs[c as keyof typeof CommandArgs]).toBeDefined();
     }
   });
+
+  it("variance commands validate arguments and return shapes", () => {
+    // 1. variance.get args
+    const validGetArgs = {
+      company_id: "c-01",
+      period_id: "fp-2027-p08",
+      compare: "budget",
+      attribution: true,
+    };
+    expect(VarianceGetArgs.safeParse(validGetArgs).success).toBe(true);
+    expect(CommandArgs["variance.get"].safeParse(validGetArgs).success).toBe(true);
+    expect(
+      VarianceGetArgs.safeParse({
+        company_id: "c-01",
+        period_id: "fp-2027-p08",
+        compare: "budget",
+      }).success,
+    ).toBe(true);
+    // strict check: extra properties rejected
+    expect(
+      VarianceGetArgs.safeParse({
+        ...validGetArgs,
+        extra: "not-allowed",
+      }).success,
+    ).toBe(false);
+
+    // 2. variance.get data
+    const validRow: VarianceRow = {
+      line_id: "ln-rev",
+      line_name: "Revenue",
+      account_code: "4000",
+      actual_minor: 18250000,
+      actual_text: "182500.00",
+      compare_minor: 18000000,
+      compare_text: "180000.00",
+      delta_minor: 250000,
+      delta_text: "2500.00",
+      delta_pct: 1.39,
+      direction: "favorable",
+      reason_code: "volume",
+      note: "Higher demand in Q3",
+    };
+    expect(VarianceRow.safeParse(validRow).success).toBe(true);
+
+    const validAttribution: VarianceAttributionItem = {
+      line_id: "ln-rev",
+      driver_id: "dr-vol",
+      driver_name: "Volume",
+      volume_minor: 200000,
+      volume_text: "2000.00",
+      price_minor: 50000,
+      price_text: "500.00",
+      mix_minor: 0,
+      mix_text: "0.00",
+      fx_minor: 0,
+      fx_text: "0.00",
+      efficiency_minor: 0,
+      efficiency_text: "0.00",
+      total_attributed_minor: 250000,
+      total_attributed_text: "2500.00",
+      unattributable: false,
+    };
+    expect(VarianceAttributionItem.safeParse(validAttribution).success).toBe(true);
+
+    const validThreeway: VarianceThreewayItem = {
+      line_id: "ln-rev",
+      line_name: "Revenue",
+      plan_minor: 17500000,
+      plan_text: "175000.00",
+      commit_minor: 18000000,
+      commit_text: "180000.00",
+      actual_minor: 18250000,
+      actual_text: "182500.00",
+      actual_vs_plan_delta_minor: 750000,
+      actual_vs_plan_delta_text: "7500.00",
+      actual_vs_plan_direction: "favorable",
+      actual_vs_commit_delta_minor: 250000,
+      actual_vs_commit_delta_text: "2500.00",
+      actual_vs_commit_direction: "favorable",
+    };
+    expect(VarianceThreewayItem.safeParse(validThreeway).success).toBe(true);
+
+    const validGetData = {
+      rows: [validRow],
+      attribution: [validAttribution],
+      threeway: [validThreeway],
+    };
+    expect(VarianceGetData.safeParse(validGetData).success).toBe(true);
+    expect(VarianceGetData.safeParse({ rows: [validRow] }).success).toBe(true);
+
+    // 3. variance.set_reason_code args
+    const validSetReasonArgs = {
+      line_id: "ln-rev",
+      period_id: "fp-2027-p08",
+      code: "volume",
+      note: "Volume spike due to new customer onboarding",
+    };
+    expect(VarianceSetReasonCodeArgs.safeParse(validSetReasonArgs).success).toBe(true);
+    expect(CommandArgs["variance.set_reason_code"].safeParse(validSetReasonArgs).success).toBe(true);
+    expect(
+      VarianceSetReasonCodeArgs.safeParse({
+        line_id: "ln-rev",
+        period_id: "fp-2027-p08",
+        code: "volume",
+      }).success,
+    ).toBe(true);
+    // extra properties rejected
+    expect(
+      VarianceSetReasonCodeArgs.safeParse({
+        ...validSetReasonArgs,
+        extra: "invalid",
+      }).success,
+    ).toBe(false);
+
+    // 4. variance.set_reason_code data
+    expect(VarianceSetReasonCodeData.safeParse({ saved: true }).success).toBe(true);
+    expect(VarianceSetReasonCodeData.safeParse({ saved: false }).success).toBe(true);
+    expect(VarianceSetReasonCodeData.safeParse({ saved: "yes" }).success).toBe(false);
+  });
 });
+

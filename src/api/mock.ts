@@ -23,6 +23,9 @@ import {
   type WaterfallStep,
   type TornadoBar,
   type SensitivityValueStep,
+  type VarianceRow,
+  type VarianceAttributionItem,
+  type VarianceThreewayItem,
 } from "./schema";
 import {
   validateHeadcountRows,
@@ -649,6 +652,21 @@ function ensureDemoDrivers(): void {
     });
   }
 }
+
+/* ── Variance & Attribution (F-024 · M5-1 · M5-2 · S-054) ───────────────── */
+
+interface MockVarianceReasonAnnotation {
+  code: string;
+  note: string | null;
+}
+
+const mockVarianceReasons = new Map<string, MockVarianceReasonAnnotation>();
+
+/** Reset the mock variance reason codes and commentary between test cases. */
+export function resetMockVarianceState(): void {
+  mockVarianceReasons.clear();
+}
+
 
 /** Formula reference match for a named assumption (identifier boundaries, with optional @ preview syntax). */
 function formulaReferencesName(formula: string, name: string): boolean {
@@ -2761,6 +2779,249 @@ export async function mockInvoke<C extends CommandName>(
     }
     case "collection.resolve_conflict": {
       return { data: { resolved: true } };
+    }
+    /* ── Variance & Attribution (F-024 · M5-1 · M5-2 · S-054) ───────── */
+    case "variance.get": {
+      const { period_id, compare, attribution } = args as {
+        company_id: string;
+        period_id: string;
+        compare: string;
+        attribution?: boolean;
+      };
+
+      // Dev trigger: mixed periods/sources test
+      if (period_id.includes("mixed") || compare.includes("mixed")) {
+        return mockError(
+          "VARIANCE_SOURCE_MIXED",
+          "selected periods mix actual and forecast",
+          "Selected periods mix Actual and Forecast — enable HYBRID label to view.",
+          422,
+          false,
+        );
+      }
+
+      // Dev trigger: attribution unavailable test
+      if (period_id.includes("no_attr") || compare.includes("no_attr")) {
+        return mockError(
+          "VARIANCE_NO_ATTRIBUTION_DATA",
+          "attribution unavailable for these lines",
+          "Attribution unavailable for these lines — no unit/driver data. Show $ variance only.",
+          200,
+          false,
+        );
+      }
+
+      // 3-way dataset: Revenue (nature: revenue) and COGS (nature: expense/cogs)
+      // Line 1: Revenue - actuals: $1,825,000.00 (182,500,000 minor)
+      //                  budget/commit: $1,800,000.00 (180,000,000 minor)
+      //                  plan: $1,750,000.00 (175,000,000 minor)
+      // Line 2: Cost of Goods Sold - actuals: $960,000.00 (96,000,000 minor)
+      //                              budget/commit: $900,000.00 (90,000,000 minor)
+      //                              plan: $880,000.00 (88,000,000 minor)
+      interface MockLineFact {
+        line_id: string;
+        line_name: string;
+        account_code: string;
+        is_revenue: boolean;
+        actual_minor: number;
+        plan_minor: number;
+        commit_minor: number;
+        // attribution breakdown items
+        attr?: {
+          driver_id: string;
+          driver_name: string;
+          volume_minor: number;
+          price_minor: number;
+          mix_minor: number;
+          fx_minor: number;
+          efficiency_minor: number;
+          unattributable?: boolean;
+        };
+      }
+
+      const mockLines: MockLineFact[] = [
+        {
+          line_id: "ln-rev-product",
+          line_name: "Product Revenue",
+          account_code: "4000",
+          is_revenue: true,
+          actual_minor: 182_500_000,
+          plan_minor: 175_000_000,
+          commit_minor: 180_000_000,
+          attr: {
+            driver_id: "dr-sales-vol",
+            driver_name: "Sales Volume & Price",
+            volume_minor: 15_000_000,
+            price_minor: 12_000_000,
+            mix_minor: -1_500_000,
+            fx_minor: -500_000,
+            efficiency_minor: 0,
+            unattributable: false,
+          },
+        },
+        {
+          line_id: "ln-cogs-materials",
+          line_name: "Direct Materials COGS",
+          account_code: "5000",
+          is_revenue: false,
+          actual_minor: 96_000_000,
+          plan_minor: 88_000_000,
+          commit_minor: 90_000_000,
+          attr: {
+            driver_id: "dr-prod-eff",
+            driver_name: "Production Efficiency & Materials",
+            volume_minor: 3_000_000,
+            price_minor: 2_000_000,
+            mix_minor: 500_000,
+            fx_minor: 0,
+            efficiency_minor: 500_000,
+            unattributable: false,
+          },
+        },
+      ];
+
+      const rows: VarianceRow[] = mockLines.map((l) => {
+        const compareMinor = compare === "plan" ? l.plan_minor : l.commit_minor;
+        const deltaMinor = l.actual_minor - compareMinor;
+        const actualText = minorToDecimalStr(l.actual_minor);
+        const compareText = minorToDecimalStr(compareMinor);
+        const deltaText = minorToDecimalStr(deltaMinor);
+
+        let deltaPct: number | null = null;
+        if (compareMinor !== 0) {
+          const pctDec = new Decimal(deltaMinor)
+            .div(compareMinor)
+            .mul(100)
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          deltaPct = pctDec.toNumber();
+        }
+
+        let direction: "favorable" | "unfavorable" | "neutral" = "neutral";
+        if (deltaMinor !== 0) {
+          if (l.is_revenue) {
+            direction = deltaMinor > 0 ? "favorable" : "unfavorable";
+          } else {
+            direction = deltaMinor < 0 ? "favorable" : "unfavorable";
+          }
+        }
+
+        const reasonKey = `${l.line_id}:${period_id}`;
+        const savedReason = mockVarianceReasons.get(reasonKey);
+
+        return {
+          line_id: l.line_id,
+          line_name: l.line_name,
+          account_code: l.account_code,
+          actual_minor: l.actual_minor,
+          actual_text: actualText,
+          compare_minor: compareMinor,
+          compare_text: compareText,
+          delta_minor: deltaMinor,
+          delta_text: deltaText,
+          delta_pct: deltaPct,
+          direction,
+          reason_code: savedReason ? savedReason.code : null,
+          note: savedReason ? savedReason.note : null,
+        };
+      });
+
+      const attributionItems: VarianceAttributionItem[] = [];
+      if (attribution !== false) {
+        for (const l of mockLines) {
+          if (l.attr) {
+            const totMinor =
+              l.attr.volume_minor +
+              l.attr.price_minor +
+              l.attr.mix_minor +
+              l.attr.fx_minor +
+              l.attr.efficiency_minor;
+            attributionItems.push({
+              line_id: l.line_id,
+              driver_id: l.attr.driver_id,
+              driver_name: l.attr.driver_name,
+              volume_minor: l.attr.volume_minor,
+              volume_text: minorToDecimalStr(l.attr.volume_minor),
+              price_minor: l.attr.price_minor,
+              price_text: minorToDecimalStr(l.attr.price_minor),
+              mix_minor: l.attr.mix_minor,
+              mix_text: minorToDecimalStr(l.attr.mix_minor),
+              fx_minor: l.attr.fx_minor,
+              fx_text: minorToDecimalStr(l.attr.fx_minor),
+              efficiency_minor: l.attr.efficiency_minor,
+              efficiency_text: minorToDecimalStr(l.attr.efficiency_minor),
+              total_attributed_minor: totMinor,
+              total_attributed_text: minorToDecimalStr(totMinor),
+              unattributable: l.attr.unattributable ?? false,
+            });
+          }
+        }
+      }
+
+      const threewayItems: VarianceThreewayItem[] = mockLines.map((l) => {
+        const planDeltaMinor = l.actual_minor - l.plan_minor;
+        const commitDeltaMinor = l.actual_minor - l.commit_minor;
+
+        let planDir: "favorable" | "unfavorable" | "neutral" = "neutral";
+        if (planDeltaMinor !== 0) {
+          if (l.is_revenue) {
+            planDir = planDeltaMinor > 0 ? "favorable" : "unfavorable";
+          } else {
+            planDir = planDeltaMinor < 0 ? "favorable" : "unfavorable";
+          }
+        }
+
+        let commitDir: "favorable" | "unfavorable" | "neutral" = "neutral";
+        if (commitDeltaMinor !== 0) {
+          if (l.is_revenue) {
+            commitDir = commitDeltaMinor > 0 ? "favorable" : "unfavorable";
+          } else {
+            commitDir = commitDeltaMinor < 0 ? "favorable" : "unfavorable";
+          }
+        }
+
+        return {
+          line_id: l.line_id,
+          line_name: l.line_name,
+          plan_minor: l.plan_minor,
+          plan_text: minorToDecimalStr(l.plan_minor),
+          commit_minor: l.commit_minor,
+          commit_text: minorToDecimalStr(l.commit_minor),
+          actual_minor: l.actual_minor,
+          actual_text: minorToDecimalStr(l.actual_minor),
+          actual_vs_plan_delta_minor: planDeltaMinor,
+          actual_vs_plan_delta_text: minorToDecimalStr(planDeltaMinor),
+          actual_vs_plan_direction: planDir,
+          actual_vs_commit_delta_minor: commitDeltaMinor,
+          actual_vs_commit_delta_text: minorToDecimalStr(commitDeltaMinor),
+          actual_vs_commit_direction: commitDir,
+        };
+      });
+
+      return {
+        data: {
+          rows,
+          attribution: attributionItems,
+          threeway: threewayItems,
+        },
+      };
+    }
+    case "variance.set_reason_code": {
+      const { line_id, period_id, code, note } = args as {
+        line_id: string;
+        period_id: string;
+        code: string;
+        note?: string;
+      };
+      const key = `${line_id}:${period_id}`;
+      mockVarianceReasons.set(key, {
+        code,
+        note: note ?? null,
+      });
+      return {
+        data: {
+          saved: true,
+        },
+      };
     }
     default:
       return {

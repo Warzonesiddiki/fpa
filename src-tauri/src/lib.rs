@@ -39,6 +39,7 @@ use commands::schedule::model_schedule_upsert;
 use commands::security::{security_change_pin, security_pin_setup};
 use commands::session::{SessionState, session_lock, session_status, session_unlock};
 use commands::settings::{settings_get, settings_set};
+use commands::variance::{variance_get, variance_set_reason_code};
 use storage::keys::KeyVault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -116,6 +117,8 @@ pub fn run() {
             collection_export,
             collection_import,
             collection_resolve_conflict,
+            variance_get,
+            variance_set_reason_code,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

@@ -165,6 +165,11 @@ pub enum AppError {
     CollectionConflict { conflict_count: usize },
     #[error("returned sheet differs from exported template")]
     CollectionStructureChanged,
+    // ── Variance & Attribution (F-024 · M5-1 · M5-2 · ERROR-HANDLING §E) ────────────────────
+    #[error("selected periods mix actual and forecast")]
+    VarianceSourceMixed,
+    #[error("attribution unavailable for these lines")]
+    VarianceNoAttributionData,
 }
 
 impl AppError {
@@ -243,6 +248,10 @@ impl AppError {
             AppError::CollectionConflict { .. } => ("COLLECTION_CONFLICT", 409, false, None),
             AppError::CollectionStructureChanged => {
                 ("COLLECTION_STRUCTURE_CHANGED", 422, false, None)
+            }
+            AppError::VarianceSourceMixed => ("VARIANCE_SOURCE_MIXED", 422, false, None),
+            AppError::VarianceNoAttributionData => {
+                ("VARIANCE_NO_ATTRIBUTION_DATA", 200, false, None)
             }
         };
         let user_message = match self {
@@ -653,6 +662,12 @@ impl AppError {
             AppError::CollectionStructureChanged => {
                 "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging."
             }
+            AppError::VarianceSourceMixed => {
+                "Selected periods mix Actual and Forecast — enable HYBRID label to view."
+            }
+            AppError::VarianceNoAttributionData => {
+                "Attribution unavailable for these lines — no unit/driver data. Show $ variance only."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -883,6 +898,14 @@ impl AppError {
 
     pub fn collection_structure_changed() -> Self {
         AppError::CollectionStructureChanged
+    }
+
+    pub fn variance_source_mixed() -> Self {
+        AppError::VarianceSourceMixed
+    }
+
+    pub fn variance_no_attribution_data() -> Self {
+        AppError::VarianceNoAttributionData
     }
 }
 
@@ -1135,6 +1158,24 @@ mod tests {
         assert_eq!(
             struct_changed.user_message,
             "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging."
+        );
+
+        let var_mixed = AppError::variance_source_mixed().body();
+        assert_eq!(var_mixed.code, "VARIANCE_SOURCE_MIXED");
+        assert_eq!(var_mixed.http_status, 422);
+        assert!(!var_mixed.retryable);
+        assert_eq!(
+            var_mixed.user_message,
+            "Selected periods mix Actual and Forecast — enable HYBRID label to view."
+        );
+
+        let var_no_attr = AppError::variance_no_attribution_data().body();
+        assert_eq!(var_no_attr.code, "VARIANCE_NO_ATTRIBUTION_DATA");
+        assert_eq!(var_no_attr.http_status, 200);
+        assert!(!var_no_attr.retryable);
+        assert_eq!(
+            var_no_attr.user_message,
+            "Attribution unavailable for these lines — no unit/driver data. Show $ variance only."
         );
     }
 }

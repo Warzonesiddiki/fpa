@@ -116,8 +116,8 @@ the product path (B18-3).
 
 | ID   | Feature                    | Status  | Notes                      |
 | ---- | -------------------------- | ------- | -------------------------- |
-| M5-1 | Variance $/%/F/U + 3-way   | ❗ TODO | `variance.get`             |
-| M5-2 | Attribution + reason codes | ❗ TODO | `variance.set_reason_code` |
+| M5-1 | Variance $/%/F/U + 3-way   | ✅ DONE     | `variance.get` IPC with exact integer-minor deltas and Decimal percentages, account nature-driven F/U evaluation, 3-Way comparisons (Plan vs Commit vs Actuals), typed error `VARIANCE_SOURCE_MIXED`; Rust handler in `src-tauri/src/commands/variance.rs`; Zod schemas in `src/api/schema.ts`; mock bridge in `src/api/mock.ts`; Zustand store in `src/stores/variance.ts`; S-054 Variance page in `src/pages/s054-variance/` with 5 canonical states, 3-Way toggle, and WCAG 2.2 AA compliance. |
+| M5-2 | Attribution + reason codes | ✅ DONE     | `variance.set_reason_code` write path with HMAC audit event; attribution breakdown (Volume, Price, Mix, FX, Efficiency) with sum-of-parts guarantee and `VARIANCE_NO_ATTRIBUTION_DATA` handling; interactive commentary modal with standard taxonomy and notes; SVG Waterfall bridge view toggle; CSV export. |
 | M5-3 | FVA (MAPE/bias/hit)        | ❗ TODO | `fva.get`                  |
 | M5-4 | Alerts engine + center     | ❗ TODO | `alerts.*`                 |
 

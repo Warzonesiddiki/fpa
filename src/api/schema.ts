@@ -1727,6 +1727,97 @@ export const CollectionResolveConflictData = z.object({
 });
 export type CollectionResolveConflictData = z.infer<typeof CollectionResolveConflictData>;
 
+/* ── Variance & Attribution (F-024 · M5-1 · M5-2 · S-054 · API-SPEC §2 row 77-78) ─── */
+
+export const VarianceRow = z.object({
+  line_id: z.string(),
+  line_name: z.string(),
+  account_code: z.string().optional(),
+  actual_minor: MoneyMinor,
+  actual_text: DecimalString,
+  compare_minor: MoneyMinor,
+  compare_text: DecimalString,
+  delta_minor: MoneyMinor,
+  delta_text: DecimalString,
+  delta_pct: z.number().nullable(),
+  direction: z.enum(["favorable", "unfavorable", "neutral"]),
+  reason_code: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+});
+export type VarianceRow = z.infer<typeof VarianceRow>;
+
+export const VarianceAttributionItem = z.object({
+  line_id: z.string(),
+  driver_id: z.string().nullable().optional(),
+  driver_name: z.string().nullable().optional(),
+  volume_minor: MoneyMinor,
+  volume_text: DecimalString,
+  price_minor: MoneyMinor,
+  price_text: DecimalString,
+  mix_minor: MoneyMinor,
+  mix_text: DecimalString,
+  fx_minor: MoneyMinor,
+  fx_text: DecimalString,
+  efficiency_minor: MoneyMinor,
+  efficiency_text: DecimalString,
+  total_attributed_minor: MoneyMinor,
+  total_attributed_text: DecimalString,
+  unattributable: z.boolean().default(false),
+});
+export type VarianceAttributionItem = z.infer<typeof VarianceAttributionItem>;
+
+export const VarianceThreewayItem = z.object({
+  line_id: z.string(),
+  line_name: z.string(),
+  plan_minor: MoneyMinor,
+  plan_text: DecimalString,
+  commit_minor: MoneyMinor,
+  commit_text: DecimalString,
+  actual_minor: MoneyMinor,
+  actual_text: DecimalString,
+  actual_vs_plan_delta_minor: MoneyMinor,
+  actual_vs_plan_delta_text: DecimalString,
+  actual_vs_plan_direction: z.enum(["favorable", "unfavorable", "neutral"]),
+  actual_vs_commit_delta_minor: MoneyMinor,
+  actual_vs_commit_delta_text: DecimalString,
+  actual_vs_commit_direction: z.enum(["favorable", "unfavorable", "neutral"]),
+});
+export type VarianceThreewayItem = z.infer<typeof VarianceThreewayItem>;
+
+/** `variance.get` — calculate variance analysis, attribution decomposition, and 3-way view. */
+export const VarianceGetArgs = z
+  .object({
+    company_id: z.string(),
+    period_id: z.string(),
+    compare: z.string(),
+    attribution: z.boolean().optional(),
+  })
+  .strict();
+export type VarianceGetArgs = z.infer<typeof VarianceGetArgs>;
+
+export const VarianceGetData = z.object({
+  rows: z.array(VarianceRow),
+  attribution: z.array(VarianceAttributionItem).optional(),
+  threeway: z.array(VarianceThreewayItem).optional(),
+});
+export type VarianceGetData = z.infer<typeof VarianceGetData>;
+
+/** `variance.set_reason_code` — attach reason code and commentary note to a variance line. */
+export const VarianceSetReasonCodeArgs = z
+  .object({
+    line_id: z.string(),
+    period_id: z.string(),
+    code: z.string(),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type VarianceSetReasonCodeArgs = z.infer<typeof VarianceSetReasonCodeArgs>;
+
+export const VarianceSetReasonCodeData = z.object({
+  saved: z.boolean(),
+});
+export type VarianceSetReasonCodeData = z.infer<typeof VarianceSetReasonCodeData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1787,7 +1878,10 @@ export const CommandArgs = {
   "collection.export": CollectionExportArgs,
   "collection.import": CollectionImportArgs,
   "collection.resolve_conflict": CollectionResolveConflictArgs,
+  "variance.get": VarianceGetArgs,
+  "variance.set_reason_code": VarianceSetReasonCodeArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;
 export type CommandInput<C extends CommandName> = z.infer<(typeof CommandArgs)[C]>;
+

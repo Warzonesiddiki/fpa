@@ -6,6 +6,7 @@ import {
   resetMockHeadcountState,
   resetMockScenarioState,
   resetMockSettingsState,
+  resetMockVarianceState,
 } from "./mock";
 
 describe("dev mock — browser-preview simulation only (B18-3)", () => {
@@ -1398,4 +1399,170 @@ describe("dev mock — scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–
     })) as { error: { code: string } };
     expect(unknown.error.code).toBe("VALUE_INVALID");
   });
+
+  describe("variance.get & variance.set_reason_code (F-024 · M5-1 · M5-2)", () => {
+    beforeEach(() => {
+      resetMockVarianceState();
+    });
+
+    it("returns 3-way variance rows, attribution breakdown and threeway view", async () => {
+      const res = (await mockInvoke("variance.get", {
+        company_id: "c-01",
+        period_id: "fp-2027-p08",
+        compare: "commit",
+        attribution: true,
+      })) as {
+        data: {
+          rows: Array<{
+            line_id: string;
+            actual_minor: number;
+            actual_text: string;
+            compare_minor: number;
+            compare_text: string;
+            delta_minor: number;
+            delta_text: string;
+            delta_pct: number | null;
+            direction: string;
+            reason_code: string | null;
+            note: string | null;
+          }>;
+          attribution?: Array<{
+            line_id: string;
+            volume_minor: number;
+            price_minor: number;
+            mix_minor: number;
+            fx_minor: number;
+            efficiency_minor: number;
+            total_attributed_minor: number;
+            unattributable: boolean;
+          }>;
+          threeway?: Array<{
+            line_id: string;
+            plan_minor: number;
+            commit_minor: number;
+            actual_minor: number;
+            actual_vs_plan_delta_minor: number;
+            actual_vs_plan_direction: string;
+            actual_vs_commit_delta_minor: number;
+            actual_vs_commit_direction: string;
+          }>;
+        };
+      };
+
+      expect(res.data).toBeDefined();
+      expect(res.data.rows.length).toBe(2);
+
+      const revRow = res.data.rows.find((r) => r.line_id === "ln-rev-product")!;
+      expect(revRow).toBeDefined();
+      expect(revRow.actual_minor).toBe(182_500_000);
+      expect(revRow.actual_text).toBe("1825000.00");
+      expect(revRow.compare_minor).toBe(180_000_000);
+      expect(revRow.compare_text).toBe("1800000.00");
+      expect(revRow.delta_minor).toBe(2_500_000);
+      expect(revRow.delta_text).toBe("25000.00");
+      // Revenue higher than budget = favorable
+      expect(revRow.direction).toBe("favorable");
+      expect(revRow.delta_pct).toBe(1.39);
+
+      const cogsRow = res.data.rows.find((r) => r.line_id === "ln-cogs-materials")!;
+      expect(cogsRow).toBeDefined();
+      expect(cogsRow.actual_minor).toBe(96_000_000);
+      expect(cogsRow.compare_minor).toBe(90_000_000);
+      expect(cogsRow.delta_minor).toBe(6_000_000);
+      // Cost higher than budget = unfavorable
+      expect(cogsRow.direction).toBe("unfavorable");
+      expect(cogsRow.delta_pct).toBe(6.67);
+
+      // Attribution breakdown
+      expect(res.data.attribution).toBeDefined();
+      expect(res.data.attribution?.length).toBe(2);
+      const revAttr = res.data.attribution!.find((a) => a.line_id === "ln-rev-product")!;
+      expect(revAttr.volume_minor).toBe(15_000_000);
+      expect(revAttr.price_minor).toBe(12_000_000);
+      expect(revAttr.mix_minor).toBe(-1_500_000);
+      expect(revAttr.fx_minor).toBe(-500_000);
+      expect(revAttr.efficiency_minor).toBe(0);
+      expect(revAttr.total_attributed_minor).toBe(25_000_000);
+      expect(revAttr.unattributable).toBe(false);
+
+      // 3-way view (Plan vs Commit vs Actuals)
+      expect(res.data.threeway).toBeDefined();
+      expect(res.data.threeway?.length).toBe(2);
+      const revThreeway = res.data.threeway!.find((t) => t.line_id === "ln-rev-product")!;
+      expect(revThreeway.plan_minor).toBe(175_000_000);
+      expect(revThreeway.commit_minor).toBe(180_000_000);
+      expect(revThreeway.actual_minor).toBe(182_500_000);
+      expect(revThreeway.actual_vs_plan_delta_minor).toBe(7_500_000);
+      expect(revThreeway.actual_vs_plan_direction).toBe("favorable");
+      expect(revThreeway.actual_vs_commit_delta_minor).toBe(2_500_000);
+      expect(revThreeway.actual_vs_commit_direction).toBe("favorable");
+    });
+
+    it("saves reason codes and returns them in subsequent variance.get calls", async () => {
+      const setRes = (await mockInvoke("variance.set_reason_code", {
+        line_id: "ln-rev-product",
+        period_id: "fp-2027-p08",
+        code: "volume",
+        note: "Q3 expansion ahead of schedule",
+      })) as { data: { saved: boolean } };
+      expect(setRes.data.saved).toBe(true);
+
+      const getRes = (await mockInvoke("variance.get", {
+        company_id: "c-01",
+        period_id: "fp-2027-p08",
+        compare: "commit",
+      })) as {
+        data: {
+          rows: Array<{
+            line_id: string;
+            reason_code: string | null;
+            note: string | null;
+          }>;
+        };
+      };
+
+      const revRow = getRes.data.rows.find((r) => r.line_id === "ln-rev-product");
+      expect(revRow?.reason_code).toBe("volume");
+      expect(revRow?.note).toBe("Q3 expansion ahead of schedule");
+    });
+
+    it("supports VARIANCE_SOURCE_MIXED error trigger", async () => {
+      const err = (await mockInvoke("variance.get", {
+        company_id: "c-01",
+        period_id: "fp-2027-mixed",
+        compare: "commit",
+      })) as {
+        error: {
+          code: string;
+          httpStatus: number;
+          userMessage: string;
+        };
+      };
+      expect(err.error.code).toBe("VARIANCE_SOURCE_MIXED");
+      expect(err.error.httpStatus).toBe(422);
+      expect(err.error.userMessage).toBe(
+        "Selected periods mix Actual and Forecast — enable HYBRID label to view.",
+      );
+    });
+
+    it("supports VARIANCE_NO_ATTRIBUTION_DATA error trigger", async () => {
+      const err = (await mockInvoke("variance.get", {
+        company_id: "c-01",
+        period_id: "fp-2027-no_attr",
+        compare: "commit",
+      })) as {
+        error: {
+          code: string;
+          httpStatus: number;
+          userMessage: string;
+        };
+      };
+      expect(err.error.code).toBe("VARIANCE_NO_ATTRIBUTION_DATA");
+      expect(err.error.httpStatus).toBe(200);
+      expect(err.error.userMessage).toBe(
+        "Attribution unavailable for these lines — no unit/driver data. Show $ variance only.",
+      );
+    });
+  });
 });
+

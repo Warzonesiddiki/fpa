@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 ### Added
+- **M5-1 Variance Engine & M5-2 Attribution & Reason Codes (F-024 · SCREENS-SPEC S-054 · API-SPEC variance.*, 2026-09-05):**
+  Added variance calculation and attribution decomposition via native Rust commands (`variance_get` and `variance_set_reason_code`
+  in `src-tauri/src/commands/variance.rs`). Implemented exact integer-minor arithmetic, Decimal percentages (`calculate_decimal_pct`
+  with HalfUp rounding), account nature-driven Favorable/Unfavorable classification (`determine_fu`), 3-Way comparisons (Plan vs
+  Commit vs Actuals), attribution breakdown (Volume, Price, Mix, FX, Efficiency) with sum-of-parts guarantee, and typed domain
+  errors `VARIANCE_SOURCE_MIXED` and `VARIANCE_NO_ATTRIBUTION_DATA`. Added Zod IPC schemas and browser dev mock bridges with
+  realistic 3-way fixtures. Built `useVarianceStore` (`src/stores/variance.ts`) supporting all 5 canonical screen states, 3-Way
+  view toggle, period/BU/account category filters, and reason code persistence with HMAC audit event writing. Implemented
+  accessible S-054 Variance page (`src/pages/s054-variance/`) with 3-Way view, distinct F/U status badges (never color alone),
+  interactive commentary modal with standard taxonomy, SVG Waterfall chart toggle, CSV export, lazy routing at `/app/analyze/variance`,
+  and full test coverage (7 cargo unit tests, 136 vitest unit tests across schema, mock, store, and S-054 page, vitest-axe clean).
 - **M4-5 Planning Cycle Manager & M4-6 Input Collection Loop (F-021 · SCREENS-SPEC S-053 · API-SPEC cycle.* / collection.*, 2026-09-05):**
   Added full planning cycle lifecycle tracking and driver input collection loop via native Rust commands (`cycle_start`,
   `cycle_task_update`, `cycle_checklist_status`, `collection_export`, `collection_import`, `collection_resolve_conflict` in
