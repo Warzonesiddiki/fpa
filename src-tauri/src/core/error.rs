@@ -156,6 +156,15 @@ pub enum AppError {
     GoalSeekNoConverge { last_value: String, target: String },
     #[error("sensitivity range exceeds assumption bounds")]
     SensitivityOutOfBounds,
+    // ── Planning Cycle & Input Collection (F-021 · F-023 · M4-5 · M4-6 · ERROR-HANDLING §E) ─
+    #[error("a planning cycle with this name already exists")]
+    CycleNameDup,
+    #[error("this task is blocked by unfinished tasks: {list}")]
+    CycleTaskBlocked { list: String },
+    #[error("driver value changed by more than one contributor")]
+    CollectionConflict { conflict_count: usize },
+    #[error("returned sheet differs from exported template")]
+    CollectionStructureChanged,
 }
 
 impl AppError {
@@ -229,6 +238,12 @@ impl AppError {
             AppError::CompareIncompatible => ("COMPARE_INCOMPATIBLE", 422, false, None),
             AppError::GoalSeekNoConverge { .. } => ("GOAL_SEEK_NO_CONVERGE", 422, false, None),
             AppError::SensitivityOutOfBounds => ("SENSITIVITY_OUT_OF_BOUNDS", 422, false, None),
+            AppError::CycleNameDup => ("CYCLE_NAME_DUP", 409, false, None),
+            AppError::CycleTaskBlocked { .. } => ("CYCLE_TASK_BLOCKED", 409, false, None),
+            AppError::CollectionConflict { .. } => ("COLLECTION_CONFLICT", 409, false, None),
+            AppError::CollectionStructureChanged => {
+                ("COLLECTION_STRUCTURE_CHANGED", 422, false, None)
+            }
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -612,6 +627,32 @@ impl AppError {
             AppError::SensitivityOutOfBounds => {
                 "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range."
             }
+            AppError::CycleNameDup => "A planning cycle with this name already exists.",
+            AppError::CycleTaskBlocked { list } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!("This task is blocked by unfinished tasks: {list}."),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "list": list }),
+                };
+            }
+            AppError::CollectionConflict { conflict_count } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "This Driver value was changed by more than one contributor. Resolve the conflict (choose or average) — never merged silently.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "conflict_count": conflict_count }),
+                };
+            }
+            AppError::CollectionStructureChanged => {
+                "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -827,6 +868,22 @@ impl AppError {
     pub fn sensitivity_out_of_bounds() -> Self {
         AppError::SensitivityOutOfBounds
     }
+
+    pub fn cycle_name_dup() -> Self {
+        AppError::CycleNameDup
+    }
+
+    pub fn cycle_task_blocked(list: impl Into<String>) -> Self {
+        AppError::CycleTaskBlocked { list: list.into() }
+    }
+
+    pub fn collection_conflict(conflict_count: usize) -> Self {
+        AppError::CollectionConflict { conflict_count }
+    }
+
+    pub fn collection_structure_changed() -> Self {
+        AppError::CollectionStructureChanged
+    }
 }
 
 /// Capitalize the first char for documented user text ("revenue" → "Revenue").
@@ -1038,5 +1095,46 @@ mod tests {
             "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range."
         );
         assert_eq!(sens.details, serde_json::json!({}));
+    }
+
+    #[test]
+    fn cycle_and_collection_errors_match_contract() {
+        let dup = AppError::cycle_name_dup().body();
+        assert_eq!(dup.code, "CYCLE_NAME_DUP");
+        assert_eq!(dup.http_status, 409);
+        assert!(!dup.retryable);
+        assert_eq!(
+            dup.user_message,
+            "A planning cycle with this name already exists."
+        );
+
+        let blocked = AppError::cycle_task_blocked("Import all BU actuals").body();
+        assert_eq!(blocked.code, "CYCLE_TASK_BLOCKED");
+        assert_eq!(blocked.http_status, 409);
+        assert!(!blocked.retryable);
+        assert_eq!(
+            blocked.user_message,
+            "This task is blocked by unfinished tasks: Import all BU actuals."
+        );
+        assert_eq!(blocked.details["list"], "Import all BU actuals");
+
+        let conflict = AppError::collection_conflict(2).body();
+        assert_eq!(conflict.code, "COLLECTION_CONFLICT");
+        assert_eq!(conflict.http_status, 409);
+        assert!(!conflict.retryable);
+        assert_eq!(
+            conflict.user_message,
+            "This Driver value was changed by more than one contributor. Resolve the conflict (choose or average) — never merged silently."
+        );
+        assert_eq!(conflict.details["conflict_count"], 2);
+
+        let struct_changed = AppError::collection_structure_changed().body();
+        assert_eq!(struct_changed.code, "COLLECTION_STRUCTURE_CHANGED");
+        assert_eq!(struct_changed.http_status, 422);
+        assert!(!struct_changed.retryable);
+        assert_eq!(
+            struct_changed.user_message,
+            "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging."
+        );
     }
 }

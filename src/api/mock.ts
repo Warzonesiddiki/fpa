@@ -2616,6 +2616,152 @@ export async function mockInvoke<C extends CommandName>(
       const { company_path } = args as { company_path: string };
       return { data: { file: `${company_path}.license-request.json` } };
     }
+    /* ── Planning Cycle & Input Collection (M4-5 · M4-6 · S-053) ─────── */
+    case "cycle.start": {
+      const { name, kind } = args as {
+        model_id: string;
+        kind: "budget" | "forecast" | "rolling";
+        name: string;
+        due: string;
+      };
+      if (name.includes("Duplicate") || name.includes("dup")) {
+        return mockError(
+          "CYCLE_NAME_DUP",
+          "cycle name already exists",
+          "A planning cycle with this name already exists.",
+          409,
+        );
+      }
+      const cycleId = `pc-${Date.now()}`;
+      return { data: { cycle_id: cycleId, name, kind } };
+    }
+    case "cycle.task.update": {
+      const { task_id, status } = args as {
+        task_id: string;
+        status: "pending" | "done" | "blocked";
+        note?: string;
+      };
+      if (task_id.includes("blocked") || (task_id === "ct-3" && status === "done")) {
+        return mockError(
+          "CYCLE_TASK_BLOCKED",
+          "task is blocked by unfinished predecessor",
+          "This task is blocked by unfinished tasks: Run GL tie-out and reconcile accounts.",
+          409,
+          false,
+          { list: "Run GL tie-out and reconcile accounts" },
+        );
+      }
+      return { data: { updated: true } };
+    }
+    case "cycle.checklist.status": {
+      return {
+        data: {
+          cycle_id: "pc-fy27-budget",
+          ready: false,
+          tasks: [
+            {
+              id: "ct-1",
+              cycle_id: "pc-fy27-budget",
+              title: "Import all BU actuals",
+              owner: "FinOps",
+              depends_on_id: null,
+              due_date: "2026-09-05",
+              status: "done",
+              sort_order: 1,
+            },
+            {
+              id: "ct-2",
+              cycle_id: "pc-fy27-budget",
+              title: "Run GL tie-out and reconcile accounts",
+              owner: "Accounting",
+              depends_on_id: "ct-1",
+              due_date: "2026-09-08",
+              status: "pending",
+              sort_order: 2,
+            },
+            {
+              id: "ct-3",
+              cycle_id: "pc-fy27-budget",
+              title: "Execute Health Check and review integrity rules",
+              owner: "FP&A Lead",
+              depends_on_id: "ct-2",
+              due_date: "2026-09-10",
+              status: "pending",
+              sort_order: 3,
+            },
+            {
+              id: "ct-4",
+              cycle_id: "pc-fy27-budget",
+              title: "Approve variance commentary and lock cycle",
+              owner: "VP Finance",
+              depends_on_id: "ct-3",
+              due_date: "2026-09-12",
+              status: "pending",
+              sort_order: 4,
+            },
+          ],
+        },
+      };
+    }
+    case "collection.export": {
+      const { cycle_id, template } = args as {
+        cycle_id: string;
+        driver_ids: string[];
+        template: string;
+      };
+      if (template === "invalid_template") {
+        return mockError(
+          "COLLECTION_STRUCTURE_CHANGED",
+          "template structure mismatch",
+          "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging.",
+          422,
+        );
+      }
+      return { data: { file: `driver_collection_${cycle_id}.csv`, rows: 48 } };
+    }
+    case "collection.import": {
+      const { file_path } = args as { cycle_id: string; file_path: string; mapping_id: string };
+      if (file_path.includes("corrupt") || file_path.includes("structure_drift")) {
+        return mockError(
+          "COLLECTION_STRUCTURE_CHANGED",
+          "sheet headers and columns do not match template",
+          "The returned sheet differs from the exported template (rows/columns changed). Review the diff before merging.",
+          422,
+        );
+      }
+      if (file_path.includes("conflict")) {
+        return {
+          data: {
+            batch_id: "cb-8821",
+            conflicts: [
+              {
+                id: "conf-1",
+                upload_id: "cu-1",
+                driver_id: "dr-sales-volume",
+                driver_name: "Sales Volume (Units)",
+                period_id: "fp-2027-p08",
+                contributor_a: "Sales Director",
+                value_a: "11000",
+                contributor_b: "Operations Lead",
+                value_b: "12500",
+                resolved: false,
+                resolution_choice: null,
+                resolved_value: null,
+              },
+            ],
+          },
+        };
+      }
+      return {
+        data: {
+          batch_id: "cb-8822",
+          conflicts: [],
+        },
+      };
+    }
+    case "collection.resolve_conflict": {
+      return { data: { resolved: true } };
+    }
     default:
       return {
         error: {

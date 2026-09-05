@@ -2,6 +2,7 @@ pub mod assumption;
 pub mod calendar;
 pub mod coa;
 pub mod company;
+pub mod cycle;
 pub mod driver;
 pub mod import;
 pub mod license;

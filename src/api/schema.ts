@@ -1609,6 +1609,124 @@ export const PlanGoalSeekData = z.object({
 });
 export type PlanGoalSeekData = z.infer<typeof PlanGoalSeekData>;
 
+/* ── Planning Cycle & Input Collection Schemas (M4-5 · M4-6 · S-053) ── */
+
+export const CycleStartArgs = z
+  .object({
+    model_id: z.string(),
+    kind: z.enum(["budget", "forecast", "rolling"]),
+    name: z.string().trim().min(1).max(120),
+    due: z.string().min(1),
+  })
+  .strict();
+export type CycleStartArgs = z.infer<typeof CycleStartArgs>;
+
+export const CycleStartData = z.object({
+  cycle_id: z.string(),
+});
+export type CycleStartData = z.infer<typeof CycleStartData>;
+
+export const CycleTaskUpdateArgs = z
+  .object({
+    task_id: z.string(),
+    status: z.enum(["pending", "done", "blocked"]),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type CycleTaskUpdateArgs = z.infer<typeof CycleTaskUpdateArgs>;
+
+export const CycleTaskUpdateData = z.object({
+  updated: z.boolean(),
+});
+export type CycleTaskUpdateData = z.infer<typeof CycleTaskUpdateData>;
+
+export const CycleTask = z.object({
+  id: z.string(),
+  cycle_id: z.string(),
+  title: z.string(),
+  owner: z.string(),
+  depends_on_id: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
+  status: z.enum(["pending", "done", "blocked"]),
+  sort_order: z.number().int(),
+});
+export type CycleTask = z.infer<typeof CycleTask>;
+
+export const CycleChecklistStatusArgs = z
+  .object({
+    model_id: z.string(),
+    period_id: z.string().optional(),
+  })
+  .strict();
+export type CycleChecklistStatusArgs = z.infer<typeof CycleChecklistStatusArgs>;
+
+export const CycleChecklistStatusData = z.object({
+  cycle_id: z.string().nullable(),
+  tasks: z.array(CycleTask),
+  ready: z.boolean(),
+});
+export type CycleChecklistStatusData = z.infer<typeof CycleChecklistStatusData>;
+
+export const CollectionExportArgs = z
+  .object({
+    cycle_id: z.string(),
+    driver_ids: z.array(z.string()),
+    template: z.string(),
+  })
+  .strict();
+export type CollectionExportArgs = z.infer<typeof CollectionExportArgs>;
+
+export const CollectionExportData = z.object({
+  file: z.string(),
+  rows: z.number().int(),
+});
+export type CollectionExportData = z.infer<typeof CollectionExportData>;
+
+export const CollectionConflictItem = z.object({
+  id: z.string(),
+  upload_id: z.string(),
+  driver_id: z.string(),
+  driver_name: z.string(),
+  period_id: z.string(),
+  contributor_a: z.string(),
+  value_a: DecimalString,
+  contributor_b: z.string(),
+  value_b: DecimalString,
+  resolved: z.boolean(),
+  resolution_choice: z.string().nullable().optional(),
+  resolved_value: DecimalString.nullable().optional(),
+});
+export type CollectionConflictItem = z.infer<typeof CollectionConflictItem>;
+
+export const CollectionImportArgs = z
+  .object({
+    cycle_id: z.string(),
+    file_path: z.string(),
+    mapping_id: z.string(),
+  })
+  .strict();
+export type CollectionImportArgs = z.infer<typeof CollectionImportArgs>;
+
+export const CollectionImportData = z.object({
+  batch_id: z.string(),
+  conflicts: z.array(CollectionConflictItem),
+});
+export type CollectionImportData = z.infer<typeof CollectionImportData>;
+
+export const CollectionResolveConflictArgs = z
+  .object({
+    conflict_id: z.string(),
+    choice: z.enum(["choose_a", "choose_b", "average"]),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type CollectionResolveConflictArgs = z.infer<typeof CollectionResolveConflictArgs>;
+
+export const CollectionResolveConflictData = z.object({
+  resolved: z.boolean(),
+});
+export type CollectionResolveConflictData = z.infer<typeof CollectionResolveConflictData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1663,6 +1781,12 @@ export const CommandArgs = {
   "plan.whatif_overlay": PlanWhatifOverlayArgs,
   "plan.sensitivity": PlanSensitivityArgs,
   "plan.goal_seek": PlanGoalSeekArgs,
+  "cycle.start": CycleStartArgs,
+  "cycle.task.update": CycleTaskUpdateArgs,
+  "cycle.checklist.status": CycleChecklistStatusArgs,
+  "collection.export": CollectionExportArgs,
+  "collection.import": CollectionImportArgs,
+  "collection.resolve_conflict": CollectionResolveConflictArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

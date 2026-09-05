@@ -18,6 +18,10 @@ use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
     company_clone_sandbox, company_create, company_delete, company_list, company_open,
 };
+use commands::cycle::{
+    collection_export, collection_import, collection_resolve_conflict, cycle_checklist_status,
+    cycle_start, cycle_task_update,
+};
 use commands::driver::{driver_set_value, driver_upsert};
 use commands::import::{
     ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
@@ -106,6 +110,12 @@ pub fn run() {
             scenario_delete,
             baseline_set,
             model_list,
+            cycle_start,
+            cycle_task_update,
+            cycle_checklist_status,
+            collection_export,
+            collection_import,
+            collection_resolve_conflict,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 ### Added
+- **M4-5 Planning Cycle Manager & M4-6 Input Collection Loop (F-021 · SCREENS-SPEC S-053 · API-SPEC cycle.* / collection.*, 2026-09-05):**
+  Added full planning cycle lifecycle tracking and driver input collection loop via native Rust commands (`cycle_start`,
+  `cycle_task_update`, `cycle_checklist_status`, `collection_export`, `collection_import`, `collection_resolve_conflict` in
+  `src-tauri/src/commands/cycle.rs`). Implemented task dependency checking, milestone status progression, conflict detection
+  on structure change or concurrent driver submissions, and typed errors `CYCLE_NAME_DUP`, `CYCLE_TASK_BLOCKED`, `COLLECTION_CONFLICT`,
+  and `COLLECTION_STRUCTURE_CHANGED`. Added Zod IPC schemas and dev mock bridges with conflict simulation. Implemented
+  `useCycleStore` (`src/stores/cycle.ts`) supporting all 5 canonical screen states (`empty`, `loading`, `error`, `success`,
+  `populated`), milestone advancement, close checklist completion, export template generation, and interactive conflict
+  resolution. Built accessible S-053 Planning Cycle page (`src/pages/s053-cycle/`) with milestone progress band, period close
+  board, driver collection status, conflict queue modal with accessible form controls, lazy routing at `/app/plan/cycle`,
+  and comprehensive test coverage (166 cargo unit tests, 21 vitest cycle tests, vitest-axe WCAG 2.2 AA compliant).
 - **M4-4 What-If, Sensitivity & Goal Seek (F-023 · SCREENS-SPEC S-052 · API-SPEC §2 plan.*, 2026-09-05):**
   Added What-If analysis, waterfall decomposition, driver sensitivity tornado, and goal seek bisection solving via native
   Rust commands (`plan.whatif_overlay`, `plan.sensitivity`, `plan.goal_seek` in `src-tauri/src/commands/plan.rs`). Implemented exact

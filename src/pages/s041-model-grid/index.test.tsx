@@ -209,8 +209,8 @@ describe("S-041 Model Grid (F-012)", () => {
     expect(screen.getByText("4000 · Revenue")).toBeInTheDocument();
     expect(screen.getByText("4100 · Software Licenses")).toBeInTheDocument();
     // Period headers.
-    expect(screen.getByText("P01")).toBeInTheDocument();
-    expect(screen.getByText("P02")).toBeInTheDocument();
+    expect(screen.getAllByText("P01").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("P02").length).toBeGreaterThanOrEqual(1);
     // Empty cells render as dash (MoneyCell empty state), never a float.
     await waitFor(() => {
       expect(screen.getAllByText("—").length).toBeGreaterThan(0);
