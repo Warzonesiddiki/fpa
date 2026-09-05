@@ -9,6 +9,7 @@ import { AssumptionsPage } from "@/pages/s044-assumptions";
 import { HeadcountPage } from "@/pages/s045-headcount/lazy";
 import { ScenariosPage } from "@/pages/s050-scenarios";
 import { ComparePage } from "@/pages/s051-compare/lazy";
+import { WhatIfPage } from "@/pages/s052-whatif/lazy";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
@@ -91,6 +92,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
             <ComparePage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "plan/whatif",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <WhatIfPage />
           </Suspense>
         ),
       },

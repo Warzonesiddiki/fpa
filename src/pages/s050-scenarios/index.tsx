@@ -273,6 +273,15 @@ export function ScenariosPage() {
         >
           {t("scenariosPage.compareScenarios")}
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            window.location.href = "/app/plan/whatif";
+          }}
+        >
+          What-If & Sensitivity
+        </Button>
       </div>
 
       {lastResult && (

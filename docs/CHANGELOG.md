@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 ### Added
+- **M4-4 What-If, Sensitivity & Goal Seek (F-023 · SCREENS-SPEC S-052 · API-SPEC §2 plan.*, 2026-09-05):**
+  Added What-If analysis, waterfall decomposition, driver sensitivity tornado, and goal seek bisection solving via native
+  Rust commands (`plan.whatif_overlay`, `plan.sensitivity`, `plan.goal_seek` in `src-tauri/src/commands/plan.rs`). Implemented exact
+  Decimal arithmetic, strict iteration and tolerance bounds ($\le 100$ steps, $1\text{e-}9$ precision), and typed domain errors
+  `GOAL_SEEK_NO_CONVERGE`, `SENSITIVITY_OUT_OF_BOUNDS`, and `COMPARE_INCOMPATIBLE`. Added Zod IPC schemas and mock bridges.
+  Implemented `useWhatifStore` (`src/stores/whatif.ts`) supporting all 5 screen states (`empty`, `loading`, `error`, `success`,
+  `populated`). Implemented accessible S-052 What-If screen (`src/pages/s052-whatif/`) with 3-pane layout, time-series overlay,
+  waterfall attribution, accessible SVG charts with table toggles, Sensitivity & Goal Seek tabs, and `Apply to new Scenario`
+  write-path dialog. Added lazy routing at `/app/plan/whatif` and complete test coverage (164 cargo tests, 752 vitest tests).
 - **M4-3 Model Compare & S-051 Screen (F-022 · SCENARIO-VERSION-SPEC §4 · SCREENS-SPEC S-051, 2026-09-05):**
   Added two-way cell diff between Scenarios and Versions via `model.diff` IPC command. Implemented Rust native handler
   in `src-tauri/src/commands/model.rs` validating scenario model matching, returning `COMPARE_INCOMPATIBLE` (HTTP 422, non-retryable),

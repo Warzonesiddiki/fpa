@@ -19,6 +19,10 @@ import {
   type DriverDef,
   type AssumptionDef,
   type AssumptionListRow,
+  type WhatifSeries,
+  type WaterfallStep,
+  type TornadoBar,
+  type SensitivityValueStep,
 } from "./schema";
 import {
   validateHeadcountRows,
@@ -587,6 +591,63 @@ function decimalCmp(a: string, b: string): number {
   if (x.lessThan(y)) return -1;
   if (x.greaterThan(y)) return 1;
   return 0;
+}
+
+/** Exact minor-units to decimal string conversion (no .toFixed, no parseFloat, no Math.round — B3). */
+function minorToDecimalStr(minor: number): string {
+  const neg = minor < 0 ? "-" : "";
+  const abs = Math.abs(minor);
+  const major = Math.floor(abs / 100);
+  const frac = String(abs % 100).padStart(2, "0");
+  return `${neg}${major}.${frac}`;
+}
+
+/** Exact Decimal to 2-decimal-places string without float conversion (B3/money-ast). */
+function formatDecimal(dec: Decimal): string {
+  const parts = dec.toString().split(".");
+  const intPart = parts[0];
+  const fracPart = (parts[1] ?? "").padEnd(2, "0").slice(0, 2);
+  return `${intPart}.${fracPart}`;
+}
+
+/** Dev-only demo drivers for S-052 sensitivity / goal seek browser preview. */
+function ensureDemoDrivers(): void {
+  if (!mockDrivers.has("dr-reps")) {
+    mockDrivers.set("dr-reps", {
+      id: "dr-reps",
+      name: "sales_representatives",
+      driver_type: "headcount",
+      unit: "FTE",
+      source: "global",
+      is_core: true,
+      bounds_low: "10.00",
+      bounds_high: "60.00",
+    });
+  }
+  if (!mockDrivers.has("dr-units")) {
+    mockDrivers.set("dr-units", {
+      id: "dr-units",
+      name: "units_sold",
+      driver_type: "volume_x_rate",
+      unit: "Units",
+      source: "global",
+      is_core: true,
+      bounds_low: "1000.00",
+      bounds_high: "50000.00",
+    });
+  }
+  if (!mockDrivers.has("dr-price")) {
+    mockDrivers.set("dr-price", {
+      id: "dr-price",
+      name: "unit_price",
+      driver_type: "manual",
+      unit: "USD",
+      source: "global",
+      is_core: true,
+      bounds_low: "50.00",
+      bounds_high: "300.00",
+    });
+  }
 }
 
 /** Formula reference match for a named assumption (identifier boundaries, with optional @ preview syntax). */
@@ -1579,6 +1640,375 @@ export async function mockInvoke<C extends CommandName>(
         }
       }
       return { data: { diff_rows: diffRows } };
+    }
+    /* ── plan.whatif_overlay, plan.sensitivity, plan.goal_seek (F-022 · M4-4 · S-052) ─── */
+    case "plan.whatif_overlay": {
+      const { scenario_ids, period_scope } = args as {
+        scenario_ids: string[];
+        period_scope: string;
+        kpis?: string[];
+      };
+
+      if (
+        period_scope.includes("incompat") ||
+        scenario_ids.some((id) => id.includes("incompat"))
+      ) {
+        return mockError(
+          "COMPARE_INCOMPATIBLE",
+          "cannot compare: models or COAs differ",
+          "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model.",
+          422,
+        );
+      }
+
+      const knownScenarios = scenario_ids.map((id) => mockScenarios.get(id)).filter(Boolean);
+      if (knownScenarios.length > 1) {
+        const firstModelId = knownScenarios[0]!.model_id;
+        if (knownScenarios.some((s) => s!.model_id !== firstModelId)) {
+          return mockError(
+            "COMPARE_INCOMPATIBLE",
+            "cannot compare: models or COAs differ",
+            "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model.",
+            422,
+          );
+        }
+      }
+
+      if (period_scope.toLowerCase() === "empty" || scenario_ids.length === 0) {
+        return { data: { series: [], waterfall: [] } };
+      }
+
+      const periods = [
+        { id: "fp-2027-p01", label: "P01 Jan" },
+        { id: "fp-2027-p02", label: "P02 Feb" },
+        { id: "fp-2027-p03", label: "P03 Mar" },
+        { id: "fp-2027-p04", label: "P04 Apr" },
+        { id: "fp-2027-p05", label: "P05 May" },
+        { id: "fp-2027-p06", label: "P06 Jun" },
+      ];
+
+      const palette = ["#2563eb", "#10b981", "#f59e0b"];
+
+      const series: WhatifSeries[] = scenario_ids.map((scenId, idx) => {
+        const scen = mockScenarios.get(scenId);
+        const versions = mockScenarioVersions.get(scenId) ?? [];
+        const latestVer = versions.length > 0 ? versions[versions.length - 1].label : null;
+        const name =
+          scen?.name ?? (idx === 0 ? "Base Budget" : idx === 1 ? "Stretch What-If" : "Downside");
+
+        const multiplierNumerator = idx === 0 ? 100 : idx === 1 ? 115 : 90;
+
+        const points = periods.map((p, pIdx) => {
+          const cellKey = `${scenId}:ln-rev:${p.id}`;
+          const cell = modelCells.get(cellKey);
+          let valueMinor: number;
+          if (cell?.valueMinor != null) {
+            valueMinor = cell.valueMinor;
+          } else {
+            const baseMonthly = 125_000_000 + pIdx * 2_500_000;
+            valueMinor = Math.floor((baseMonthly * multiplierNumerator) / 100);
+          }
+          return {
+            period_id: p.id,
+            period_label: p.label,
+            value: minorToDecimalStr(valueMinor),
+            value_minor: valueMinor,
+          };
+        });
+
+        return {
+          scenario_id: scenId,
+          scenario_name: name,
+          version_label: latestVer,
+          color: palette[idx % palette.length],
+          points,
+        };
+      });
+
+      const waterfall: WaterfallStep[] = [
+        {
+          step_id: "wf-1",
+          label: "Baseline Revenue",
+          delta_text: "0.00",
+          delta_minor: 0,
+          cumulative_text: "7875000.00",
+          cumulative_minor: 787_500_000,
+          kind: "baseline",
+          driver_id: null,
+        },
+        {
+          step_id: "wf-2",
+          label: "Sales Capacity (Headcount +4)",
+          delta_text: "600000.00",
+          delta_minor: 60_000_000,
+          cumulative_text: "8475000.00",
+          cumulative_minor: 847_500_000,
+          kind: "driver",
+          driver_id: "dr-reps",
+        },
+        {
+          step_id: "wf-3",
+          label: "Price Realization (+3.5%)",
+          delta_text: "275000.00",
+          delta_minor: 27_500_000,
+          cumulative_text: "8750000.00",
+          cumulative_minor: 875_000_000,
+          kind: "driver",
+          driver_id: "dr-price",
+        },
+        {
+          step_id: "wf-4",
+          label: "Volume Expansion (+5.0%)",
+          delta_text: "390000.00",
+          delta_minor: 39_000_000,
+          cumulative_text: "9140000.00",
+          cumulative_minor: 914_000_000,
+          kind: "driver",
+          driver_id: "dr-units",
+        },
+        {
+          step_id: "wf-5",
+          label: "Customer Churn Mitigation",
+          delta_text: "-120000.00",
+          delta_minor: -12_000_000,
+          cumulative_text: "9020000.00",
+          cumulative_minor: 902_000_000,
+          kind: "driver",
+          driver_id: "dr-churn",
+        },
+        {
+          step_id: "wf-6",
+          label: "Manual Adjustments (Unallocated)",
+          delta_text: "80000.00",
+          delta_minor: 8_000_000,
+          cumulative_text: "9100000.00",
+          cumulative_minor: 910_000_000,
+          kind: "other_manual",
+          driver_id: null,
+        },
+        {
+          step_id: "wf-7",
+          label: "What-If Scenario Total",
+          delta_text: "1225000.00",
+          delta_minor: 122_500_000,
+          cumulative_text: "9100000.00",
+          cumulative_minor: 910_000_000,
+          kind: "total",
+          driver_id: null,
+        },
+      ];
+
+      return { data: { series, waterfall } };
+    }
+    case "plan.sensitivity": {
+      const { driver_id, lo, hi, steps, target_lines } = args as {
+        driver_id: string;
+        lo: string;
+        hi: string;
+        steps: number;
+        target_lines: string[];
+      };
+      ensureDemoDrivers();
+
+      if (
+        driver_id.includes("outofbounds") ||
+        lo === "-999" ||
+        hi === "999999" ||
+        decimalCmp(lo, hi) > 0
+      ) {
+        return mockError(
+          "SENSITIVITY_OUT_OF_BOUNDS",
+          "sensitivity range exceeds assumption bounds",
+          "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+          422,
+          false,
+          {},
+        );
+      }
+
+      const def = mockDrivers.get(driver_id);
+      if (def) {
+        if (def.bounds_low != null && decimalCmp(lo, def.bounds_low) < 0) {
+          return mockError(
+            "SENSITIVITY_OUT_OF_BOUNDS",
+            `range lo ${lo} below bounds ${def.bounds_low}`,
+            "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+            422,
+            false,
+            {},
+          );
+        }
+        if (def.bounds_high != null && decimalCmp(hi, def.bounds_high) > 0) {
+          return mockError(
+            "SENSITIVITY_OUT_OF_BOUNDS",
+            `range hi ${hi} above bounds ${def.bounds_high}`,
+            "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+            422,
+            false,
+            {},
+          );
+        }
+      } else if (driver_id.includes("broken")) {
+        return mockError(
+          "REFERENCE_BROKEN",
+          "unknown driver",
+          "This driver does not exist. Create it first.",
+          422,
+        );
+      }
+
+      if (driver_id.toLowerCase() === "empty" || target_lines.length === 0) {
+        return { data: { tornado: [], values: [] } };
+      }
+
+      const activeLines =
+        target_lines.length > 0 ? target_lines : ["ln-rev", "ln-gp", "ln-ebitda", "ln-cogs"];
+
+      const lineMeta: Record<string, { name: string; baseMinor: number; swingPct: number }> = {
+        "ln-rev": { name: "Revenue", baseMinor: 15_000_000_00, swingPct: 25 },
+        "ln-gp": { name: "Gross Profit", baseMinor: 10_500_000_00, swingPct: 20 },
+        "ln-ebitda": { name: "EBITDA", baseMinor: 3_200_000_00, swingPct: 35 },
+        "ln-cogs": { name: "Cost of Goods Sold", baseMinor: 4_500_000_00, swingPct: 15 },
+        "ln-opex": { name: "Operating Expenses", baseMinor: 7_300_000_00, swingPct: 10 },
+      };
+
+      const tornado: TornadoBar[] = activeLines
+        .map((lineId) => {
+          const meta = lineMeta[lineId] ?? {
+            name: lineId.toUpperCase(),
+            baseMinor: 5_000_000_00,
+            swingPct: 20,
+          };
+          const baseMinor = meta.baseMinor;
+          const swingDelta = Math.floor((baseMinor * meta.swingPct) / 100);
+          const lowMinor = baseMinor - swingDelta;
+          const highMinor = baseMinor + swingDelta;
+          const swingMinor = highMinor - lowMinor;
+          return {
+            target_line_id: lineId,
+            target_line_name: meta.name,
+            base_value: minorToDecimalStr(baseMinor),
+            base_minor: baseMinor,
+            low_value: minorToDecimalStr(lowMinor),
+            low_minor: lowMinor,
+            high_value: minorToDecimalStr(highMinor),
+            high_minor: highMinor,
+            swing_minor: swingMinor,
+            swing_text: minorToDecimalStr(swingMinor),
+          };
+        })
+        .sort((a, b) => b.swing_minor - a.swing_minor);
+
+      const values: SensitivityValueStep[] = [];
+      const loDec = new Decimal(lo);
+      const hiDec = new Decimal(hi);
+      const stepCount = Math.max(2, steps);
+
+      for (let i = 0; i < stepCount; i += 1) {
+        const fraction = new Decimal(i).dividedBy(stepCount - 1);
+        const valDec = loDec.plus(hiDec.minus(loDec).times(fraction));
+        const targetImpacts: Record<string, string> = {};
+
+        for (const t of tornado) {
+          const impactMinor =
+            t.low_minor + Math.floor(((t.high_minor - t.low_minor) * i) / (stepCount - 1));
+          targetImpacts[t.target_line_id] = minorToDecimalStr(impactMinor);
+        }
+
+        values.push({
+          driver_value: formatDecimal(valDec),
+          step_index: i,
+          target_impacts: targetImpacts,
+        });
+      }
+
+      return { data: { tornado, values } };
+    }
+    case "plan.goal_seek": {
+      const { target_cell, target_value, driver_id, bounds } = args as {
+        target_cell: string;
+        target_value: string;
+        driver_id: string;
+        bounds: [string, string];
+      };
+      ensureDemoDrivers();
+      const [bLo, bHi] = bounds;
+
+      if (driver_id.includes("outofbounds") || bLo === "-999" || decimalCmp(bLo, bHi) > 0) {
+        return mockError(
+          "SENSITIVITY_OUT_OF_BOUNDS",
+          "goal seek bounds exceed assumption bounds",
+          "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+          422,
+          false,
+          {},
+        );
+      }
+
+      const def = mockDrivers.get(driver_id);
+      if (def) {
+        if (def.bounds_low != null && decimalCmp(bLo, def.bounds_low) < 0) {
+          return mockError(
+            "SENSITIVITY_OUT_OF_BOUNDS",
+            `bounds lo ${bLo} below registered bounds ${def.bounds_low}`,
+            "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+            422,
+            false,
+            {},
+          );
+        }
+        if (def.bounds_high != null && decimalCmp(bHi, def.bounds_high) > 0) {
+          return mockError(
+            "SENSITIVITY_OUT_OF_BOUNDS",
+            `bounds hi ${bHi} above registered bounds ${def.bounds_high}`,
+            "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range.",
+            422,
+            false,
+            {},
+          );
+        }
+      }
+
+      if (
+        driver_id.includes("noconverge") ||
+        target_cell.includes("noconverge") ||
+        target_value.includes("999999")
+      ) {
+        const lastValue = "285.4";
+        return mockError(
+          "GOAL_SEEK_NO_CONVERGE",
+          `goal seek did not converge in 100 iterations: last value ${lastValue}, target ${target_value}`,
+          `Goal Seek did not converge in 100 iterations. Last value ${lastValue}, target ${target_value}. Adjust bounds.`,
+          422,
+          false,
+          { last_value: lastValue, target: target_value, iterations: 100 },
+        );
+      }
+
+      if (target_cell.toLowerCase() === "empty" || driver_id.toLowerCase() === "empty") {
+        return {
+          data: {
+            driver_value: "0.00",
+            iterations: 0,
+            converged: false,
+            last_target_value: "0.00",
+          },
+        };
+      }
+
+      const bLoDec = new Decimal(bLo);
+      const bHiDec = new Decimal(bHi);
+      const span = bHiDec.minus(bLoDec);
+      const solvedDec = bLoDec.plus(span.times(new Decimal("0.64")));
+
+      return {
+        data: {
+          driver_value: formatDecimal(solvedDec),
+          iterations: 14,
+          converged: true,
+          last_target_value: target_value,
+        },
+      };
     }
     case "driver.upsert": {
       const { model_id, driver } = args as {

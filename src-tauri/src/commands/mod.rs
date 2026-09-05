@@ -7,6 +7,7 @@ pub mod import;
 pub mod license;
 pub mod model;
 pub mod pack;
+pub mod plan;
 pub mod scenario;
 pub mod schedule;
 pub mod security;

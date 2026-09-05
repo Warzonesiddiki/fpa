@@ -149,6 +149,13 @@ pub enum AppError {
     // ── Model Compare (F-022 / ERROR-HANDLING §E) ──────────────────────────────────────────
     #[error("cannot compare: models or COAs differ")]
     CompareIncompatible,
+    // ── What-If, Sensitivity & Goal Seek (F-022 · M4-4 · ERROR-HANDLING §E) ────────────────
+    #[error(
+        "goal seek did not converge in 100 iterations: last value {last_value}, target {target}"
+    )]
+    GoalSeekNoConverge { last_value: String, target: String },
+    #[error("sensitivity range exceeds assumption bounds")]
+    SensitivityOutOfBounds,
 }
 
 impl AppError {
@@ -220,6 +227,8 @@ impl AppError {
                 ("BASELINE_REPLACE_REASON_REQUIRED", 422, false, None)
             }
             AppError::CompareIncompatible => ("COMPARE_INCOMPATIBLE", 422, false, None),
+            AppError::GoalSeekNoConverge { .. } => ("GOAL_SEEK_NO_CONVERGE", 422, false, None),
+            AppError::SensitivityOutOfBounds => ("SENSITIVITY_OUT_OF_BOUNDS", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -583,6 +592,26 @@ impl AppError {
             AppError::CompareIncompatible => {
                 "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model."
             }
+            AppError::GoalSeekNoConverge { last_value, target } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Goal Seek did not converge in 100 iterations. Last value {last_value}, target {target}. Adjust bounds."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({
+                        "last_value": last_value,
+                        "target": target,
+                        "iterations": 100,
+                    }),
+                };
+            }
+            AppError::SensitivityOutOfBounds => {
+                "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -787,6 +816,17 @@ impl AppError {
     pub fn compare_incompatible() -> Self {
         AppError::CompareIncompatible
     }
+
+    pub fn goal_seek_no_converge(last_value: impl Into<String>, target: impl Into<String>) -> Self {
+        AppError::GoalSeekNoConverge {
+            last_value: last_value.into(),
+            target: target.into(),
+        }
+    }
+
+    pub fn sensitivity_out_of_bounds() -> Self {
+        AppError::SensitivityOutOfBounds
+    }
 }
 
 /// Capitalize the first char for documented user text ("revenue" → "Revenue").
@@ -971,5 +1011,32 @@ mod tests {
             "Cannot compare: Models/COAs differ. Select two Scenarios of the same Model."
         );
         assert_eq!(err.details, serde_json::json!({}));
+    }
+
+    #[test]
+    fn plan_whatif_and_sensitivity_errors_match_contract() {
+        let gs = AppError::goal_seek_no_converge("285.4", "300.0").body();
+        assert_eq!(gs.code, "GOAL_SEEK_NO_CONVERGE");
+        assert_eq!(gs.http_status, 422);
+        assert!(!gs.retryable);
+        assert_eq!(gs.retry_after_ms, None);
+        assert_eq!(
+            gs.user_message,
+            "Goal Seek did not converge in 100 iterations. Last value 285.4, target 300.0. Adjust bounds."
+        );
+        assert_eq!(gs.details["last_value"], "285.4");
+        assert_eq!(gs.details["target"], "300.0");
+        assert_eq!(gs.details["iterations"], 100);
+
+        let sens = AppError::sensitivity_out_of_bounds().body();
+        assert_eq!(sens.code, "SENSITIVITY_OUT_OF_BOUNDS");
+        assert_eq!(sens.http_status, 422);
+        assert!(!sens.retryable);
+        assert_eq!(sens.retry_after_ms, None);
+        assert_eq!(
+            sens.user_message,
+            "Sensitivity range exceeds the Assumption bounds. Adjust bounds or range."
+        );
+        assert_eq!(sens.details, serde_json::json!({}));
     }
 }

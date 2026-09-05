@@ -1504,6 +1504,111 @@ export const ModelDiffData = z.object({
 });
 export type ModelDiffData = z.infer<typeof ModelDiffData>;
 
+/* ── plan.whatif_overlay, plan.sensitivity, plan.goal_seek (F-022 · M4-4 · S-052) ─── */
+
+/** `plan.whatif_overlay` — 2–3 scenario time-series overlay and waterfall attribution. */
+export const PlanWhatifOverlayArgs = z
+  .object({
+    scenario_ids: z.array(Uuid).min(1).max(3),
+    period_scope: z.string(),
+    kpis: z.array(z.string()).default([]),
+  })
+  .strict();
+export type PlanWhatifOverlayArgs = z.infer<typeof PlanWhatifOverlayArgs>;
+
+export const WhatifSeriesPoint = z.object({
+  period_id: z.string(),
+  period_label: z.string(),
+  value: DecimalString,
+  value_minor: MoneyMinor,
+});
+export type WhatifSeriesPoint = z.infer<typeof WhatifSeriesPoint>;
+
+export const WhatifSeries = z.object({
+  scenario_id: Uuid,
+  scenario_name: z.string(),
+  version_label: z.string().nullable().optional(),
+  color: z.string().optional(),
+  points: z.array(WhatifSeriesPoint),
+});
+export type WhatifSeries = z.infer<typeof WhatifSeries>;
+
+export const WaterfallStep = z.object({
+  step_id: z.string(),
+  label: z.string(),
+  delta_text: DecimalString,
+  delta_minor: MoneyMinor,
+  cumulative_text: DecimalString,
+  cumulative_minor: MoneyMinor,
+  kind: z.enum(["baseline", "driver", "other_manual", "total"]),
+  driver_id: z.string().nullable().optional(),
+});
+export type WaterfallStep = z.infer<typeof WaterfallStep>;
+
+export const PlanWhatifOverlayData = z.object({
+  series: z.array(WhatifSeries),
+  waterfall: z.array(WaterfallStep),
+});
+export type PlanWhatifOverlayData = z.infer<typeof PlanWhatifOverlayData>;
+
+/** `plan.sensitivity` — driver variation within bounds generating tornado bars. */
+export const PlanSensitivityArgs = z
+  .object({
+    driver_id: z.string(),
+    lo: DecimalString,
+    hi: DecimalString,
+    steps: z.number().int().min(2).max(100),
+    target_lines: z.array(z.string()),
+  })
+  .strict();
+export type PlanSensitivityArgs = z.infer<typeof PlanSensitivityArgs>;
+
+export const TornadoBar = z.object({
+  target_line_id: z.string(),
+  target_line_name: z.string(),
+  base_value: DecimalString,
+  base_minor: MoneyMinor,
+  low_value: DecimalString,
+  low_minor: MoneyMinor,
+  high_value: DecimalString,
+  high_minor: MoneyMinor,
+  swing_minor: MoneyMinor,
+  swing_text: DecimalString,
+});
+export type TornadoBar = z.infer<typeof TornadoBar>;
+
+export const SensitivityValueStep = z.object({
+  driver_value: DecimalString,
+  step_index: z.number().int(),
+  target_impacts: z.record(z.string(), DecimalString),
+});
+export type SensitivityValueStep = z.infer<typeof SensitivityValueStep>;
+
+export const PlanSensitivityData = z.object({
+  tornado: z.array(TornadoBar),
+  values: z.array(SensitivityValueStep),
+});
+export type PlanSensitivityData = z.infer<typeof PlanSensitivityData>;
+
+/** `plan.goal_seek` — bounded bisection solver to achieve a target cell value. */
+export const PlanGoalSeekArgs = z
+  .object({
+    target_cell: z.string(),
+    target_value: DecimalString,
+    driver_id: z.string(),
+    bounds: z.tuple([DecimalString, DecimalString]),
+  })
+  .strict();
+export type PlanGoalSeekArgs = z.infer<typeof PlanGoalSeekArgs>;
+
+export const PlanGoalSeekData = z.object({
+  driver_value: DecimalString,
+  iterations: z.number().int(),
+  converged: z.boolean(),
+  last_target_value: DecimalString.optional(),
+});
+export type PlanGoalSeekData = z.infer<typeof PlanGoalSeekData>;
+
 /* ── Registered command table ───────────────────────────────────── */
 
 export const CommandArgs = {
@@ -1555,6 +1660,9 @@ export const CommandArgs = {
   "scenario.delete": ScenarioIdArgs,
   "baseline.set": BaselineSetArgs,
   "model.diff": ModelDiffArgs,
+  "plan.whatif_overlay": PlanWhatifOverlayArgs,
+  "plan.sensitivity": PlanSensitivityArgs,
+  "plan.goal_seek": PlanGoalSeekArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

@@ -26,6 +26,7 @@ use commands::import::{
 use commands::license::{license_apply_response, license_request_file, license_verify};
 use commands::model::{ModelRegistry, model_cell_set_v1, model_diff, model_recalc};
 use commands::pack::pack_list;
+use commands::plan::{plan_goal_seek, plan_sensitivity, plan_whatif_overlay};
 use commands::scenario::{
     baseline_set, model_list, scenario_approve, scenario_create, scenario_delete,
     scenario_duplicate, scenario_lock, scenario_reopen, scenario_submit,
@@ -87,6 +88,9 @@ pub fn run() {
             model_cell_set_v1,
             model_recalc,
             model_diff,
+            plan_whatif_overlay,
+            plan_sensitivity,
+            plan_goal_seek,
             driver_upsert,
             driver_set_value,
             assumption_upsert,
