@@ -27,6 +27,7 @@ import { PacksPage } from "@/pages/s023-packs";
 import { ImportHubPage } from "@/pages/s030-import";
 import { MappingWizardPage } from "@/pages/s031-mapping";
 import { ImportCommitPage } from "@/pages/s032-import-commit";
+import { AuditTrailPage } from "@/pages/s070-audit/lazy";
 import { LicensePage } from "@/pages/s073-license";
 import { SettingsPage } from "@/pages/s075-settings";
 
@@ -159,7 +160,16 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      { path: "governance", element: <Navigate to="/app/governance/license" replace /> },
+      { path: "governance", element: <Navigate to="/app/governance/audit" replace /> },
+      // S-070 (F-033): the immutable HMAC-chained event log.
+      {
+        path: "governance/audit",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <AuditTrailPage />
+          </Suspense>
+        ),
+      },
       { path: "governance/license", element: <LicensePage /> },
       { path: "settings", element: <SettingsPage /> },
     ],

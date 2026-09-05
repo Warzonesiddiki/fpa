@@ -3,6 +3,33 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+- **M6-8a Audit Trail — `audit.list` + S-070 (F-033 · US-034 · SCREENS-SPEC S-070 · API-SPEC §15, 2026-09-05):**
+  Shipped the Audit Trail at `/app/governance/audit` (`src/pages/s070-audit/`, code-split; `/app/governance` now lands here).
+  Geometry follows WIREFRAMES-ANALYTICS §S-070 exactly: toolbar (inclusive date range · actor ▾ · action ▾ · object ▾ ·
+  chain chip), virtual-ready event list (ts · actor · action · object) with per-row expansion to the **verbatim**
+  `before_json`/`after_json` payload plus the hash link to the previous event, and a footstrip with the chain event count.
+  All five canonical states ship, including a distinct "No events match these filters" empty with a clear-filters action.
+  **The chain verdict is data, not an error** (US-034): a tampered Company renders a persistent read-only banner + ✗ chip
+  naming the failing `seq` while every event stays readable — `AUDIT_CHAIN_BREAK` as a thrown error remains reserved for
+  mutations (AUTH-SPEC §2.5). The screen has **no edit/delete affordance of any kind** (B7, asserted by a test), and the
+  Data-Room / Export-log buttons ship **disabled** with an explanatory title because `audit.export_dataroom` has no handler
+  yet (B18-5/7 — never a button that fabricates a file). Money is never parsed out of event payloads: the strings returned
+  are the exact hashed bytes and are printed as-is (B3/B6).
+  New native handler `src-tauri/src/commands/audit.rs` (registered in `lib.rs`, 62 handlers): Company-scoped, read-only,
+  one-transaction snapshot for count + page + facets; stable `seq DESC` paging at 50/page; bound (never interpolated) filter
+  parameters with blank-as-absent semantics; facets computed over the **whole** chain so a zero-result filter stays reversible;
+  verification delegated to the existing `company::verify_company_chain` keychain replay (ADR-011/B14 — no second
+  implementation). 8 Rust unit tests accompany it (company scoping, filters vs facets, inclusive date bounds, blank filters,
+  broken-chain readability, pagination stability + page-0 rejection, verbatim payloads, empty company).
+  Contracts: `AuditListArgs`/`AuditListData`/`AuditEventRecord`/`AuditChainStatus`/`AuditFilters` in `src/api/schema.ts`
+  (`.strict()` — an unknown filter key is rejected at the boundary), a dev mirror in `src/api/mock.ts` with a genuinely
+  chain-linked fixture, and `src/stores/audit.ts` (filters reset to page 1, pagination guards, stale rows cleared on error).
+  Docs synchronized: API-SPEC §15 (full detailed spec), TASKBOARD (M6-8 row, screen tracker, command tracker, dashboard),
+  TODO and this changelog. New tests: 45 (19 page incl. 4 axe states, 13 store, 13 contract). Full suite **82 files /
+  1002 tests**; coverage 88.11/80.20/87.07/89.95 (≥85/80/80/85); critical 98.52/97.15/100/98.96 (≥95/90/90/95);
+  lint/tsc/build/prettier/docs:verify 60/42/97/99/packs 12/12/money:ast/security all green.
+  **NATIVE-UNVERIFIED:** this sandbox has no Rust toolchain and no network to install one — `cargo test`/`clippy`/`fmt` over
+  `commands/audit.rs` are pending on a Rust-equipped machine, so M6-8 stays 🚧 PARTIAL, never ✅.
 - **M5-4 Alerts engine + Alerts Center — TS slice (F-026 · SCREENS-SPEC S-056 · API-SPEC §7 alerts.*, 2026-09-05):**
   Added the Alerts Center at `/app/analyze/alerts` (`src/pages/s056-alerts/`): alert list grouped by severity with first-class
   expandable trigger-chain rows (rule → value → threshold → period, exact decimal strings rendered verbatim), severity/dismissed

@@ -76,7 +76,7 @@
 - [ ] **M6-5** Dashboard + Board Pack + explainers (S-010/064)
 - [ ] **M6-6** Export suite: xlsx/typst PDF/model dump/data room + injection guard (S-031/D-003; EXPORT-FORMAT-SPEC)
 - [ ] **M6-7** Health Check engine + waiver (S-071)
-- [ ] **M6-8** Audit trail engine (HMAC chain) + data room (S-070)
+- [ ] **M6-8** Audit trail engine (HMAC chain) + data room (S-070) — 🚧 `audit.list` + S-070 DONE (2026-09-05): typed read handler `src-tauri/src/commands/audit.rs` (Company-scoped, single-snapshot count/page/facets, stable `seq DESC` paging at 50/page, bound filter params, verification delegated to `company::verify_company_chain`) + Zod contracts + dev mirror + the S-070 screen at `/app/governance/audit` (wireframe toolbar, expandable verbatim before/after payloads + hash link, chain chip/banner, five states, no edit/delete geometry). Chain breaks are reported as `chain_status` DATA so a tampered Company stays readable (US-034). 45 TS tests + 8 Rust unit tests. Remaining: cargo/clippy/fmt (no Rust toolchain in the agent sandbox) and `audit.export_dataroom` (blocked on the M6-6 export layer, so S-070's export buttons ship disabled).
 - [ ] **M6-9** Backup/restore/retention (S-074) + updater integration (F-036)
 
 ## M7 — RELEASE

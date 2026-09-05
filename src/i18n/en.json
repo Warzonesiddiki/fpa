@@ -1421,5 +1421,54 @@
       "kpiPending": "KPI-target rules save now and evaluate once the KPI builder (M6-4/5) lands."
     },
     "policy": "Digest: at most 1 notification / 24h per rule · log retention: 90 days."
+  },
+  "auditPage": {
+    "title": "Audit Trail",
+    "subtitle": "Immutable, HMAC-chained record of every change to this Company",
+    "filtersLabel": "Audit filters",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "actor": "Actor",
+      "action": "Action",
+      "objectType": "Object",
+      "any": "Any",
+      "clear": "Clear filters"
+    },
+    "columns": {
+      "event": "Event",
+      "timestamp": "Timestamp",
+      "actor": "Actor",
+      "action": "Action",
+      "object": "Object"
+    },
+    "row": {
+      "expand": "#{{seq}}",
+      "before": "Before",
+      "after": "After",
+      "noPayload": "— (no payload recorded)",
+      "prevHash": "Previous hash",
+      "hash": "Hash"
+    },
+    "chain": {
+      "verified": "Chain verified",
+      "broken": "Chain broken"
+    },
+    "chainBrokenBanner": "Audit integrity check failed at event #{{seq}}. This Company is read-only.",
+    "chainBrokenHint": "Restore from the last verified Snapshot to resume editing. Events below remain readable.",
+    "tableLabel": "Audit events",
+    "loadingLabel": "Loading audit events",
+    "empty": "No events yet",
+    "emptyFiltered": "No events match these filters",
+    "noCompany": "Open a Company to view its Audit Trail.",
+    "paginationLabel": "Audit pagination",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{totalPages}}",
+    "footerCount": "{{count}} event",
+    "footerCount_other": "{{count}} events",
+    "exportDataRoom": "Auditor Data-Room Export",
+    "exportLog": "Export log",
+    "exportPending": "Export commands are not implemented yet (audit.export_dataroom / export.*)."
   }
 }

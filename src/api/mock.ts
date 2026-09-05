@@ -530,6 +530,104 @@ let mockAlertLog: MockAlertRow[] = [];
 
 let mockAlertSeq = 900;
 
+/* ── Audit Trail fixtures (F-033 · S-070) ──────────────────────────────────────────────
+ * Shape mirror of `audit_events` (DATABASE-SCHEMA): append-only, HMAC-chained. The mock
+ * cannot compute real HMACs (the key lives in the OS keychain, Rust side) — the hashes
+ * below are fixed opaque hex strings so the UI can render/verify-display them, and
+ * `chain_status.verified` follows the SAME dev trigger as the rest of the app
+ * (`MOCK_CHAIN_BREAK_PIN` → degraded read-only session), never a random verdict.        */
+/** Page size mirrors the native `AUDIT_PAGE_SIZE` in commands/audit.rs. */
+export const MOCK_AUDIT_PAGE_SIZE = 50;
+
+type MockAuditEvent = {
+  seq: number;
+  actor: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  before_json: string | null;
+  after_json: string | null;
+  prev_hash: string;
+  hash: string;
+  createdOffsetMs: number;
+};
+
+const MOCK_AUDIT_EVENTS: MockAuditEvent[] = [
+  {
+    seq: 1,
+    actor: "owner",
+    action: "company.create",
+    object_type: "company",
+    object_id: "c0000000-0000-4000-8000-000000000001",
+    before_json: null,
+    after_json: '{"name":"Demo Company","default_currency_code":"USD"}',
+    prev_hash: "genesis",
+    hash: "0a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff",
+    createdOffsetMs: -30 * 86400_000,
+  },
+  {
+    seq: 2,
+    actor: "owner",
+    action: "calendar.apply",
+    object_type: "calendar",
+    object_id: "cal-default",
+    before_json: null,
+    after_json: '{"preset":"12month","fy_start_month":4,"years":3}',
+    prev_hash: "0a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff",
+    hash: "112233445566778899aabbccddeeff000a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    createdOffsetMs: -29 * 86400_000,
+  },
+  {
+    seq: 3,
+    actor: "owner",
+    action: "coa.import",
+    object_type: "coa",
+    object_id: "c0000000-0000-4000-8000-000000000001",
+    before_json: null,
+    after_json: '{"created":128,"updated":0,"source":"pack:manufacturing"}',
+    prev_hash: "112233445566778899aabbccddeeff000a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    hash: "223344556677889900aabbccddeeff112c3d4e5f60718293a4b5c6d7e8f90a1b",
+    createdOffsetMs: -21 * 86400_000,
+  },
+  {
+    seq: 4,
+    actor: "owner",
+    action: "import.commit",
+    object_type: "import_batch",
+    object_id: "2026-08-30_001",
+    before_json: null,
+    after_json:
+      '{"name":"2026-08-30_001","rows":48213,"debits_minor":915400000,"credits_minor":915400000,"tie_out_status":"pass"}',
+    prev_hash: "223344556677889900aabbccddeeff112c3d4e5f60718293a4b5c6d7e8f90a1b",
+    hash: "33445566778899aabbccddeeff00112233c3d4e5f60718293a4b5c6d7e8f90a1",
+    createdOffsetMs: -7 * 86400_000,
+  },
+  {
+    seq: 5,
+    actor: "owner",
+    action: "scenario.approve",
+    object_type: "scenario",
+    object_id: "sc-fy27-budget",
+    before_json: '{"state":"review"}',
+    after_json: '{"state":"approved","approved_by":"owner"}',
+    prev_hash: "33445566778899aabbccddeeff00112233c3d4e5f60718293a4b5c6d7e8f90a1",
+    hash: "445566778899aabbccddeeff001122334455d4e5f60718293a4b5c6d7e8f90a1",
+    createdOffsetMs: -2 * 86400_000,
+  },
+  {
+    seq: 6,
+    actor: "owner",
+    action: "scenario.lock",
+    object_type: "scenario",
+    object_id: "sc-fy27-budget",
+    before_json: '{"state":"approved"}',
+    after_json: '{"state":"locked","locked_at":"snapshot"}',
+    prev_hash: "445566778899aabbccddeeff001122334455d4e5f60718293a4b5c6d7e8f90a1",
+    hash: "5566778899aabbccddeeff00112233445566e5f60718293a4b5c6d7e8f90a1b2",
+    createdOffsetMs: -1 * 86400_000,
+  },
+];
+
 /** Reset the browser-preview alerts between isolated store/mock tests. */
 export function resetMockAlertState(): void {
   mockAlertRules.length = 2;
@@ -3527,6 +3625,89 @@ export async function mockInvoke<C extends CommandName>(
       });
       mockAlertSeq += 1;
       return { data: { rule_id: id, audit_id: mockAlertSeq } };
+    }
+    // Mirrors the Rust `audit.list` contract: page of immutable events (newest first),
+    // the Company chain verdict as DATA (so a tampered chain is still readable), pagination
+    // meta and the toolbar facets. Never mutates — S-070 has no edit/delete geometry.
+    case "audit.list": {
+      const auditArgs = (args ?? {}) as {
+        company_id: string;
+        filters?: {
+          from?: string | null;
+          to?: string | null;
+          actor?: string | null;
+          action?: string | null;
+          object_type?: string | null;
+          object_id?: string | null;
+        };
+        page: number;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.company_id && auditArgs.company_id !== session.company_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "AUDIT_COMPANY_MISMATCH: open the requested Company first",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      const now = Date.now();
+      const chainEvents = MOCK_AUDIT_EVENTS.map((e) => ({
+        seq: e.seq,
+        actor: e.actor,
+        action: e.action,
+        object_type: e.object_type,
+        object_id: e.object_id,
+        before_json: e.before_json,
+        after_json: e.after_json,
+        prev_hash: e.prev_hash,
+        hash: e.hash,
+        created_at: new Date(now + e.createdOffsetMs).toISOString(),
+      }));
+      const f = auditArgs.filters ?? {};
+      const fromMs = f.from ? Date.parse(f.from) : null;
+      const toMs = f.to ? Date.parse(f.to) : null;
+      const filtered = chainEvents.filter((e) => {
+        const at = Date.parse(e.created_at);
+        if (fromMs !== null && at < fromMs) return false;
+        if (toMs !== null && at > toMs) return false;
+        if (f.actor && e.actor !== f.actor) return false;
+        if (f.action && e.action !== f.action) return false;
+        if (f.object_type && e.object_type !== f.object_type) return false;
+        if (f.object_id && e.object_id !== f.object_id) return false;
+        return true;
+      });
+      const pageSize = MOCK_AUDIT_PAGE_SIZE;
+      const total = filtered.length;
+      const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+      const offset = (auditArgs.page - 1) * pageSize;
+      const events = [...filtered].sort((a, b) => b.seq - a.seq).slice(offset, offset + pageSize);
+      // The chain verdict follows the app's single documented tamper trigger, so the
+      // degraded read-only session and this screen always agree (AUTH-SPEC §2.5).
+      const verified = !session.read_only;
+      return {
+        data: {
+          events,
+          chain_status: {
+            verified,
+            broken_at_seq: verified ? null : chainEvents[chainEvents.length - 1].seq,
+            event_count: chainEvents.length,
+          },
+          meta: { page: auditArgs.page, page_size: pageSize, total, total_pages: totalPages },
+          facets: {
+            actors: [...new Set(chainEvents.map((e) => e.actor))].sort(),
+            actions: [...new Set(chainEvents.map((e) => e.action))].sort(),
+            object_types: [...new Set(chainEvents.map((e) => e.object_type))].sort(),
+          },
+        },
+      };
     }
     default:
       return {

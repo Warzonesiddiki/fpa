@@ -2032,6 +2032,102 @@ export const AlertsCreateRuleData = z
   .strict();
 export type AlertsCreateRuleData = z.infer<typeof AlertsCreateRuleData>;
 
+/* ── Audit Trail (F-033 · API-SPEC §2 `audit.list` · SCREENS-SPEC S-070 · M7) ─────── */
+
+/**
+ * Audit filters (SCREENS-SPEC S-070 "filters" + WIREFRAMES-ANALYTICS S-070 toolbar:
+ * date range · actor ▾ · action ▾ · object ▾). Every field is optional narrowing — no
+ * field invents a capability the `audit_events` table cannot answer (DATABASE-SCHEMA:
+ * seq, company_id, actor, action, object_type, object_id, before_json, after_json,
+ * prev_hash, hash, created_at).
+ */
+export const AuditFilters = z
+  .object({
+    /** Inclusive ISO-8601 lower bound on `created_at`. */
+    from: z.string().datetime({ offset: true }).nullable().optional(),
+    /** Inclusive ISO-8601 upper bound on `created_at`. */
+    to: z.string().datetime({ offset: true }).nullable().optional(),
+    actor: z.string().min(1).max(120).nullable().optional(),
+    action: z.string().min(1).max(120).nullable().optional(),
+    object_type: z.string().min(1).max(120).nullable().optional(),
+    object_id: z.string().min(1).max(120).nullable().optional(),
+  })
+  .strict();
+export type AuditFilters = z.infer<typeof AuditFilters>;
+
+export const AuditListArgs = z
+  .object({
+    company_id: Uuid,
+    filters: AuditFilters.optional(),
+    page: z.number().int().positive().max(1_000_000),
+  })
+  .strict();
+export type AuditListArgs = z.infer<typeof AuditListArgs>;
+
+/**
+ * One immutable event. `before_json`/`after_json` are the raw persisted payload strings —
+ * the screen renders them verbatim (never re-derives or "prettifies" money out of them).
+ * `seq` is the AUTOINCREMENT chain position; `prev_hash`/`hash` are the HMAC links.
+ */
+export const AuditEventRecord = z
+  .object({
+    seq: z.number().int().positive(),
+    actor: z.string().min(1),
+    action: z.string().min(1),
+    object_type: z.string().min(1),
+    object_id: z.string(),
+    before_json: z.string().nullable(),
+    after_json: z.string().nullable(),
+    prev_hash: z.string().min(1),
+    hash: z.string().min(1),
+    created_at: z.string().min(1),
+  })
+  .strict();
+export type AuditEventRecord = z.infer<typeof AuditEventRecord>;
+
+/**
+ * Chain verification result (US-034 / AUTH-SPEC §2.5). `verified` false carries the first
+ * failing `broken_at_seq`; the screen then shows the read-only banner + restore path. The
+ * engine reports the break as DATA — `AUDIT_CHAIN_BREAK` as an *error* is reserved for
+ * mutation attempts, so the auditor can still read the log of a tampered Company.
+ */
+export const AuditChainStatus = z
+  .object({
+    verified: z.boolean(),
+    broken_at_seq: z.number().int().positive().nullable(),
+    /** Total events in the Company chain (the footstrip count). */
+    event_count: z.number().int().min(0),
+  })
+  .strict();
+export type AuditChainStatus = z.infer<typeof AuditChainStatus>;
+
+export const AuditListMeta = z
+  .object({
+    page: z.number().int().positive(),
+    page_size: z.number().int().positive(),
+    total: z.number().int().min(0),
+    total_pages: z.number().int().min(0),
+  })
+  .strict();
+export type AuditListMeta = z.infer<typeof AuditListMeta>;
+
+export const AuditListData = z
+  .object({
+    events: z.array(AuditEventRecord),
+    chain_status: AuditChainStatus,
+    meta: AuditListMeta,
+    /** Distinct values present in this Company's chain — populates the toolbar selects. */
+    facets: z
+      .object({
+        actors: z.array(z.string()),
+        actions: z.array(z.string()),
+        object_types: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+export type AuditListData = z.infer<typeof AuditListData>;
+
 export const CommandArgs = {
   "session.status": SessionStatusArgs,
   "session.unlock": SessionUnlockArgs,
@@ -2096,6 +2192,7 @@ export const CommandArgs = {
   "statement.get.v1": StatementGetArgs,
   "alerts.list": AlertsListArgs,
   "alerts.create_rule": AlertsCreateRuleArgs,
+  "audit.list": AuditListArgs,
 } as const;
 
 export type CommandName = keyof typeof CommandArgs;

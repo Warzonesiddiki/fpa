@@ -1,15 +1,14 @@
 # OneFP&A — Session Handover
 
 > Read this file first, then continue the next milestone task. It is written to be self-contained:
-> state, design decisions, gates, and pitfalls. The current session shipped **M6-1 (F-027)
-> statement-suite TS slice + gate restoration** (merged as PR #34) and then **M5-4 (F-026) Alerts
-> engine TS slice** — S-056 Alerts Center, `alerts.list`/`alerts.create_rule` typed contracts with a
-> detail-exact mock mirror, and a hand-authored `commands/alerts.rs` — on working branch
-> `arena/01a070a4-fpa`. BOTH are **PARTIAL/NATIVE-UNVERIFIED** (no Rust toolchain in this sandbox;
-> statement.rs/alerts.rs have never been compiled). M3-6's native follow-on was verified on the
-> Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12). The authoritative tracker
-> is the root `TASKBOARD.md` (79 files / 957 tests; JS gates pass; native gates unavailable
-> in-sandbox).
+> state, design decisions, gates, and pitfalls. The current session shipped **M6-8a (F-033) Audit
+> Trail** — the `audit.list` native read handler (`src-tauri/src/commands/audit.rs`) plus the S-070
+> Audit Trail screen at `/app/governance/audit` — on working branch `arena/01a07141-fpa`. It is
+> **PARTIAL/NATIVE-UNVERIFIED**: this sandbox has no Rust toolchain and no network to install one, so
+> `audit.rs` (like `statement.rs` and `alerts.rs` before it) has never been compiled. M3-6's native
+> follow-on was verified on the Rust-equipped Windows desktop 2026-09-04 and is ✅ DONE (TASKBOARD §12).
+> The authoritative tracker is the root `TASKBOARD.md` (82 files / 1002 tests; JS gates pass; native
+> gates unavailable in-sandbox).
 
 ---
 
@@ -23,7 +22,7 @@
    reinstall first and re-run the gates — do not chase phantom code failures.
 3. Baseline gates (~8 min) — all must PASS before you edit:
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
-   Expect the current **79 files / 957 tests** after the M5-4 slice. Counts drift as tests are added —
+   Expect the current **82 files / 1002 tests** after the M6-8a slice. Counts drift as tests are added —
    the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
    gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
    or it will dip red again.
@@ -31,6 +30,47 @@
 ---
 
 ## 1. STATE OF THE WORK
+
+### Latest — M6-8a Audit Trail: `audit.list` + S-070 (2026-09-05, `arena/01a07141-fpa`)
+
+- **Why this unit:** it was the highest-value _unblocked_ row left. `audit.list` sat in the locked catalog with no handler,
+  S-070 was ❗ TODO, and F-033 is a P0 story (US-034) whose data (`audit_events`) was already fully written by every other
+  command — so the whole slice could be built against real persisted data with no new schema and no Tier-3 RFC.
+- **Contract (`docs/API-SPEC.md` §15, new):** `{company_id, filters?, page}` → `{events[], chain_status, meta, facets}`.
+  Every filter field maps 1:1 to an `audit_events` column; blank/whitespace means _absent_, never a literal empty match;
+  `from`/`to` are inclusive ISO-8601 bounds.
+- **The one design decision worth knowing:** a broken chain is returned as **data** (`chain_status {verified,
+broken_at_seq, event_count}`), not as a thrown `AUDIT_CHAIN_BREAK`. US-034 requires the tamper to be _shown_ — if the read
+  path threw, an auditor could never inspect the very log that failed verification. `AUDIT_CHAIN_BREAK` as an error stays
+  reserved for mutations (`require_session_write`), which is where read-only mode is enforced (AUTH-SPEC §2.5). Do not
+  "fix" this into an error path.
+- **Rust (`src-tauri/src/commands/audit.rs`, registered in `lib.rs` → 62 handlers):** read-only (zero writes against
+  `audit_events` — B7); Company-scoped or `VALUE_INVALID`; count + page + facets on ONE transaction snapshot (the
+  `import.history` discipline); stable `seq DESC` window at 50/page; filter values are **bound**, never interpolated;
+  facets are computed over the WHOLE chain so a zero-result filter is always reversible from the toolbar; verification
+  delegates to the existing `company::verify_company_chain` keychain replay (ADR-011/B14 — no second implementation);
+  `before_json`/`after_json` are returned verbatim because they are the exact hashed bytes (re-serializing would break
+  byte-for-byte verifiability, and it keeps money off every parse path — B3/B6). 8 unit tests included.
+- **TS:** `AuditListArgs`/`AuditListData`/`AuditEventRecord`/`AuditChainStatus`/`AuditFilters` in `src/api/schema.ts`
+  (`.strict()` — an unknown filter key is rejected at the boundary); a dev mirror in `src/api/mock.ts` whose fixture is a
+  genuinely chain-linked sequence (each `prev_hash` equals its predecessor's `hash`; a contract test asserts it), with the
+  chain verdict following the app's single documented tamper trigger (`MOCK_CHAIN_BREAK_PIN`) rather than a random verdict;
+  `src/stores/audit.ts` (filter change resets to page 1, pagination guards, stale rows cleared on error).
+- **Screen (`src/pages/s070-audit/`, code-split; `/app/governance` now lands on it):** WIREFRAMES-ANALYTICS §S-070 geometry —
+  toolbar (date range · actor ▾ · action ▾ · object ▾ · chain chip), event rows (ts · actor · action · object) expanding to
+  the verbatim before/after payload + the hash link to the previous event, footstrip with the event count. Five states incl.
+  a distinct "No events match these filters" empty with a clear-filters action. **No edit/delete affordance exists anywhere**
+  (asserted by a test, not just by omission). Data-Room / Export-log buttons ship DISABLED with an explanatory title because
+  `audit.export_dataroom` has no handler (B18-5/7).
+- **Tests:** 45 new (19 page incl. 4 axe states, 13 store, 13 contract). Full run: **82 files / 1002 tests**; coverage
+  88.11/80.20/87.07/89.95 (≥85/80/80/85); critical 98.52/97.15/100/98.96; lint/tsc/build/prettier/docs:verify 60/42/97/99/
+  packs 12/12/money:ast/security all green.
+- **Open (why M6-8 stays PARTIAL):** cargo + clippy + fmt over `commands/audit.rs` and a desktop round-trip — **this sandbox
+  has no Rust toolchain and no network to install one** (`sh.rustup.rs` and `static.rust-lang.org` both refuse the TLS
+  connection), so the native gate is UNVERIFIED, never falsely green. Also open: `audit.export_dataroom` (blocked on the M6-6
+  export layer), event archiving for the 10M-event edge case (US-034), and list virtualization (the wireframe says
+  "virtualized"; paging at 50/page keeps it correct today, `@tanstack/react-virtual` is already a dependency when the row
+  count justifies it).
 
 ### Latest — M5-4 Alerts engine + Alerts Center, TS slice (2026-09-05, `arena/01a070a4-fpa`)
 
@@ -332,11 +372,13 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 
 ## 2. NEXT TASKS (one commit + PR each; do in dependency order)
 
-1. **M6-1 native completion + alerts.rs verification** — on a Rust-equipped machine run
-   `cargo test`/`clippy`/`fmt` over `commands/statement.rs` (r#type arg, tagged `BuScope`) and the
-   NEW `commands/alerts.rs` (dedupe SQL, draft-only firing, audit tx); add largest-remainder oracle
-   fixtures vs MONEY-ROUNDING-SPEC §3–5; desktop round-trips. Then flip M6-1/M5-4 native rows and
-   build the remaining S-060 elements (period selector, BU/Group scope UI, export via M6-6, drill-down).
+1. **Native completion sweep (statement.rs · alerts.rs · audit.rs)** — on a Rust-equipped machine run
+   `cargo test`/`clippy`/`fmt` over `commands/statement.rs` (r#type arg, tagged `BuScope`),
+   `commands/alerts.rs` (dedupe SQL, draft-only firing, audit tx) and the NEW `commands/audit.rs`
+   (bound filter params, single-snapshot paging, `verify_company_chain` wiring); add largest-remainder
+   oracle fixtures vs MONEY-ROUNDING-SPEC §3–5; desktop round-trips. Then flip the M6-1/M5-4/M6-8
+   native rows and build the remaining S-060 elements (period selector, BU/Group scope UI, export via
+   M6-6, drill-down).
 2. **M6-2 GAAP/IFRS presets + segment report (S-060/061)** — next unblocked feature unit.
 3. **Tier-3 RFC needed (do NOT implement silently):** `alerts.dismiss` + `alerts.mute_rule` catalog
    rows (S-056 ships the buttons disabled until then); `model.inspect`/`driver.import` handlers (B3).

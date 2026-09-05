@@ -14,6 +14,7 @@ pub mod storage;
 
 use commands::alerts::{alerts_create_rule, alerts_list};
 use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
+use commands::audit::audit_list;
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
@@ -126,6 +127,7 @@ pub fn run() {
             statement_get,
             alerts_list,
             alerts_create_rule,
+            audit_list,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

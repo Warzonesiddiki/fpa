@@ -597,3 +597,63 @@ blocker and persists no source-file row or copy. Vault persistence remains gated
 compressed-payload schema plus authenticated Company-container mutation/reseal lifecycle and
 rollback/crash tests exist. `import.history` is batch metadata/history, not evidence that the source
 file itself was vaulted.
+
+## 15. DETAILED SPEC — `audit.list` (F-033 Audit Trail, S-070)
+
+**Input**
+```json
+{ "company_id": "c-01",
+  "filters": { "from": "2026-08-01T00:00:00Z", "to": "2026-08-31T23:59:59Z",
+               "actor": "owner", "action": "import.commit",
+               "object_type": "import_batch", "object_id": "2026-08-30_001" },
+  "page": 1 }
+```
+`filters` and every field inside it are optional; a blank/whitespace value is treated as
+*absent*, never as a literal match on empty text. Every filter maps 1:1 to an
+`audit_events` column (DATABASE-SCHEMA) — no filter implies a capability the table cannot
+answer. `from`/`to` are **inclusive** ISO-8601 bounds on `created_at`.
+
+**Success**
+```json
+{ "data": {
+  "events": [ { "seq": 4, "actor": "owner", "action": "import.commit",
+                "object_type": "import_batch", "object_id": "2026-08-30_001",
+                "before_json": null, "after_json": "{\"rows\":48213}",
+                "prev_hash": "…", "hash": "…", "created_at": "2026-08-30T09:14:00Z" } ],
+  "chain_status": { "verified": true, "broken_at_seq": null, "event_count": 18402 },
+  "meta": { "page": 1, "page_size": 50, "total": 1, "total_pages": 1 },
+  "facets": { "actors": ["owner"], "actions": ["import.commit"],
+              "object_types": ["import_batch"] } } }
+```
+
+**Semantics (binding)**
+
+- **Read-only, always.** `audit_events` is append-only (B7). The handler contains no
+  INSERT/UPDATE/DELETE against it, and reading the log is not itself an auditable mutation.
+  S-070 correspondingly has no edit/delete geometry (WIREFRAMES-ANALYTICS §S-070).
+- **A broken chain is DATA, not an error.** US-034 requires the tamper to be *shown*: the
+  verdict rides `chain_status {verified, broken_at_seq}` so an auditor can inspect exactly
+  where verification fails, and every event stays readable. `AUDIT_CHAIN_BREAK` as a typed
+  *error* remains reserved for **mutations** (`require_session_write`), which is where
+  read-only mode is enforced (AUTH-SPEC §2.5).
+- **Company scoping is mandatory.** Chains are per-Company; `company_id` must be the
+  unlocked Company or the call fails `VALUE_INVALID` — never a cross-Company read.
+- **Verification has one owner.** The handler calls the same `verify_company_chain` replay
+  the unlock path runs against the keychain HMAC key (ADR-011 / B14) — no second
+  implementation.
+- **Payloads are returned verbatim.** `before_json`/`after_json` are the exact stored
+  strings that were hashed; re-serializing them would break byte-for-byte verifiability, so
+  no money is parsed, re-rounded or reformatted anywhere on this path (B3/B6).
+- **Pagination** is a stable `seq DESC` window (`seq` is AUTOINCREMENT = chain order) with
+  `page_size` 50; count, page rows and facets are read inside one transaction so a
+  concurrent append cannot produce metadata from two different database states.
+- **Facets span the whole Company chain**, not the filtered page, so a filter that narrows
+  the result to zero is always reversible from the toolbar.
+
+**All errors** — `VALUE_INVALID (422, retry false)` (cross-Company read, `page < 1`) ·
+`SESSION_LOCKED (401)` · `INTERNAL (500, retry true)`. `AUDIT_CHAIN_BREAK` is listed on the
+catalog row because the command is the surface that *reports* the break; on this read path
+it is delivered as `chain_status.verified: false` rather than as a thrown error.
+
+`audit.export_dataroom` has no handler yet — S-070 therefore ships the Data-Room and
+Export-log buttons **disabled** with an explanatory title rather than fabricating a file.
