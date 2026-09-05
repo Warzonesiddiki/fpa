@@ -434,6 +434,145 @@ export function resetMockHeadcountState(): void {
   mockScheduleAuditSeq = 100;
 }
 
+/* ── Alerts (F-026 · S-056 · mock shape mirror — native: commands/alerts.rs) ──────── */
+/** Session-only mirror; native persists alert_rules/alerts with HMAC-audited creates. */
+type MockAlertRule = {
+  id: string;
+  name: string;
+  kpi_id: string | null;
+  line_ref: string | null;
+  threshold_operator: string;
+  threshold_value: string;
+  severity: "info" | "warning" | "critical";
+  active: boolean;
+};
+type MockAlertRow = {
+  id: string;
+  rule_id: string;
+  fired_at: string;
+  trigger_chain: Record<string, unknown>;
+  dismissed_at: string | null;
+};
+
+const mockAlertRules: MockAlertRule[] = [
+  {
+    id: "a1e00000-0000-4000-8000-000000000001",
+    name: "Cash floor (13-week)",
+    kpi_id: null,
+    line_ref: "line-cash",
+    threshold_operator: "lt",
+    threshold_value: "2500000000",
+    severity: "warning",
+    active: true,
+  },
+  {
+    id: "a1e00000-0000-4000-8000-000000000002",
+    name: "Leverage covenant",
+    kpi_id: "kpi-leverage",
+    line_ref: null,
+    threshold_operator: "gt",
+    threshold_value: "3.5",
+    severity: "critical",
+    active: true,
+  },
+];
+
+/** Alert log; fired_at is offset from now so the native 90-day window can never expire the
+ *  fixture (US-027 dedupe/retention semantics stay visible in the dev preview). */
+const mockAlertOffsets: Array<{
+  id: string;
+  rule_id: string;
+  firedOffsetMs: number;
+  dismissedOffsetMs: number | null;
+  trigger_chain: Record<string, unknown>;
+}> = [
+  {
+    id: "b0b00000-0000-4000-8000-000000000001",
+    rule_id: "a1e00000-0000-4000-8000-000000000001",
+    firedOffsetMs: -3600_000,
+    dismissedOffsetMs: null,
+    trigger_chain: {
+      rule: "Cash floor (13-week)",
+      line: "line-cash",
+      period_id: "fp-2026-p06",
+      value: "2400000000",
+      threshold: "2500000000",
+    },
+  },
+  {
+    id: "b0b00000-0000-4000-8000-000000000002",
+    rule_id: "a1e00000-0000-4000-8000-000000000001",
+    firedOffsetMs: -3 * 86400_000,
+    dismissedOffsetMs: -2 * 86400_000,
+    trigger_chain: {
+      rule: "Cash floor (13-week)",
+      line: "line-cash",
+      period_id: "fp-2026-p05",
+      value: "2100000000",
+      threshold: "2500000000",
+    },
+  },
+];
+
+function mockAlertRows(): MockAlertRow[] {
+  const now = Date.now();
+  return mockAlertOffsets.map((o) => ({
+    id: o.id,
+    rule_id: o.rule_id,
+    fired_at: new Date(now + o.firedOffsetMs).toISOString(),
+    trigger_chain: o.trigger_chain,
+    dismissed_at:
+      o.dismissedOffsetMs === null ? null : new Date(now + o.dismissedOffsetMs).toISOString(),
+  }));
+}
+
+let mockAlertLog: MockAlertRow[] = [];
+
+let mockAlertSeq = 900;
+
+/** Reset the browser-preview alerts between isolated store/mock tests. */
+export function resetMockAlertState(): void {
+  mockAlertRules.length = 2;
+  mockAlertLog = [];
+  mockAlertSeq = 900;
+}
+
+/** Validation mirrors commands/alerts.rs::validate_rule EXACTLY (same order, same detail
+ *  strings) so dev-preview and native behavior cannot drift silently. */
+function validateAlertRuleMock(rule: {
+  name?: string;
+  kpi_id?: string | null;
+  line_ref?: string | null;
+  threshold_operator?: string;
+  threshold_value?: string;
+  severity?: string;
+}): { error: unknown } | null {
+  const invalid = (detail: string) =>
+    mockError(
+      "ALERT_RULE_INVALID",
+      `alert rule invalid: ${detail}`,
+      `Alert rule invalid: ${detail}`,
+      422,
+      false,
+      { detail },
+    );
+  const name = (rule.name ?? "").trim();
+  if (name.length === 0 || name.length > 120) return invalid("name must be 1–120 characters");
+  const hasKpi = rule.kpi_id != null && rule.kpi_id.trim() !== "";
+  const hasLine = rule.line_ref != null && rule.line_ref.trim() !== "";
+  if (hasKpi === hasLine) return invalid("exactly one of kpi_id or line_ref is required");
+  if (!["lt", "lte", "gt", "gte", "eq"].includes(rule.threshold_operator ?? "")) {
+    return invalid("threshold_operator must be one of lt, lte, gt, gte, eq");
+  }
+  if (!["info", "warning", "critical"].includes(rule.severity ?? "")) {
+    return invalid("severity must be one of info, warning, critical");
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(rule.threshold_value ?? "")) {
+    return invalid("threshold_value must be an exact decimal string");
+  }
+  return null;
+}
+
 /* ── Scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–§3 · mock shape mirror) ──────── */
 
 /** The pinned working scenario/model ids (must match `stores/model.ts` WORKING_* constants). */
@@ -3317,6 +3456,77 @@ export async function mockInvoke<C extends CommandName>(
           restated: false,
         },
       };
+    }
+    case "alerts.list": {
+      const aArgs = (args ?? {}) as {
+        filter?: { severity?: string | null; include_dismissed?: boolean };
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      const sev = aArgs.filter?.severity ?? null;
+      if (sev !== null && !["info", "warning", "critical"].includes(sev)) {
+        return mockError(
+          "ALERT_RULE_INVALID",
+          `alert rule invalid: filter.severity must be one of info, warning, critical`,
+          "Alert rule invalid: filter.severity must be one of info, warning, critical",
+          422,
+          false,
+          { detail: "filter.severity must be one of info, warning, critical" },
+        );
+      }
+      const includeDismissed = aArgs.filter?.include_dismissed ?? false;
+      const cutoff = Date.now() - 90 * 86400_000; // S-056: 90-day retention window
+      const all = [...mockAlertRows(), ...mockAlertLog];
+      const alerts = all
+        .map((a) => {
+          const rule = mockAlertRules.find((r) => r.id === a.rule_id);
+          return {
+            id: a.id,
+            rule_id: a.rule_id,
+            rule_name: rule?.name ?? "Unknown rule",
+            severity: rule?.severity ?? "info",
+            fired_at: a.fired_at,
+            trigger_chain: a.trigger_chain,
+            dismissed_at: a.dismissed_at,
+          };
+        })
+        .filter((a) => includeDismissed || a.dismissed_at === null)
+        .filter((a) => sev === null || a.severity === sev)
+        .filter((a) => Date.parse(a.fired_at) >= cutoff)
+        .sort((x, y) => Date.parse(y.fired_at) - Date.parse(x.fired_at) || (x.id < y.id ? -1 : 1));
+      return { alerts };
+    }
+    case "alerts.create_rule": {
+      const { rule } = (args ?? {}) as { rule: Record<string, never> };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      const invalid = validateAlertRuleMock(rule as never);
+      if (invalid) return invalid;
+      const r = rule as unknown as MockAlertRule;
+      const id = crypto.randomUUID();
+      mockAlertRules.push({
+        ...r,
+        id,
+        name: r.name.trim(),
+        kpi_id: r.kpi_id ?? null,
+        line_ref: r.line_ref ?? null,
+        severity: r.severity,
+        active: r.active ?? true,
+      });
+      mockAlertSeq += 1;
+      return { data: { rule_id: id, audit_id: mockAlertSeq } };
     }
     default:
       return {

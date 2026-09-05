@@ -13,6 +13,7 @@ import { WhatIfPage } from "@/pages/s052-whatif/lazy";
 import { PlanningCyclePage } from "@/pages/s053-cycle/lazy";
 import { VariancePage } from "@/pages/s054-variance/lazy";
 import { FvaPage } from "@/pages/s055-fva/lazy";
+import { AlertsPage } from "@/pages/s056-alerts/lazy";
 import { StatementsPage } from "@/pages/s060-statements/lazy";
 import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
@@ -122,6 +123,15 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
             <VariancePage />
+          </Suspense>
+        ),
+      },
+      // S-056 (F-026): Alerts Center under /analyze/alerts (SCREENS-SPEC route /analyze/alerts)
+      {
+        path: "analyze/alerts",
+        element: (
+          <Suspense fallback={<div role="status" aria-label="Loading" className="p-6 text-sm" />}>
+            <AlertsPage />
           </Suspense>
         ),
       },

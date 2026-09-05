@@ -181,6 +181,11 @@ pub enum AppError {
     },
     #[error("statement scope mixes periods, calendars or currencies")]
     StatementSourceMixed,
+    // ── Alerts (F-026 / ERROR-HANDLING §H-domain ALERT_RULE_INVALID) ──────────────────────
+    /// Rule failed validation (target pair, operator/severity domain, or exact-decimal
+    /// threshold). The catalog user text is "Alert rule invalid: {detail}".
+    #[error("alert rule invalid: {detail}")]
+    AlertRuleInvalid { detail: String },
 }
 
 impl AppError {
@@ -271,6 +276,7 @@ impl AppError {
                 ("STATEMENT_TIE_OUT_FAILED", 422, false, None)
             }
             AppError::StatementSourceMixed => ("STATEMENT_SOURCE_MIXED", 422, false, None),
+            AppError::AlertRuleInvalid { .. } => ("ALERT_RULE_INVALID", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -702,6 +708,18 @@ impl AppError {
                     retryable,
                     retry_after_ms,
                     details: serde_json::json!({ "findings": findings }),
+                };
+            }
+            AppError::AlertRuleInvalid { detail } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    // ERROR-HANDLING §H: canonical user text is "Alert rule invalid: {detail}".
+                    user_message: format!("Alert rule invalid: {detail}"),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "detail": detail }),
                 };
             }
             AppError::StatementSourceMixed => {
