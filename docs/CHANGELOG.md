@@ -3,6 +3,25 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+- **M6-1 Statement suite — TS slice & gate restoration (F-027 · SCREENS-SPEC S-060 · API-SPEC `statement.get.v1`, 2026-09-05):**
+  Repaired and hardened the S-060 Statements screen (`src/pages/s060-statements/`): the page previously used a nonexistent
+  `StatePanel` `variant` API and rendered a heading hierarchy that failed the installed axe ruleset; it now renders the canonical
+  five states, an h2-sectioned P&L/BS table where **every money value renders through `MoneyCell`/`formatMinor` from engine
+  decimal strings only** (B6 — the UI derives nothing monetary), tie-out/rounding status chips ("Tie-out: Pass/Fail",
+  "Rounding: Exact/Approximate"), IFRS/US-GAAP preset + zero-decimals/thousands/LRA toggles with URL round-trip, and honest
+  "pending" empty states for CF/SoCE/segment. CF preset/route-param branches now run through `MemoryRouter` fixtures.
+  Added `src/stores/statements.test.ts` (13 tests: state machine, typed `BridgeError` mapping incl. `STATEMENT_TIE_OUT_FAILED`
+  with `fix_list` details, stale-row clearing on failed retry, reset, selectors) and expanded `src/api/statements.test.ts` to
+  11 contract tests (typed args, populated envelopes, `STATEMENT_SOURCE_MIXED`). Added the `bu_scope.kind === "single"` ⇒
+  `bu_id` refine to `StatementGetArgsSchema` (VALUE_INVALID at the IPC boundary instead of an untyped serde error; +1 schema
+  test). Hand-reviewed `src-tauri/src/commands/statement.rs` (no Rust toolchain in this environment — **cargo gates NOT run**)
+  and fixed two contract holes: the flat command arg is now `r#type` (Tauri 2 unraw → the catalog key `type`) and `BuScope` is
+  internally tagged `{ "kind": … }` to match the wire shape. Also shipped store edge suites for FVA (13) and What-if (12),
+  model-history guard tests, and bridge normalization tests; fixed repo-wide prettier drift (~28 files, `pnpm-lock.yaml`
+  ignored) and restored the global coverage gate: **76 files / 920 tests**, branches 80.07% (≥80), critical files
+  98.46/97.15/100/98.92 (≥95/90/90/95), lint/tsc/build/prettier/docs:verify all green. Native statement round-trip, largest-
+  remainder oracle fixtures vs §MONEY-ROUNDING-SPEC §3–5, and remaining S-060 elements (period selector, BU/Group scope UI,
+  export, drill-down) stay open → task remains 🚧 PARTIAL.
 - **M5-3 FVA Engine & S-055 Screen (F-025 · SCREENS-SPEC S-055 · API-SPEC fva.get, 2026-09-05):**
   Added Forecast Value Add (FVA) scoring via native Rust command `fva_get` (`fva.get` in `src-tauri/src/commands/fva.rs`).
   Implemented exact Decimal arithmetic for MAPE (Mean Absolute Percentage Error), Bias (Mean Directional Error), and Hit Rate

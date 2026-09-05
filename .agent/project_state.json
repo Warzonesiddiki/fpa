@@ -4,8 +4,8 @@
   "project": {
     "name": "OneFP&A",
     "repo": "Warzonesiddiki/fpa",
-    "session_branch": "arena/01a06a46-fpa",
-    "base_commit": "6557234a9958c426541b500921671ecd5c80b6d6",
+    "session_branch": "arena/01a070a4-fpa",
+    "base_commit": "31c1b0446dc825912d9f80054bf02a50eb6e7a6d",
     "identity": "Local-first, offline, single-user FP&A desktop suite. Tauri 2.11 + Rust 1.85 (edition 2024) core owning money/calendar/audit/SQLite; React 19 / TS 5.9 strict UI; HyperFormula 3.4 in a Web Worker; typed IPC via Zod (hand-typed bridge, no tauri-specta yet).",
     "source_of_truth_order": [
       "docs/ (54 locked specs; CLAUDE.md: when docs and code conflict the bug is in the code)",
@@ -15,56 +15,58 @@
     ]
   },
   "current_milestone": {
-    "roadmap": "M3-6 Headcount (F-016/S-045) TS-unblocked slice current; native persistence/cargo gates remain; M1/M2/M3 gaps stay PARTIAL under the native-toolchain policy",
-    "mvp_progress_estimate": "~15% (TASKBOARD §0); 38-feature lock unchanged",
-    "screens_routed": "20/42",
-    "rust_handlers_registered": 35,
-    "ts_schema_commands": 47,
-    "ts_commands_without_rust_handler": [
-      "model.inspect",
-      "driver.import",
-      "company.archive_year",
-      "model.schedule.upsert"
-    ],
-    "error_codes_emitted": 39,
+    "roadmap": "M6-1 Statement suite TS slice shipped 2026-09-05 (S-060 green, contract+store tests, bu_scope zod gate, statement.rs hand-review fixes) — PARTIAL until cargo; next unit in dependency order: M5-4 Alerts (S-056), then M6-1 native completion",
+    "mvp_progress_estimate": "~18% (TASKBOARD §0); 38-feature lock unchanged",
+    "screens_routed": "26 page modules/42 (TASKBOARD §0, 2026-09-05)",
+    "rust_handlers_registered": 59,
+    "ts_schema_commands": 61,
+    "ts_commands_without_rust_handler": ["model.inspect", "driver.import", "company.archive_year"],
+    "error_codes_emitted": 57,
     "error_codes_locked": 99,
     "db_tables": 56
   },
   "baseline_gates": {
-    "verified_at": "2026-09-04",
+    "verified_at": "2026-09-05",
     "vitest": {
       "result": "PASS",
-      "files": 59,
-      "tests": 653,
-      "note": "+25 for the M3-6 headcount slice (model/store/page/API tests, including five-state/axe coverage) after the M4-2 PR B baseline"
+      "files": 76,
+      "tests": 920,
+      "note": "+267 tests since M3-6 baseline across M4-3…M6-1 slices, incl. this run's statements/fva/whatif/modelHistory/bridge/s060 suites"
     },
     "coverage_main": {
-      "statements": 89.84,
-      "branches": 81.72,
-      "functions": 90.02,
-      "lines": 92.3,
+      "statements": 87.9,
+      "branches": 80.07,
+      "functions": 87.03,
+      "lines": 89.74,
       "thresholds": "85/80/80/85",
-      "gate": "PASS"
+      "gate": "PASS (branches restored from 79.17 red at session start)"
     },
     "tsc": "PASS",
     "eslint": "PASS (--max-warnings 0)",
     "prettier": "PASS — npx prettier --check .",
-    "docs_verify": "PASS — 54 docs / 42 screens / 97 command rows / 99 error codes",
-    "docs_link_check_strict": "PASS — 141 cross-refs / 61 docs",
+    "docs_verify": "PASS — 60 docs indexed / 42 screens / 97 command rows / 99 error codes",
     "schema_equality_check": "PASS — 56 tables, no float money columns",
     "money_ast": "PASS",
     "packs_validate": "PASS — 12/12",
     "security_scans": "PASS (secret / telemetry / license)",
-    "vite_build": "PASS — Vite 8.2.2, 2,245 modules transformed",
+    "vite_build": "PASS — Vite, 2,263 modules transformed",
     "rust_brace_balance_hand_gate": "PASS — 26/26 files (lifetime/char-literal-aware scan)",
-    "cargo_test": "UNAVAILABLE — rustc/cargo absent; rustup + crates.io unreachable (HTTP 000)",
+    "cargo_test": "UNAVAILABLE — no Rust toolchain in sandbox; statement.rs/schedule.rs edits carry hand-review only",
     "playwright_e2e": "UNAVAILABLE — browser download blocked",
     "coverage": {
       "result": "PASS",
-      "statements": 89.84,
-      "branches": 81.72,
-      "functions": 90.02,
-      "lines": 92.3
+      "statements": 87.9,
+      "branches": 80.07,
+      "functions": 87.03,
+      "lines": 89.74
+    },
+    "coverage_critical": {
+      "statements": 98.46,
+      "branches": 97.15,
+      "functions": 100,
+      "lines": 98.92,
+      "thresholds": "95/90/90/95",
+      "gate": "PASS (money.ts/schema.ts/bridge.ts/session.ts/MoneyCell.tsx)"
     }
   },
   "environment": {
@@ -77,8 +79,8 @@
     "notes": [
       "node_modules is wiped between sessions: run `npm ci --no-audit --no-fund` first; verify package-lock.json unchanged afterwards",
       "never publish .github/workflows/ (gitignored; token lacks Workflows permission)",
-      "PR ritual: gh pr create --base main --head arena/01a06a46-fpa; merge with gh pr merge --merge",
-      "2026-09-04: in THIS sandbox origin/main == 6557234 (post-M4-2 root); arena/01a06a46-fpa branches from it and PRs against main. Native cargo/rustc and Playwright are unavailable here."
+      "PR ritual: gh pr create --base main --head arena/01a070a4-fpa; merge with gh pr merge --merge",
+      "2026-09-04: in THIS sandbox origin/main == 6557234 (post-M4-2 root); arena/01a070a4-fpa branches from it and PRs against main. Native cargo/rustc and Playwright are unavailable here."
     ]
   },
   "permission_tiers": {
@@ -210,7 +212,7 @@
       "id": "M3-6",
       "title": "M3-6 Headcount/S-045 — TS Decimal/day-count model, audited schedule contract/mock, store, UI, tests and docs",
       "tier": 2,
-      "status": "PARTIAL (this commit; native schedule persistence/calculation/HMAC audit and cargo gates unavailable)",
+      "status": "DONE (TS 2026-09-04 + native verified same day on Rust-equipped Windows desktop: schedule.rs handler, SQLite persistence, HMAC audit, 156 cargo tests; see TASKBOARD §12)",
       "rollback": "git revert <commit>"
     },
     {
@@ -231,15 +233,22 @@
       "tier": 2,
       "status": "DONE (this commit; TS only — scenario Rust handlers + created_at migration pending)",
       "rollback": "git revert <commit>"
+    },
+    {
+      "id": "M6-1-ts",
+      "title": "M6-1 statement suite TS slice (S-060 repair, statements store/API tests, bu_scope refine, statement.rs hand-review r#type+BuScope fixes) + full-suite gate restoration (prettier debt, coverage 79.17→80.07)",
+      "tier": 2,
+      "status": "DONE (TS) / NATIVE-UNVERIFIED — cargo gates not run in sandbox; M6-1 stays PARTIAL",
+      "rollback": "git revert <commit>"
     }
   ],
-  "last_updated": "2026-09-04",
-  "last_action": "M3-6 S-045 TS slice: check 59f/653t, coverage 89.84/81.72/90.02/92.30, critical 98.49/96.98/100/98.72, build+prettier+docs gates PASS; native schedule persistence/cargo unavailable; ADR-026",
+  "last_updated": "2026-09-05",
+  "last_action": "M6-1 TS slice + gate restoration: check 76f/920t PASS, coverage 87.9/80.07/87.03/89.74, critical 98.46/97.15/100/98.92, build+prettier+docs 60/42/97/99 PASS; statement.rs native fixes hand-reviewed only (no cargo); docs TASKBOARD/TODO/CHANGELOG/HANDOVER synced",
   "pr": {
     "number": null,
     "url": null,
     "base": "main",
-    "head": "arena/01a06a46-fpa",
+    "head": "arena/01a070a4-fpa",
     "commits": []
   }
 }
