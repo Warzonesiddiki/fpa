@@ -57,6 +57,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `driver.set_value` | session | `{driver_id, scenario_id, period_id, value_decimal}` | `{ok, recalc}` | DRIVER_OUT_OF_BOUNDS |
 | `driver.import` | session | `{file_path, mapping_id}` | `{batch_id}` | IMPORT_* |
 | `assumption.upsert` | session | `{model_id, assumption{...}}` | `{assumption_id}` | ASSUMPTION_IN_USE_LOCKED |
+| `assumption.waive` | session (write) | `{model_id, cell_ref, reason}` | `{waived, cell_ref}` | VALUE_INVALID (blank reason) |
 | `assumption.list` | session | `{model_id}` | `AssumptionListRow[]` (`version`, `last_changed_at`) | — |
 | `assumption.find_usages` | session | `{assumption_id}` | `{cells[]}` | — |
 | `import.parse` | session | `{file_path, kind}` | `{parse_id, sheets, encodings, row_counts, source_name, source_hash, size_bytes, headers}` | IMPORT_FILE_UNREADABLE, IMPORT_FILE_LOCKED, ENCODING_UNSUPPORTED |
@@ -80,19 +81,23 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `report.layout.save` / `report.layout.render` | session | `{layout{...}}` / `{layout_id, scope}` | `{saved}` / `{rows[]}` | LAYOUT_REFERENCE_BROKEN, LAYOUT_INVALID |
 | `kpi.define` | session | `{kpi{...}}` | `{kpi_id}` | KPI_FORMULA_INVALID, KPI_DIV_ZERO |
 | `alerts.list` / `alerts.create_rule` | session | `{filter}` / `{rule}` | `{alerts[]}` / `{rule_id}` | ALERT_RULE_INVALID |
+| `alerts.dismiss` | write | `{alert_id, reason?}` | `{alert_id, dismissed_at, audit_id}` | VALUE_INVALID |
+| `alerts.mute_rule` | write | `{rule_id, duration_days?, reason?}` | `{rule_id, active: false, audit_id}` | VALUE_INVALID |
 | `health.run` | session | `{model_id}` | `{check_id, findings[]}` | — |
 | `health.waive` | session | `{finding_id, reason}` | `{waived}` | HEALTH_WAIVER_REASON_REQUIRED |
 | `audit.list` | session | `{company_id, filters, page}` | `{events[], chain_status}` | AUDIT_CHAIN_BREAK |
 | `audit.export_dataroom` | session | `{company_id, period_scope, path}` | `{file, counts}` | AUDIT_CHAIN_BREAK |
 | `export.excel` / `export.pdf` / `export.model_dump` | session | `{layout_id?, scope, options, path}` | `{file, audit_id}` | HEALTH_CHECK_BLOCKED, EXPORT_FORMULA_INJECTION_GUARD |
 | `backup.create` / `backup.restore` | session | `{path, passphrase}` / `{backup_id, passphrase}` | `{backup_id}` / `{restored}` | BACKUP_DISK_FULL, BACKUP_PASSPHRASE_INVALID, BACKUP_IO_ERROR |
-| `security.change_pin` | session | `{old_pin, new_pin}` | `{ok}` | PIN_POLICY_WEAK, AUTH_PIN_INVALID |
+| `security.change_pin` | session (write) | `{old_pin, new_pin}` | `{ok}` | PIN_POLICY_WEAK, AUTH_PIN_INVALID |
+| `security.pin_setup` | none | `{pin, confirm}` | `{ok}` | VALUE_INVALID (confirm mismatch / `PIN_ALREADY_SET` prefix), PIN_POLICY_WEAK |
 | `security.recovery_reveal` | session | `{confirm}` | `{phrase[]}` | — |
 | `security.recovery_reset` | none | `{phrase, new_pin}` | `{ok}` | RECOVERY_PHRASE_INVALID, AUTH_LOCKED |
 | `license.verify` | none | `{license_payload}` | `{status, days_left}` | LICENSE_INVALID_SIGNATURE, LICENSE_EXPIRED |
 | `license.request_file` | session | `{company_path}` | `{file}` | — |
 | `license.apply_response` | session | `{response_path_or_payload}` | `{status, plan, days_left}` | LICENSE_INVALID_SIGNATURE, LICENSE_EXPIRED |
 | `pack.list` | session | `{company_id?}` | `PackMeta[]` | — |
+| `pack.validate` | session | `{pack_path}` | `{valid, errors[], warnings[]}` | VALUE_INVALID, PACK_SCHEMA_INVALID |
 | `pack.validate` | session | `{pack_path}` | `{valid, errors[], warnings[]}` | PACK_SCHEMA_INVALID |
 | `pack.install` | session | `{pack_path, company_id}` | `{pack_id, version}` | PACK_VERSION_EXISTS, PACK_SCHEMA_INVALID |
 | `pack.builder.save_v1` | session | `{pack_id?, definition_json}` | `{pack_id, version}` | PACK_SCHEMA_INVALID, PACK_IN_USE_LOCKED |
@@ -655,8 +660,10 @@ answer. `from`/`to` are **inclusive** ISO-8601 bounds on `created_at`.
 catalog row because the command is the surface that *reports* the break; on this read path
 it is delivered as `chain_status.verified: false` rather than as a thrown error.
 
-`audit.export_dataroom` has no handler yet — S-070 therefore ships the Data-Room and
-Export-log buttons **disabled** with an explanatory title rather than fabricating a file.
+`audit.export_dataroom` writes the data-room package **and its own HMAC-chained audit event**
+(the export exposes the audit trail, so it is itself audited — B7); the response carries the
+`audit_id` of that event, same as `export.excel` / `export.pdf` / `export.model_dump`.
+S-070's Data-Room and Export-log buttons call it through the typed bridge.
 
 ---
 
@@ -737,3 +744,140 @@ command, so the report is returned complete. The S-071 "partial results" state i
 the per-category rollup plus an **indeterminate** progress indicator — the UI never shows a
 fabricated percentage. True incremental streaming needs a Tauri event channel plus an
 API-SPEC row (Tier-3 change) and is not invented here.
+
+## 17. DETAILED SPEC — `pack.validate` (F-005 gate, INDUSTRY-PACK-SPEC §8)
+
+`pack.validate {pack_path}` → `{valid, errors[], warnings[]}`. **Read-only** (session
+required; an auditor may validate a pack file before asking for it to be installed): no audit
+event, no DB write.
+
+`pack_path` is an absolute path to a **directory** containing `pack.json` (the canonical
+nested layout of `packs/schema/pack.schema.json`) or to a `pack.json` file directly (its
+parent directory is validated). Relative paths and empty strings are `VALUE_INVALID`. The
+checks are the same rules the repo gate (`scripts/pack-validate.mjs`, INDUSTRY-PACK-SPEC §8)
+enforces on the 12 bundled packs, applied to the named pack:
+
+- **Blocking (each becomes an `errors[]` entry, and `valid=false`):** `pack.json` present
+  and parseable; `schema_version` = `1.0.0`; `pack.version` semver; `pack.key` matches the
+  directory name; `locale_hint` BCP-47; referenced component files present and parseable
+  (COA ≥5 accounts, unique codes, account types in the closed set; KPIs ≥4 with decimal
+  targets; drivers 3–7 with types in the closed set and decimal `bounds.low/high`; ≥1 report
+  layout with non-empty line rows and column types in the closed set; `gl_template.columns`
+  present).
+- **Non-blocking (each becomes a `warnings[]` entry; `valid` stays true):** KPI `formula`
+  missing; KPI `bands` missing/invalid; driver `links` empty — legacy-pack debts that warn
+  "until re-issued" per §8.
+- An entry is a plain string `{field}: {problem}` for UI display (S-023 validation panel
+  shows the exact path). Malformed JSON, a missing `pack.json`, or an unreadable path are
+  **blocking errors in the payload**, not thrown errors — the command answers the question
+  "is this pack valid?" with a structured verdict. Only `VALUE_INVALID` (bad path shape),
+  `SESSION_LOCKED`/`SESSION_REQUIRED (401)` and `INTERNAL (500, retry true)` throw.
+
+## 18. DETAILED SPEC — `pack.install` (F-005, INDUSTRY-PACK-SPEC §8/§9)
+
+`pack.install {pack_path, company_id}` → `{pack_id, version}`. **Company write** (it seeds
+pack rows and appends an audit event): refused in read-only mode.
+
+The named pack directory (same resolution rules as §17) is **validated first** with the §17
+check set; any blocking error aborts the install with `PACK_SCHEMA_INVALID (422, details.path
+= the first failing field path)` — an invalid pack never reaches the database. A directory
+whose only problems are §8 warnings installs successfully; the warnings ride the response as
+`warnings[]` (S-023 surfaces "installed with legacy warnings").
+
+Versioning (INDUSTRY-PACK-SPEC §9): `packs.key` is UNIQUE —
+
+- **New key** → INSERT a new `packs` row (`is_bundled=0`, user-built pack never enters the
+  update channel) plus one `pack_components` row per referenced component file (`kind` mapped
+  from the §1 field: `coa_template`→`coa`, `kpi_definitions`→`kpi`, `driver_templates`→
+  `driver_template`, `report_layouts`→`report_layout`, `gl_template`→`gl_template`;
+  `ref_key` = the component's top-level key or the filename; `payload` = the exact file
+  bytes-as-JSON, schema-validated at load per DATABASE-SCHEMA §2).
+- **Same key, higher semver** → INSERT the new version as its own `packs` row (history is
+  preserved; `pack.list` shows the newest).
+- **Same key + same version already installed** → `PACK_VERSION_EXISTS (409, details.version)`.
+  Re-installing a lower version is also `PACK_VERSION_EXISTS` (downgrade is a restore-from-
+  backup concern, not an install concern).
+
+`source_checksum` = sha256 of `pack.json` bytes (the same primitive the bundled seed uses).
+Everything (packs row, components, audit event) happens in ONE transaction (B18-1); the audit
+event `pack.install` lands on the Company's HMAC chain with the pack key/version/checksum in
+`after_json`. `company_id` must be the unlocked Company (`VALUE_INVALID` otherwise);
+malformed path shape throws `VALUE_INVALID` per §17. `.fpapack` (zip) archives are §9
+publishing, not install input — installing a directory of files is the v1 surface.
+
+**All errors** — `PACK_SCHEMA_INVALID (422, retry false, details.path)` ·
+`PACK_VERSION_EXISTS (409, retry false, details.version)` · `VALUE_INVALID (422)` ·
+`SESSION_LOCKED (401)` · `READ_ONLY_MODE (403)` · `INTERNAL (500, retry true)`.
+
+## 19. DETAILED SPEC — `model.sheet.add` (S-040/S-041 sheet tree, F-012)
+
+`model.sheet.add {model_id, name, type}` → `{sheet_id}`. Model **write** (inserts a
+`model_sheets` row and appends a `model.sheet.add` HMAC audit event): read-only refused.
+
+- `model_id` must belong to the unlocked Company (`VALUE_INVALID` otherwise).
+- `name` is trimmed and must be non-empty (`VALUE_INVALID`); uniqueness is enforced by the
+  `UNIQUE(model_id,name)` constraint and surfaced as `SHEET_NAME_DUP (409, details.name)` —
+  never a bare constraint error.
+- `type` is the closed `sheet_type` set `input|formula|driver|assumption|schedule|statement`
+  (DATABASE-SCHEMA §2); anything else is `VALUE_INVALID`.
+- `sort_order` = MAX(sort_order)+1 for the model (new sheet sorts last).
+- One transaction (B18-1); audit `object_type='model_sheet'`, `object_id=sheet_id`.
+
+**All errors** — `SHEET_NAME_DUP (409, retry false)` · `VALUE_INVALID (422)` ·
+`SESSION_LOCKED (401)` · `READ_ONLY_MODE (403)` · `INTERNAL (500, retry true)`.
+
+## 20. DETAILED SPEC — `model.create` (F-012 model registry)
+
+`model.create {company_id, name, horizon, pack_id}` → `{model_id, scenario_id}`. Company
+**write** (inserts `models` + the Base scenario and appends a `model.create` HMAC audit
+event): read-only refused.
+
+- `company_id` must be the unlocked Company (`VALUE_INVALID` otherwise).
+- `name` is trimmed and must be non-empty (`VALUE_INVALID`); display-only — no uniqueness
+  constraint at the schema level, so none is invented here.
+- `horizon` is the closed `13w|1y|3y|5y` set (DATABASE-SCHEMA `models.horizon` CHECK);
+  anything else is `VALUE_INVALID`.
+- `pack_id` must resolve to a `packs` row of the unlocked installation (`VALUE_INVALID`).
+- The command seeds the model **exactly like `company.create` does**: `status='active'`,
+  a `Base` budget scenario in `draft` state with `baseline=1`, and
+  `current_scenario_id` pointed at it. MODEL_SIZE_LIMIT cannot fire on creation (the new
+  model holds zero cells; the limit governs cell writes at §3) and is stated here so the
+  catalog error stays coherent. PACK_UPDATE_AVAILABLE belongs to the update channel, which
+  is Tier-3 and unbuilt — it can never fire from this command in v1 and is not thrown.
+- One transaction (B18-1); audit `object_type='model'`, `object_id=model_id`.
+
+**All errors** — `VALUE_INVALID (422)` · `SESSION_LOCKED (401)` · `READ_ONLY_MODE (403)` ·
+`INTERNAL (500, retry true)`.
+
+## 21. DETAILED SPEC — `pack.builder.save_v1` (F-005 Pack Builder, S-023)
+
+`pack.builder.save_v1 {pack_id?, definition_json}` → `{pack_id, version}`. Company **write**
+(read-only refused). `definition_json` is the full canonical pack document — the same shape
+`packs/schema/pack.schema.json` validates and `pack.install` seeds: `{schema_version, pack{},
+coa_template, kpi_definitions, driver_templates, report_layouts, gl_template,
+group_rollup_maps, kpis, coa, drivers, layouts, gl_template_content, rollup}` where the
+`*_template(s)` fields name the inline component payloads carried alongside (`kpis`, `coa`,
+`drivers`, `layouts`, `gl_template_content`, `rollup`).
+
+The document is validated with the **same §8 check set as §17/§18** (blocking errors →
+`PACK_SCHEMA_INVALID (422, details.path)`) by materialising it to a temp directory and reusing
+the §17 validator verbatim — one validation implementation, three surfaces (repo gate, install,
+builder). Versioning follows §9:
+
+- **`pack_id` null** → the document defines a NEW pack: `pack.pack.key` must not collide with
+  an existing `packs.key` at the same version (same key + same version → `PACK_VERSION_EXISTS`;
+  same key without a `pack_id` is a new-version save and follows the higher-semver rule).
+- **`pack_id` given** → it must reference an existing pack; the incoming `pack.pack.version`
+  must be strictly higher than that pack's latest installed version (`PACK_VERSION_EXISTS`
+  otherwise — editing is versioned, never in-place; B7 immutability of published artifacts).
+  `PACK_IN_USE_LOCKED (422)` is reserved for the apply-diff path where a Locked Baseline
+  references the pack — save itself never blocks (a new version cannot affect existing models).
+- Success INSERTs the new `packs` row (`is_bundled=0`) + one `pack_components` row per inline
+  component (same §1 field→kind mapping as §18) + a `pack.builder.save_v1` HMAC audit event,
+  all in ONE transaction. `source_checksum` = sha256 of the canonical `pack.json` serialization.
+
+`.fpapack` publishing (zip + checksum) is §9 scope and stays Tier-3.
+
+**All errors** — `PACK_SCHEMA_INVALID (422, retry false, details.path)` ·
+`PACK_VERSION_EXISTS (409, retry false, details.version)` · `VALUE_INVALID (422)` ·
+`SESSION_LOCKED (401)` · `READ_ONLY_MODE (403)` · `INTERNAL (500, retry true)`.

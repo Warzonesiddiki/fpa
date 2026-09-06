@@ -21,7 +21,10 @@ function toBridgeError(raw: unknown): BridgeError {
     const e = raw as Record<string, unknown>;
     return {
       code: String(e.code ?? "INTERNAL"),
-      userMessage: String(e.userMessage ?? "An unexpected error occurred."),
+      userMessage: String(
+        e.userMessage ??
+          "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
+      ),
       httpStatus: typeof e.httpStatus === "number" ? e.httpStatus : 500,
       retryable: Boolean(e.retryable),
       retryAfterMs: typeof e.retryAfterMs === "number" ? e.retryAfterMs : null,
@@ -33,9 +36,10 @@ function toBridgeError(raw: unknown): BridgeError {
   }
   return {
     code: "INTERNAL",
-    userMessage: "An unexpected error occurred. Please try again.",
+    userMessage:
+      "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
     httpStatus: 500,
-    retryable: false,
+    retryable: true,
     retryAfterMs: null,
     details: { raw: String(raw) },
   };
@@ -57,7 +61,7 @@ export async function call<C extends CommandName>(
       code: mappingInvalid ? "MAP_TARGET_INVALID" : "VALUE_INVALID",
       userMessage: mappingInvalid
         ? MAP_TARGET_INVALID_MESSAGE
-        : `Invalid arguments for ${command}.`,
+        : "Value is not valid for this cell ({type}).",
       httpStatus: 422,
       retryable: false,
       retryAfterMs: null,

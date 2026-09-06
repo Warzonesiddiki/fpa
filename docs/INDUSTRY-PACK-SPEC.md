@@ -15,7 +15,7 @@
     "version": "2.1.0",
     "description": "Standard costing, production plan, capacity, WIP.",
     "logo_ref": "packs/manufacturing/logo.svg",
-    "default_calendar": "calendar_12mo_apr",
+    "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"
   },
@@ -31,6 +31,8 @@
 ```
 
 **Versioning rules:** `pack.version` semver; `schema_version` = pack schema revision (breaking → new schema_version, loader rejects older files with `PACK_SCHEMA_INVALID`); install is additive & versioned (`packs` + `pack_components` rows); a Company pins the exact version used.
+
+**Calendar rule:** `pack.default_calendar` MUST be one of `12month` / `454` / `445` / `544` / `3334` (schema enum, mirrored by the calendar engine presets). FY start month (e.g. nonprofit Jul, government Oct) is a separate calendar property (`fy_start_month`), never part of the enum value.
 
 ## 2. `coa_template` — Chart of Accounts
 
@@ -115,7 +117,10 @@ Used by Consolidation for BU→Group account mapping; empty = user maps at setup
 | schema_version supported | else `PACK_SCHEMA_INVALID` (path = `pack.schema_version`) |
 | unique account codes | else invalid w/ duplicates list |
 | KPI formula keys exist in engine line registry | else invalid w/ key |
+| KPI `formula` present (non-empty string) | else warning w/ KPI key (required by §3; legacy packs pre-dating the check warn until re-issued) |
+| KPI `bands` present (`good`/`watch` numeric) | else warning w/ KPI key (Alert thresholds fall back to target-only until re-issued) |
 | Driver types valid; bounds numeric decimal | else invalid w/ path |
+| Driver `links` non-empty (planning lines consuming the driver) | else warning w/ driver key (Federation + attribution degraded until re-issued) |
 | Layout row keys exist | else `LAYOUT_INVALID` (pack load warns; layout unusable until fixed) |
 | seed.sql applies to migrations version | else load fails; Company unaffected |
 | checksum mismatch vs `packs.source_checksum` | warning + re-download suggestion (never trust partial pack) |

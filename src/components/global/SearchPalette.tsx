@@ -22,21 +22,30 @@ interface HistoryEntry extends IndexEntry {
 const HISTORY_KEY = "onefpa.search.history.v1";
 const HISTORY_MAX = 5;
 const DEBOUNCE_MS = 150;
+/** S-003 grouped-result cap: at most 5 entries render per group. */
+const GROUP_MAX = 5;
 
 /** Route-catalog index (screens that exist in the router today; grows with each milestone). */
-const SCREEN_INDEX: { id: string; path: string }[] = [
-  { id: "dashboard", path: "/app/dashboard" },
-  { id: "companies", path: "/app/companies" },
-  { id: "import", path: "/app/import" },
-  { id: "mapping", path: "/app/import/map" },
-  { id: "importCommit", path: "/app/import/commit" },
-  { id: "grid", path: "/app/model/grid" },
-  { id: "coa", path: "/app/model/coa" },
-  { id: "calendar", path: "/app/model/calendar" },
-  { id: "packs", path: "/app/model/packs" },
-  { id: "headcount", path: "/app/model/headcount" },
-  { id: "settings", path: "/app/settings" },
-  { id: "wizard", path: "/wizard" },
+const SCREEN_INDEX: { id: string; path: string; fallback: string }[] = [
+  { id: "dashboard", path: "/app/dashboard", fallback: "Dashboard" },
+  { id: "companies", path: "/app/companies", fallback: "Companies" },
+  { id: "import", path: "/app/import", fallback: "Import Hub" },
+  { id: "mapping", path: "/app/import/map", fallback: "Mapping Wizard" },
+  { id: "importCommit", path: "/app/import/commit", fallback: "Tie-Out & Commit" },
+  { id: "grid", path: "/app/model/grid", fallback: "Model Grid" },
+  { id: "coa", path: "/app/model/coa", fallback: "Chart of Accounts" },
+  { id: "calendar", path: "/app/model/calendar", fallback: "Fiscal Calendar" },
+  { id: "packs", path: "/app/model/packs", fallback: "Pack Studio" },
+  { id: "headcount", path: "/app/model/headcount", fallback: "Headcount Plan" },
+  // S-003 coverage: Accounts (coa above) / Drivers / KPIs / Reports / Settings.
+  { id: "drivers", path: "/app/model/drivers", fallback: "Driver Tables" },
+  { id: "kpis", path: "/app/reports/kpis", fallback: "KPI Builder" },
+  { id: "statements", path: "/app/reports/statements/pl", fallback: "Statements" },
+  { id: "segment", path: "/app/reports/segment", fallback: "Segment Report" },
+  { id: "builder", path: "/app/reports/builder", fallback: "Report Builder" },
+  { id: "boardpack", path: "/app/reports/boardpack", fallback: "Board Pack" },
+  { id: "settings", path: "/app/settings", fallback: "Settings" },
+  { id: "wizard", path: "/wizard", fallback: "First-Run Wizard" },
 ];
 
 function readHistory(): HistoryEntry[] {
@@ -173,15 +182,38 @@ export function SearchPalette({
 
   const sections = useMemo(() => {
     const q = debounced.trim().toLowerCase();
-    const screens: IndexEntry[] = SCREEN_INDEX.map((s) => ({
+    let screens: IndexEntry[] = SCREEN_INDEX.map((s) => ({
       id: s.id,
       kind: "screen" as const,
-      title: t(`search.screens.${s.id}`),
+      title: t(`search.screens.${s.id}`, { defaultValue: s.fallback }),
       subtitle: s.path,
       payload: s.path,
     })).filter((e) => matches(e, q));
-    const companies = (index ?? []).filter((e) => e.kind === "company" && matches(e, q));
-    const packs = (index ?? []).filter((e) => e.kind === "pack" && matches(e, q));
+    // S-003 error state: search index unavailable → retry + fallback to Settings
+    // search. Screens stay searchable, and Settings is always offered so the user
+    // can reach preferences even when nothing else matches.
+    if (indexState === "error") {
+      const settings = SCREEN_INDEX.find((s) => s.id === "settings");
+      if (settings && !screens.some((e) => e.id === "settings")) {
+        screens = [
+          ...screens,
+          {
+            id: settings.id,
+            kind: "screen" as const,
+            title: t(`search.screens.${settings.id}`, { defaultValue: settings.fallback }),
+            subtitle: settings.path,
+            payload: settings.path,
+          },
+        ];
+      }
+    }
+    screens = screens.slice(0, GROUP_MAX);
+    const companies = (index ?? [])
+      .filter((e) => e.kind === "company" && matches(e, q))
+      .slice(0, GROUP_MAX);
+    const packs = (index ?? [])
+      .filter((e) => e.kind === "pack" && matches(e, q))
+      .slice(0, GROUP_MAX);
     const recent = q
       ? []
       : history
@@ -189,9 +221,10 @@ export function SearchPalette({
             const live = index?.some((e) => e.kind === h.kind && e.id === h.id) ?? false;
             return live || h.kind === "screen";
           })
-          .filter((h) => matches(h, q));
+          .filter((h) => matches(h, q))
+          .slice(0, GROUP_MAX);
     return { recent, screens, companies, packs };
-  }, [debounced, index, history, t]);
+  }, [debounced, index, history, t, indexState]);
 
   const flat = useMemo(
     () => [...sections.recent, ...sections.screens, ...sections.companies, ...sections.packs],

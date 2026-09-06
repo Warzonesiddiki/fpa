@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
 use crate::commands::pack::find_packs_dir;
-use crate::commands::session::{SessionState, require_unlocked};
+use crate::commands::session::{SessionState, require_session_write};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
 use crate::storage::keystore;
@@ -263,7 +263,10 @@ pub fn coa_import(
     pack_key: Option<String>,
     session: State<'_, SessionState>,
 ) -> AppResult<serde_json::Value> {
-    require_unlocked(&session)?;
+    // Write gate (C-4): COA import inserts accounts — the read-only residue of a
+    // broken audit chain must never accept it (B7; require_session_write adds the
+    // AUDIT_CHAIN_BREAK check over require_unlocked's SESSION_LOCKED).
+    require_session_write(&session)?;
     let source = match (&file_path, &pack_key) {
         (Some(f), None) => ("file", f.clone()),
         (None, Some(k)) => ("pack", k.clone()),
@@ -347,7 +350,8 @@ pub fn coa_merge_accounts(
     to_id: String,
     session: State<'_, SessionState>,
 ) -> AppResult<serde_json::Value> {
-    require_unlocked(&session)?;
+    // Write gate (C-4): merges rewrite accounts and append an audit event.
+    require_session_write(&session)?;
     let dir = app_data_dir(&app)?;
     let mut conn = crate::storage::db::open_at(&dir)?;
     // Resolve the owning Company from the source account — the merge core enforces the

@@ -17,6 +17,7 @@ use std::str::FromStr;
 use tauri::{AppHandle, State};
 
 use crate::commands::company::{app_data_dir, audited_hash};
+use crate::commands::model::check_scenario_unlocked;
 use crate::commands::session::{SessionState, require_session_write};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
@@ -305,6 +306,8 @@ pub fn driver_set_value(
 
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir)?;
+    // Locked scenarios reject writes with MODEL_CELL_LOCKED, like model.cell.set.v1 (SCENARIO-VERSION-SPEC §1).
+    check_scenario_unlocked(&conn, &scenario_id)?;
 
     let driver_row: Option<(String, Option<String>, Option<String>)> = conn
         .query_row(
@@ -366,6 +369,16 @@ pub fn driver_set_value(
     }
 
     let tx = conn.transaction().map_err(AppError::from)?;
+    let dv_id = format!("dv-{}", uuid::Uuid::new_v4());
+    tx.execute(
+        "INSERT INTO driver_values (id, driver_id, scenario_id, period_id, value_decimal, source_batch_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL)
+         ON CONFLICT(driver_id, scenario_id, period_id) DO UPDATE SET
+           value_decimal = excluded.value_decimal",
+        rusqlite::params![dv_id, driver_id, scenario_id, period_id, value_decimal],
+    )
+    .map_err(AppError::from)?;
+
     let after_json = serde_json::json!({
         "action": "driver.set_value",
         "driver_id": driver_id,

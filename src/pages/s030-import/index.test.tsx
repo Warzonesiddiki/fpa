@@ -224,7 +224,9 @@ describe("S-030 Import Hub (M2-1)", () => {
     expect(screen.getByText("/Users/ravi/SAP_GL_Aug2026.xlsx")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Change file" }));
     expect(
-      await screen.findByText("An unexpected error occurred. Please try again."),
+      await screen.findByText(
+        "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
+      ),
     ).toBeInTheDocument();
     expect(dialogOpenMock).toHaveBeenCalledTimes(3);
 

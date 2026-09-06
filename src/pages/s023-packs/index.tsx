@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Input, StatePanel } from "@/components/ui";
+import { Button, Input, StatePanel } from "@/components/ui";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { call } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import type { PackMeta } from "@/api/schema";
-import { Package } from "lucide-react";
+import { Package, Plus } from "lucide-react";
+import { CustomPackWizardModal } from "./CustomPackWizardModal";
 
 type LoadPhase = "loading" | "ready" | "error";
 
@@ -21,6 +22,7 @@ export function PacksPage() {
   const [error, setError] = useState<BridgeError | null>(null);
   const [filter, setFilter] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -109,12 +111,18 @@ export function PacksPage() {
           <h1 className="text-xl font-semibold">{t("packs.title")}</h1>
           <p className="text-sm text-[var(--color-onetextsecondary)]">{t("packs.subtitle")}</p>
         </div>
-        <Input
-          label={t("packs.search")}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="max-w-xs"
-        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="primary" onClick={() => setIsBuilderOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            {t("packs.builder.open")}
+          </Button>
+          <Input
+            label={t("packs.search")}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="max-w-xs"
+          />
+        </div>
       </div>
       <ModelSectionNav />
 
@@ -208,6 +216,8 @@ export function PacksPage() {
           </ul>
         </section>
       )}
+
+      <CustomPackWizardModal isOpen={isBuilderOpen} onClose={() => setIsBuilderOpen(false)} />
     </div>
   );
 }

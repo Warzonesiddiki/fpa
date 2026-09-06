@@ -125,7 +125,85 @@ describe("S-003 Global Search Palette (⌘K)", () => {
     );
   });
 
-  it("shows the no-matches empty state after the debounce", async () => {
+  it("indexes Accounts/Drivers/KPIs/Reports/Settings screens (S-003)", async () => {
+    renderPalette();
+    const user = userEvent.setup();
+    const input = screen.getByRole("combobox", { name: "Search" });
+    await user.type(input, "accounts");
+    expect(await screen.findByRole("option", { name: /Chart of Accounts/ })).toHaveTextContent(
+      "/app/model/coa",
+    );
+    await user.clear(input);
+    await user.type(input, "driver");
+    expect(await screen.findByRole("option", { name: /Driver Tables/ })).toHaveTextContent(
+      "/app/model/drivers",
+    );
+    await user.clear(input);
+    await user.type(input, "kpi");
+    expect(await screen.findByRole("option", { name: /KPI Builder/ })).toHaveTextContent(
+      "/app/reports/kpis",
+    );
+    await user.clear(input);
+    await user.type(input, "board pack");
+    expect(await screen.findByRole("option", { name: /Board Pack/ })).toHaveTextContent(
+      "/app/reports/boardpack",
+    );
+    await user.clear(input);
+    await user.type(input, "segment");
+    expect(await screen.findByRole("option", { name: /Segment Report/ })).toHaveTextContent(
+      "/app/reports/segment",
+    );
+    await user.clear(input);
+    await user.type(input, "report builder");
+    expect(await screen.findByRole("option", { name: /Report Builder/ })).toHaveTextContent(
+      "/app/reports/builder",
+    );
+  });
+
+  it("caps each result group at 5 entries", async () => {
+    const manyCompanies = Array.from({ length: 7 }, (_, i) => ({
+      id: `3f9f2c9e-9f8b-4e2d-9a1c-00000000010${i}`,
+      name: `Cap Co ${i}`,
+      company_file_path: `/tmp/cap-co-${i}.fpa`,
+    }));
+    const manyPacks = Array.from({ length: 7 }, (_, i) => ({
+      key: `cap-pack-${i}`,
+      name: `Cap Pack ${i}`,
+      version: "1.0.0",
+    }));
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "company.list") return Promise.resolve(manyCompanies);
+      if (cmd === "pack.list") return Promise.resolve(manyPacks);
+      return Promise.resolve({});
+    });
+    renderPalette();
+    const user = userEvent.setup();
+    const input = screen.getByRole("combobox", { name: "Search" });
+    // Empty query matches everything — each group must render at most 5.
+    expect(await screen.findByRole("option", { name: /Cap Co 0/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("option", { name: /Cap Co \d/ })).toHaveLength(5);
+    expect(screen.getAllByRole("option", { name: /Cap Pack \d/ })).toHaveLength(5);
+    // Screens group is also capped: Dashboard (first entry) visible, wizard (last) cut.
+    expect(screen.getByRole("option", { name: /Dashboard/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /First-Run Wizard/ })).not.toBeInTheDocument();
+    // Narrow query still respects the cap (await the debounce before asserting).
+    await user.type(input, "cap co");
+    expect(await screen.findByRole("option", { name: /Cap Co 0/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("option", { name: /Cap Co \d/ })).toHaveLength(5);
+  });
+
+  it("offers Settings as fallback when the live index fails", async () => {
+    callMock.mockRejectedValue({ code: "INTERNAL", userMessage: "boom" });
+    renderPalette();
+    expect(await screen.findByText(/search index is unavailable/)).toBeInTheDocument();
+    // Even a query with no other match still offers Settings (S-003 fallback).
+    await userEvent.type(screen.getByRole("combobox", { name: "Search" }), "zzzz-no-match-xyz");
+    expect(await screen.findByRole("option", { name: /Settings/ })).toHaveTextContent(
+      "/app/settings",
+    );
+  });
+
+  it("shows a no-match message for unknown queries", async () => {
     renderPalette();
     const user = userEvent.setup();
     await user.type(screen.getByRole("combobox", { name: "Search" }), "zzzz-no-match");

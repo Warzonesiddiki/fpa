@@ -383,6 +383,12 @@ const mappingsByName = new Map<string, MockMapping>();
 const importBatches = new Map<string, MockImportBatch>();
 let importSeq = 0;
 
+/** model.sheet.add dev mirror state (B18-3): per-model trimmed names + monotonic ids. */
+const mockSheetNames = new Set<string>();
+let mockSheetSeq = 0;
+let mockModelSeq = 0;
+let mockBuilderSeq = 0;
+
 function mockMappingVersion(mappingId: string): string | null {
   if (mappingId === CANONICAL_MAPPING_ID) return "canonical-v1";
   const companyPrefix = `${session.company_id ?? "preview-no-company"}\u0000`;
@@ -712,11 +718,15 @@ const MOCK_AUDIT_EVENTS: MockAuditEvent[] = [
   },
 ];
 
+/** Session-dismissed alert ids → dismissed_at overlay (native: alerts table column). */
+const mockAlertDismissals = new Map<string, string>();
+
 /** Reset the browser-preview alerts between isolated store/mock tests. */
 export function resetMockAlertState(): void {
   mockAlertRules.length = 2;
   mockAlertLog = [];
   mockAlertSeq = 900;
+  mockAlertDismissals.clear();
 }
 
 /** Validation mirrors commands/alerts.rs::validate_rule EXACTLY (same order, same detail
@@ -1125,6 +1135,23 @@ export async function mockInvoke<C extends CommandName>(
     case "security.pin_setup":
       // Shape mirror only (B18-3): the Rust core owns policy + persistence.
       return { data: { ok: true } };
+    case "security.change_pin": {
+      const { old_pin } = args as { old_pin: string; new_pin: string };
+      if (old_pin === "WrongPin9!") {
+        return {
+          error: {
+            code: "AUTH_PIN_INVALID",
+            message: "pin mismatch",
+            userMessage: "Incorrect PIN.",
+            httpStatus: 401,
+            retryable: false,
+            retryAfterMs: null,
+            details: {},
+          },
+        };
+      }
+      return { data: { ok: true } };
+    }
     case "session.unlock": {
       const { pin, company_id } = args as { pin: string; company_id: string };
       if (pin === "WrongPin9!") {
@@ -1183,7 +1210,12 @@ export async function mockInvoke<C extends CommandName>(
       return { data: companies };
     case "company.open": {
       const { path } = args as { path: string };
-      const company = companies.find((c) => c.company_file_path === path);
+      const company = companies.find(
+        (c) =>
+          c.company_file_path === path ||
+          c.company_file_path.endsWith(`/${path}`) ||
+          c.company_file_path.endsWith(`\\${path}`),
+      );
       if (!company) {
         return {
           error: {
@@ -1383,6 +1415,87 @@ export async function mockInvoke<C extends CommandName>(
           is_bundled: true,
         })),
       };
+    case "pack.install": {
+      // Shape mirror only (B18-3): the Rust core owns validation, seeding + audit.
+      // Dev-preview outcomes mirror §18: version conflicts 409, invalid paths 422,
+      // otherwise a success with a deterministic id and §8 legacy warnings.
+      const { pack_path, company_id } = args as { pack_path: string; company_id: string };
+      if (pack_path.includes("installed")) {
+        return mockError(
+          "PACK_VERSION_EXISTS",
+          "pack.install: version 1.0.0 already installed",
+          "Pack version 1.0.0 is already installed.",
+          409,
+        );
+      }
+      if (pack_path.includes("invalid")) {
+        return mockError(
+          "PACK_SCHEMA_INVALID",
+          "pack.install: pack.json missing or unreadable",
+          "Industry Pack failed validation at pack.json: missing or unreadable. Retry or use the bundled Core Pack.",
+          422,
+        );
+      }
+      void company_id;
+      return {
+        data: {
+          pack_id: "pack-installed-dev",
+          version: "1.0.0",
+          warnings: [
+            "dev-preview: driver 'arpu' has no links (§4) — Federation/attribution degraded until re-issued",
+          ],
+        },
+      };
+    }
+    case "pack.builder.save_v1": {
+      // Shape mirror only (B18-3): Rust owns §8 validation + §9 versioning + audit.
+      const { pack_id, definition_json } = args as {
+        pack_id: string | null;
+        definition_json: { pack?: { key?: string; version?: string } };
+      };
+      const version = definition_json?.pack?.version ?? "1.0.0";
+      if (pack_id && !pack_id.includes("dev")) {
+        return mockError(
+          "PACK_VERSION_EXISTS",
+          `pack.builder.save_v1: version ${version} not higher than installed`,
+          `Pack version ${version} is already installed.`,
+          409,
+        );
+      }
+      mockBuilderSeq += 1;
+      return {
+        data: {
+          pack_id: pack_id ?? `pack-builder-dev-${mockBuilderSeq}`,
+          version,
+          warnings: [],
+        },
+      };
+    }
+    case "pack.validate": {
+      // Shape mirror only (B18-3): the Rust core owns filesystem + schema validation.
+      // The dev preview answers with the two honest outcomes it can produce without a
+      // filesystem: a browser-inaccessible path is a payload verdict (valid:false with the
+      // blocking entry), never a thrown 500 — mirrors §17 (failures ride the payload).
+      const { pack_path } = args as { pack_path: string };
+      if (pack_path.includes("invalid")) {
+        return {
+          data: {
+            valid: false,
+            errors: ["pack.json: missing or unreadable in dev-preview"],
+            warnings: [],
+          },
+        };
+      }
+      return {
+        data: {
+          valid: true,
+          errors: [],
+          warnings: [
+            "dev-preview: driver 'arpu' has no links (§4) — Federation/attribution degraded until re-issued",
+          ],
+        },
+      };
+    }
     case "import.parse": {
       const { file_path, kind } = args as { file_path: string; kind: ImportKind };
       if (file_path.includes("locked")) {
@@ -1864,6 +1977,37 @@ export async function mockInvoke<C extends CommandName>(
         },
       };
     }
+    case "model.create": {
+      // Shape mirror only (B18-3): Rust owns models + scenarios + audit (API-SPEC §20).
+      // The dev preview returns a deterministic pair; the pack existence check is a
+      // filesystem/DB concern owned by the core.
+      const { name } = args as { name: string };
+      mockModelSeq += 1;
+      return {
+        data: {
+          model_id: `model-dev-${mockModelSeq}`,
+          scenario_id: `scenario-dev-${mockModelSeq}`,
+          name_echo: name.trim(),
+        },
+      };
+    }
+    case "model.sheet.add": {
+      // Shape mirror only (B18-3): Rust owns persistence + audit (API-SPEC §19).
+      // Dev-preview keeps a per-model name set so SHEET_NAME_DUP is observable.
+      const { model_id, name } = args as { model_id: string; name: string };
+      const key = `${model_id}:${name.trim().toLowerCase()}`;
+      if (mockSheetNames.has(key)) {
+        return mockError(
+          "SHEET_NAME_DUP",
+          `model.sheet.add: sheet '${name.trim()}' already exists`,
+          "A Sheet with this name already exists.",
+          409,
+        );
+      }
+      mockSheetNames.add(key);
+      mockSheetSeq += 1;
+      return { data: { sheet_id: `sheet-dev-${mockSheetSeq}` } };
+    }
     case "model.recalc": {
       const { scenario_id } = args as { scenario_id: string };
       let dirty = 0;
@@ -1971,7 +2115,15 @@ export async function mockInvoke<C extends CommandName>(
           const minorA = cellA?.valueMinor ?? null;
           const minorB = cellB?.valueMinor ?? null;
           const deltaMinor = (minorB ?? 0) - (minorA ?? 0);
-          const deltaPct = minorA != null && minorA !== 0 ? deltaMinor / Math.abs(minorA) : null;
+          // Mirror commands/model.rs: Δ% = Δ/|A| in decimal (B3/B6) — round_dp(6),
+          // HALF_EVEN matches Rust Decimal::round, None when A = 0 (never NaN/Infinity).
+          const deltaPct =
+            minorA != null && minorA !== 0
+              ? new Decimal(deltaMinor)
+                  .div(new Decimal(minorA).abs())
+                  .toDecimalPlaces(6, Decimal.ROUND_HALF_EVEN)
+                  .toNumber()
+              : null;
           const isChanged =
             minorA !== minorB || cellA?.value !== cellB?.value || cellA?.formula !== cellB?.formula;
           diffRows.push({
@@ -3085,19 +3237,22 @@ export async function mockInvoke<C extends CommandName>(
         );
       }
       if (file_path.includes("conflict")) {
+        // Dev trigger simulates a returned sheet whose rows 1 and 2 claim
+        // different values for the same (driver, period) — mirrors the real
+        // engine's row-provenance conflict records (commands/cycle.rs).
         return {
           data: {
             batch_id: "cb-8821",
             conflicts: [
               {
                 id: "conf-1",
-                upload_id: "cu-1",
+                upload_id: "cb-8821",
                 driver_id: "dr-sales-volume",
                 driver_name: "Sales Volume (Units)",
-                period_id: "fp-2027-p08",
-                contributor_a: "Sales Director",
+                period_id: "2026-01",
+                contributor_a: "row 1",
                 value_a: "11000",
-                contributor_b: "Operations Lead",
+                contributor_b: "row 2",
                 value_b: "12500",
                 resolved: false,
                 resolution_choice: null,
@@ -3393,8 +3548,32 @@ export async function mockInvoke<C extends CommandName>(
           false,
         );
       }
-      if (sArgs.type !== "pl" && sArgs.type !== "bs") {
-        // cf/soce/segment are not computed in M6-1 — never fabricate rows.
+      if (
+        sArgs.company_id.includes("ic_unmatched") ||
+        sArgs.period_scope.includes("ic_unmatched")
+      ) {
+        return mockError(
+          "IC_UNMATCHED",
+          "unmatched intercompany lines exist in period",
+          "Intercompany transactions are out of balance across Business Units. Resolve IC discrepancies in tie-out before consolidating.",
+          422,
+          false,
+        );
+      }
+      if (
+        sArgs.company_id.includes("translation_pending") ||
+        sArgs.period_scope.includes("translation_pending")
+      ) {
+        return mockError(
+          "SEGMENT_TRANSLATION_PENDING",
+          "missing exchange rate for period",
+          "Exchange rate missing for one or more foreign entities. Enter period FX rates before running consolidation.",
+          409,
+          true,
+        );
+      }
+      if (sArgs.type !== "pl" && sArgs.type !== "bs" && sArgs.type !== "segment") {
+        // cf/soce are not computed in M6-1/M6-2 — never fabricate rows.
         return {
           data: {
             rows: [],
@@ -3411,6 +3590,76 @@ export async function mockInvoke<C extends CommandName>(
             },
             tieout_status: "pass",
             rounding_status: "exact",
+            findings: [],
+            currency: "USD",
+          },
+        };
+      }
+      if (sArgs.type === "segment") {
+        const segRows = [
+          {
+            section: "Segment Revenue",
+            lines: [
+              {
+                account_id: "a-seg-rev",
+                label: "External Revenue",
+                values: {
+                  "bu-us-local": 1000000,
+                  "bu-us-translated": 1000000,
+                  "bu-uk-local": 800000,
+                  "bu-uk-translated": 1000000,
+                  eliminations: 0,
+                  group: 2000000,
+                },
+              },
+              {
+                account_id: "a-seg-ic-rev",
+                label: "Intercompany Revenue",
+                values: {
+                  "bu-us-local": 200000,
+                  "bu-us-translated": 200000,
+                  "bu-uk-local": 0,
+                  "bu-uk-translated": 0,
+                  eliminations: -200000,
+                  group: 0,
+                },
+              },
+            ],
+          },
+          {
+            section: "Segment Operating Profit",
+            lines: [
+              {
+                account_id: "a-seg-op",
+                label: "Operating Profit",
+                values: {
+                  "bu-us-local": 350000,
+                  "bu-us-translated": 350000,
+                  "bu-uk-local": 240000,
+                  "bu-uk-translated": 300000,
+                  eliminations: 0,
+                  group: 650000,
+                },
+              },
+            ],
+          },
+        ];
+        return {
+          data: {
+            rows: segRows,
+            totals: {
+              revenue: 2000000,
+              gross_profit: null,
+              operating_income: 650000,
+              net_income: null,
+              total_assets: null,
+              total_liabilities: null,
+              total_equity: null,
+              net_cash_change: null,
+              ending_cash: null,
+            },
+            tieout_status: "pass",
+            rounding_status: sArgs.rounding.largest_remainder ? "exact" : "approximate",
             findings: [],
             currency: "USD",
           },
@@ -3513,6 +3762,49 @@ export async function mockInvoke<C extends CommandName>(
           rounding_status: sArgs.rounding.largest_remainder ? "exact" : "approximate",
           findings: [],
           currency: "USD",
+        },
+      };
+    }
+    case "consolidation.run": {
+      const cArgs = (args ?? {}) as {
+        company_id: string;
+        period_id: string;
+        options?: { eliminate_ic?: boolean; fx_policy?: string };
+      };
+      if (cArgs.company_id.includes("ic_unmatched") || cArgs.period_id.includes("ic_unmatched")) {
+        return mockError(
+          "IC_UNMATCHED",
+          "unmatched intercompany lines exist in period",
+          "Intercompany transactions are out of balance across Business Units. Resolve IC discrepancies in tie-out before consolidating.",
+          422,
+          false,
+        );
+      }
+      if (
+        cArgs.company_id.includes("translation_pending") ||
+        cArgs.period_id.includes("translation_pending")
+      ) {
+        return mockError(
+          "SEGMENT_TRANSLATION_PENDING",
+          "missing exchange rate for period",
+          "Exchange rate missing for one or more foreign entities. Enter period FX rates before running consolidation.",
+          409,
+          true,
+        );
+      }
+      return {
+        data: {
+          run_id: "cons-run-1",
+          status: "completed",
+        },
+      };
+    }
+    case "consolidation.status": {
+      return {
+        data: {
+          stage: "completed",
+          progress: 100,
+          issues: [],
         },
       };
     }
@@ -3675,7 +3967,7 @@ export async function mockInvoke<C extends CommandName>(
             severity: rule?.severity ?? "info",
             fired_at: a.fired_at,
             trigger_chain: a.trigger_chain,
-            dismissed_at: a.dismissed_at,
+            dismissed_at: mockAlertDismissals.get(a.id) ?? a.dismissed_at,
           };
         })
         .filter((a) => includeDismissed || a.dismissed_at === null)
@@ -3709,6 +4001,127 @@ export async function mockInvoke<C extends CommandName>(
       });
       mockAlertSeq += 1;
       return { data: { rule_id: id, audit_id: mockAlertSeq } };
+    }
+    // Mirrors the Rust `alerts.dismiss` contract (commands/alerts.rs): idempotent dismissal
+    // (existing timestamp kept), typed VALUE_INVALID for an unknown alert, response
+    // {alert_id, dismissed_at, audit_id}. Native writes the HMAC audit event; the preview
+    // mirror records the state change and a session-local audit sequence.
+    case "alerts.dismiss": {
+      const dArgs = (args ?? {}) as { alert_id: string; reason?: string | null };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      const known = [...mockAlertRows(), ...mockAlertLog].some((a) => a.id === dArgs.alert_id);
+      if (!known) {
+        return mockError(
+          "VALUE_INVALID",
+          `alert_id '${dArgs.alert_id}' not found`,
+          "This alert no longer exists. Refresh the alert list.",
+          422,
+        );
+      }
+      const existing = mockAlertDismissals.get(dArgs.alert_id);
+      const dismissedAt =
+        existing ??
+        [...mockAlertRows(), ...mockAlertLog].find((a) => a.id === dArgs.alert_id)?.dismissed_at ??
+        new Date().toISOString();
+      mockAlertDismissals.set(dArgs.alert_id, dismissedAt);
+      mockAlertSeq += 1;
+      return {
+        data: { alert_id: dArgs.alert_id, dismissed_at: dismissedAt, audit_id: mockAlertSeq },
+      };
+    }
+    // Mirrors the Rust `alerts.mute_rule` contract (commands/alerts.rs): sets the rule
+    // inactive, typed VALUE_INVALID for an unknown rule, response {rule_id, active: false,
+    // audit_id}. Muted rules disappear from the mock's firing path on the next list call.
+    case "alerts.mute_rule": {
+      const mArgs = (args ?? {}) as {
+        rule_id: string;
+        duration_days?: number | null;
+        reason?: string | null;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      const rule = mockAlertRules.find((r) => r.id === mArgs.rule_id);
+      if (!rule) {
+        return mockError(
+          "VALUE_INVALID",
+          `rule_id '${mArgs.rule_id}' not found`,
+          "This alert rule no longer exists. Refresh the rule panel.",
+          422,
+        );
+      }
+      rule.active = false;
+      mockAlertSeq += 1;
+      return { data: { rule_id: rule.id, active: false as const, audit_id: mockAlertSeq } };
+    }
+    // Mirrors the Rust `export.pdf` contract (commands/export.rs): health-gated (the
+    // HEALTH_CHECK_BLOCKED probe stays), audited write, response {file, audit_id}.
+    case "export.pdf": {
+      const pdfArgs = (args ?? {}) as {
+        layout_id?: string;
+        scope?: Record<string, unknown>;
+        options?: Record<string, unknown>;
+        path?: string;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (pdfArgs.options?.health_blocked || pdfArgs.scope?.health_blocked) {
+        return mockError(
+          "HEALTH_CHECK_BLOCKED",
+          "findings",
+          "Export blocked by 2 Health Check findings. Fix or waive (reason required).",
+          422,
+        );
+      }
+      mockAlertSeq += 1;
+      return { data: { file: pdfArgs.path ?? "audit_log.pdf", audit_id: mockAlertSeq } };
+    }
+    // Mirrors the Rust `export.model_dump` contract (commands/export.rs): health-gated,
+    // audited write, response {file, audit_id}; default filename matches the native
+    // `ModelDump_{company_id}_{timestamp}.json` convention.
+    case "export.model_dump": {
+      const dumpArgs = (args ?? {}) as {
+        layout_id?: string;
+        scope?: Record<string, unknown>;
+        options?: Record<string, unknown>;
+        path?: string;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (dumpArgs.options?.health_blocked || dumpArgs.scope?.health_blocked) {
+        return mockError(
+          "HEALTH_CHECK_BLOCKED",
+          "findings",
+          "Export blocked by 2 Health Check findings. Fix or waive (reason required).",
+          422,
+        );
+      }
+      mockAlertSeq += 1;
+      return { data: { file: dumpArgs.path ?? "ModelDump_preview.json", audit_id: mockAlertSeq } };
     }
     // Mirrors the Rust `audit.list` contract: page of immutable events (newest first),
     // the Company chain verdict as DATA (so a tampered chain is still readable), pagination
@@ -3790,6 +4203,80 @@ export async function mockInvoke<C extends CommandName>(
             actions: [...new Set(chainEvents.map((e) => e.action))].sort(),
             object_types: [...new Set(chainEvents.map((e) => e.object_type))].sort(),
           },
+        },
+      };
+    }
+    // Auditor Data-Room package export (F-033 · EXPORT-FORMAT-SPEC §5 · API-SPEC §2).
+    case "audit.export_dataroom": {
+      const exportArgs = (args ?? {}) as {
+        company_id: string;
+        period_scope?: string[];
+        path?: string;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.company_id && exportArgs.company_id !== session.company_id) {
+        return mockError(
+          "VALUE_INVALID",
+          "AUDIT_COMPANY_MISMATCH: open the requested Company first",
+          "Invalid arguments.",
+          422,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "hash mismatch",
+          "Audit integrity check failed. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      return {
+        data: {
+          file: exportArgs.path ?? "auditor_dataroom.zip",
+          counts: {
+            events: MOCK_AUDIT_EVENTS.length,
+            statements: 5,
+            drivers: 12,
+          },
+          audit_id: MOCK_AUDIT_EVENTS.length + 1,
+        },
+      };
+    }
+    // Excel export (F-031 · EXPORT-FORMAT-SPEC §2 · API-SPEC §2).
+    case "export.excel": {
+      const excelArgs = (args ?? {}) as {
+        layout_id?: string;
+        scope?: Record<string, unknown>;
+        options?: Record<string, unknown>;
+        path?: string;
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (excelArgs.options?.health_blocked || excelArgs.scope?.health_blocked) {
+        return mockError(
+          "HEALTH_CHECK_BLOCKED",
+          "findings",
+          "Export blocked by 2 Health Check findings. Fix or waive (reason required).",
+          422,
+        );
+      }
+      return {
+        data: {
+          file: excelArgs.path ?? "audit_log.xlsx",
+          audit_id: 101,
         },
       };
     }
@@ -3893,6 +4380,202 @@ export async function mockInvoke<C extends CommandName>(
       });
       mockHealthAuditSeq += 1;
       return { data: { waived: true, finding_id, audit_id: mockHealthAuditSeq } };
+    }
+    case "report.layout.save": {
+      const { layout } = args as {
+        layout: {
+          id?: string;
+          company_id: string;
+          name: string;
+          kind: string;
+          row_line_ids: string[];
+          columns: Array<{ col_type: string; period_ref?: string; sort_order: number }>;
+        };
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "READ_ONLY_MODE",
+          "company is read-only",
+          "This Company is open in read-only mode.",
+          403,
+        );
+      }
+      if (!layout.name || layout.name.trim().length === 0) {
+        return mockError(
+          "LAYOUT_INVALID",
+          "Layout name required",
+          "Layout schema invalid at name.",
+          422,
+        );
+      }
+      if (!layout.columns || layout.columns.length === 0) {
+        return mockError(
+          "LAYOUT_INVALID",
+          "Layout columns required",
+          "Layout schema invalid at columns.",
+          422,
+        );
+      }
+      if (
+        layout.name.includes("broken") ||
+        layout.row_line_ids.some((id) => id.includes("broken"))
+      ) {
+        return mockError(
+          "LAYOUT_REFERENCE_BROKEN",
+          "Layout references broken lines",
+          "Layout references 2 missing lines. Auto-remap or fix.",
+          422,
+          false,
+          { count: 2 },
+        );
+      }
+      const layout_id = layout.id || `lay-${Date.now()}`;
+      return {
+        data: {
+          saved: true,
+          layout_id,
+        },
+      };
+    }
+    case "report.layout.render": {
+      const { layout_id, scope } = args as {
+        layout_id: string;
+        scope: string[];
+        company_id: string;
+      };
+      if (layout_id.includes("broken")) {
+        return mockError(
+          "LAYOUT_REFERENCE_BROKEN",
+          "Layout references broken lines",
+          "Layout references 1 missing lines. Auto-remap or fix.",
+          422,
+          false,
+          { count: 1 },
+        );
+      }
+      return {
+        data: {
+          layout_id,
+          name: "Standard Income Statement",
+          rows: [
+            {
+              line_id: "rev-1",
+              label: "Subscription Revenue",
+              cells: scope.map((_, idx) => ({
+                col_index: idx,
+                amount_minor: 150000000,
+                text: null,
+              })),
+            },
+            {
+              line_id: "rev-2",
+              label: "Services Revenue",
+              cells: scope.map((_, idx) => ({
+                col_index: idx,
+                amount_minor: 35000000,
+                text: null,
+              })),
+            },
+            {
+              line_id: "cogs-1",
+              label: "Cost of Goods Sold",
+              cells: scope.map((_, idx) => ({
+                col_index: idx,
+                amount_minor: -45000000,
+                text: null,
+              })),
+            },
+          ],
+        },
+      };
+    }
+    case "kpi.define": {
+      const { kpi } = args as {
+        kpi: {
+          id?: string;
+          company_id: string;
+          name: string;
+          formula: string;
+          unit: string;
+          target_owner?: string;
+          definition_text?: string;
+        };
+      };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "READ_ONLY_MODE",
+          "company is read-only",
+          "This Company is open in read-only mode.",
+          403,
+        );
+      }
+      if (!kpi.formula || kpi.formula.trim().length === 0) {
+        return mockError(
+          "KPI_FORMULA_INVALID",
+          "KPI formula invalid",
+          "KPI formula invalid: empty formula.",
+          422,
+        );
+      }
+      if (kpi.formula.includes("/ 0") || kpi.formula.endsWith("/0")) {
+        return mockError("KPI_DIV_ZERO", "Division by zero", "Formula divides by zero.", 200);
+      }
+      return {
+        data: {
+          kpi_id: kpi.id || `kpi-${Date.now()}`,
+        },
+      };
+    }
+    case "backup.create": {
+      const { path } = args as { path: string; passphrase: string };
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      return {
+        data: {
+          backup_id: `bk-${Date.now()}`,
+          path,
+          size_bytes: 10485760,
+          sha256: "aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344",
+        },
+      };
+    }
+    case "backup.restore": {
+      if (!session.unlocked) {
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      return {
+        data: {
+          restored: true,
+          snapshot_id: `snp-${Date.now()}`,
+        },
+      };
     }
     default:
       return {

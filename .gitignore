@@ -18,3 +18,13 @@ target/
 src-tauri/gen/
 .github/
 
+
+# Agent skill installations (session tooling, not product source)
+.agents/skills/
+.claude/skills/
+.superpowers/
+skills-lock.json
+.agent/
+.claude/
+.codex/
+.agents/

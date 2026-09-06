@@ -1706,3 +1706,94 @@ describe("dev mock — scenario lifecycle (F-022 · SCENARIO-VERSION-SPEC §1–
     });
   });
 });
+
+describe("dev mock — pack.validate + pack.install mirrors (F-005 · API-SPEC §17/§18)", () => {
+  it("answers with a structured verdict — failures ride the payload, never a thrown 500", async () => {
+    const bad = (await mockInvoke("pack.validate", {
+      pack_path: "C:/invalid/pack",
+    })) as { data: { valid: boolean; errors: string[]; warnings: string[] } };
+    expect(bad.data.valid).toBe(false);
+    expect(bad.data.errors.length).toBeGreaterThan(0);
+    expect(typeof bad.data.errors[0]).toBe("string");
+    expect(bad.data.warnings).toEqual([]);
+
+    const good = (await mockInvoke("pack.validate", {
+      pack_path: "C:/packs/saas",
+    })) as { data: { valid: boolean; errors: unknown[]; warnings: string[] } };
+    expect(good.data.valid).toBe(true);
+    expect(good.data.errors).toEqual([]);
+    expect(good.data.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("pack.install mirror: success payload, version conflict 409, invalid pack 422", async () => {
+    const ok = (await mockInvoke("pack.install", {
+      pack_path: "C:/packs/new-industry",
+      company_id: "c-01",
+    })) as { data: { pack_id: string; version: string; warnings: string[] } };
+    expect(ok.data.pack_id.length).toBeGreaterThan(0);
+    expect(ok.data.version.length).toBeGreaterThan(0);
+    expect(Array.isArray(ok.data.warnings)).toBe(true);
+
+    const conflict = (await mockInvoke("pack.install", {
+      pack_path: "C:/packs/installed-already",
+      company_id: "c-01",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(conflict.error.code).toBe("PACK_VERSION_EXISTS");
+    expect(conflict.error.httpStatus).toBe(409);
+    expect(conflict.error.retryable).toBe(false);
+
+    const invalid = (await mockInvoke("pack.install", {
+      pack_path: "C:/invalid/pack",
+      company_id: "c-01",
+    })) as { error: { code: string; httpStatus: number } };
+    expect(invalid.error.code).toBe("PACK_SCHEMA_INVALID");
+    expect(invalid.error.httpStatus).toBe(422);
+  });
+
+  it("model.sheet.add mirror: unique names succeed, duplicate trimmed name 409s", async () => {
+    const ok = (await mockInvoke("model.sheet.add", {
+      model_id: "mod-1",
+      name: "  Revenue  ",
+      type: "input",
+    })) as { data: { sheet_id: string } };
+    expect(ok.data.sheet_id.length).toBeGreaterThan(0);
+
+    const dup = (await mockInvoke("model.sheet.add", {
+      model_id: "mod-1",
+      name: "Revenue",
+      type: "input",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(dup.error.code).toBe("SHEET_NAME_DUP");
+    expect(dup.error.httpStatus).toBe(409);
+    expect(dup.error.retryable).toBe(false);
+  });
+
+  it("model.create mirror returns a deterministic model/scenario pair", async () => {
+    const out = (await mockInvoke("model.create", {
+      company_id: "c-01",
+      name: "  FY27 Plan  ",
+      horizon: "1y",
+      pack_id: "pack-1",
+    })) as { data: { model_id: string; scenario_id: string } };
+    expect(out.data.model_id.length).toBeGreaterThan(0);
+    expect(out.data.scenario_id.length).toBeGreaterThan(0);
+  });
+
+  it("pack.builder.save_v1 mirror: new doc succeeds, stale-version edit 409s", async () => {
+    const definition = { pack: { key: "k", version: "1.0.0" } };
+    const ok = (await mockInvoke("pack.builder.save_v1", {
+      pack_id: null,
+      definition_json: definition,
+    })) as { data: { pack_id: string; version: string; warnings: string[] } };
+    expect(ok.data.pack_id.length).toBeGreaterThan(0);
+    expect(ok.data.version).toBe("1.0.0");
+    expect(Array.isArray(ok.data.warnings)).toBe(true);
+
+    const conflict = (await mockInvoke("pack.builder.save_v1", {
+      pack_id: "pack-real-1",
+      definition_json: definition,
+    })) as { error: { code: string; httpStatus: number } };
+    expect(conflict.error.code).toBe("PACK_VERSION_EXISTS");
+    expect(conflict.error.httpStatus).toBe(409);
+  });
+});

@@ -1,0 +1,22 @@
+# OneFP&A — platform parity for the toolchain (B18-8).
+# All text files are LF in the index and stay LF in every working copy,
+# so gate scripts, prettier, rustfmt and docs parsers behave identically
+# on Windows / macOS / Linux. Binaries are excluded by git's auto-detection
+# plus the explicit rules below.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.exe binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.fpa binary

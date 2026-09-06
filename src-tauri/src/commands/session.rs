@@ -170,6 +170,18 @@ pub fn require_unlocked(state: &SessionState) -> AppResult<String> {
         .ok_or(AppError::SessionRequired)
 }
 
+/// Retrieve the unlocked company id and container path from SessionState.
+pub fn get_session_info(state: &SessionState) -> AppResult<(String, String)> {
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::internal("session lock poisoned"))?;
+    guard
+        .as_ref()
+        .map(|s| (s.company_id.clone(), s.container_path.clone()))
+        .ok_or(AppError::SessionRequired)
+}
+
 /// Write gate for session-scoped mutations without an explicit `company_id`: an unlocked
 /// Company must exist (`SESSION_LOCKED`) and must not be the read-only residue of a broken
 /// audit chain (`AUDIT_CHAIN_BREAK`, AUTH-SPEC §2.5 / §3 rule 2).

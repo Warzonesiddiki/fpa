@@ -10,9 +10,9 @@
  * Honest-state boundaries of this slice:
  *   * There is NO edit/delete control anywhere on this screen — by design, not omission
  *     (B7: the log is append-only; the wireframe has no such geometry).
- *   * "Auditor Data-Room Export" and "Export log" map to `audit.export_dataroom` /
- *     `export.*`, which have no handler yet — they ship DISABLED with an explanatory
- *     title rather than as buttons that fabricate a file (B18-5/7).
+ *   * "Auditor Data-Room Export" and "Export log" map to `audit.export_dataroom` and
+ *     `export.excel` with loading, success feedback, and error banner handling
+ *     (AUDIT_CHAIN_BREAK, HEALTH_CHECK_BLOCKED).
  *   * A broken chain is rendered as a persistent banner + ✗ chip with the failing `seq`,
  *     and the events stay readable (US-034: the tamper is shown, never hidden).
  *   * Event payloads (`before_json` / `after_json`) are the exact hashed bytes and are
@@ -22,9 +22,18 @@
 
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Download, Link2, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Link2,
+  Loader2,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import { StatePanel } from "@/components/ui/StatePanel";
 import { Button } from "@/components/ui/Button";
+import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 import { useAuditStore } from "@/stores/audit";
 import { useSessionStore } from "@/stores/session";
 import type { AuditEventRecord } from "@/api/schema";
@@ -144,6 +153,10 @@ export function AuditTrailPage() {
   const retry = useAuditStore((s) => s.retry);
   const hasActiveFilter = useAuditStore((s) => s.hasActiveFilter);
 
+  const [exportLoading, setExportLoading] = useState<"dataroom" | "log" | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<BridgeError | null>(null);
+
   useEffect(() => {
     if (!sessionCompanyId) return;
     void load({ companyId: sessionCompanyId, page: 1 });
@@ -153,6 +166,45 @@ export function AuditTrailPage() {
   const chainBroken = chainStatus !== null && !chainStatus.verified;
   const totalPages = meta?.total_pages ?? 0;
   const filtered = hasActiveFilter();
+
+  const handleExportDataRoom = async () => {
+    if (!sessionCompanyId) return;
+    setExportLoading("dataroom");
+    setExportSuccess(null);
+    setExportError(null);
+    try {
+      await call("audit.export_dataroom", {
+        company_id: sessionCompanyId,
+        period_scope: [],
+      });
+      setExportSuccess(
+        t("auditPage.exportDataRoomSuccess", "Auditor data-room package exported successfully."),
+      );
+    } catch (e) {
+      setExportError(toBridgeError(e));
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const handleExportLog = async () => {
+    if (!sessionCompanyId) return;
+    setExportLoading("log");
+    setExportSuccess(null);
+    setExportError(null);
+    try {
+      await call("export.excel", {
+        scope: { company_id: sessionCompanyId, type: "audit_log" },
+      });
+      setExportSuccess(
+        t("auditPage.exportLogSuccess", "Audit log exported to Excel successfully."),
+      );
+    } catch (e) {
+      setExportError(toBridgeError(e));
+    } finally {
+      setExportLoading(null);
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--color-oneapp)]">
@@ -174,6 +226,63 @@ export function AuditTrailPage() {
           </span>
           <span className="text-[var(--color-onetextsecondary)]">
             {t("auditPage.chainBrokenHint")}
+          </span>
+        </div>
+      )}
+
+      {exportError && (
+        <div
+          role="alert"
+          data-testid="audit-export-error-banner"
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-oneunfavorable)] bg-[var(--color-oneunfavorable)]/10 px-6 py-3 text-sm text-[var(--color-oneunfavorable)]"
+        >
+          <div className="flex items-center gap-2">
+            <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span className="font-semibold">{exportError.code}:</span>
+            <span>{exportError.userMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="rounded px-2 py-1 text-xs font-medium text-[var(--color-oneunfavorable)] hover:bg-[var(--color-oneunfavorable)]/10"
+          >
+            {t("auditPage.dismiss", "Dismiss")}
+          </button>
+        </div>
+      )}
+
+      {exportSuccess && (
+        <div
+          role="status"
+          data-testid="audit-export-success-banner"
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-onefavorable)] bg-[var(--color-onefavorable)]/10 px-6 py-2.5 text-sm text-[var(--color-onefavorable)]"
+        >
+          <div className="flex items-center gap-2">
+            <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span>{exportSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportSuccess(null)}
+            className="rounded px-2 py-1 text-xs font-medium text-[var(--color-onefavorable)] hover:bg-[var(--color-onefavorable)]/10"
+          >
+            {t("auditPage.dismiss", "Dismiss")}
+          </button>
+        </div>
+      )}
+
+      {exportLoading && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="audit-export-loading-banner"
+          className="flex items-center gap-2 border-b border-[var(--color-oneprimary)] bg-[var(--color-oneprimary)]/10 px-6 py-2 text-xs text-[var(--color-oneprimary)]"
+        >
+          <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin shrink-0" />
+          <span>
+            {exportLoading === "dataroom"
+              ? t("auditPage.exportingDataRoom", "Exporting Auditor Data-Room package...")
+              : t("auditPage.exportingLog", "Exporting audit log...")}
           </span>
         </div>
       )}
@@ -377,14 +486,37 @@ export function AuditTrailPage() {
         <span aria-hidden="true">·</span>
         <span>{chainBroken ? t("auditPage.chain.broken") : t("auditPage.chain.verified")}</span>
         <span className="ml-auto flex gap-2">
-          {/* Disabled until `audit.export_dataroom` / `export.*` have handlers — never a
-              button that produces nothing (B18-5/7). */}
-          <Button variant="secondary" size="sm" disabled title={t("auditPage.exportPending")}>
-            <Download aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-            {t("auditPage.exportDataRoom")}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!sessionCompanyId || exportLoading !== null}
+            onClick={() => void handleExportDataRoom()}
+            title={t("auditPage.exportDataRoom")}
+          >
+            {exportLoading === "dataroom" ? (
+              <Loader2 aria-hidden="true" className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            )}
+            {exportLoading === "dataroom"
+              ? t("auditPage.exporting", "Exporting...")
+              : t("auditPage.exportDataRoom")}
           </Button>
-          <Button variant="secondary" size="sm" disabled title={t("auditPage.exportPending")}>
-            {t("auditPage.exportLog")}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!sessionCompanyId || exportLoading !== null}
+            onClick={() => void handleExportLog()}
+            title={t("auditPage.exportLog")}
+          >
+            {exportLoading === "log" ? (
+              <Loader2 aria-hidden="true" className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            )}
+            {exportLoading === "log"
+              ? t("auditPage.exporting", "Exporting...")
+              : t("auditPage.exportLog")}
           </Button>
         </span>
       </footer>

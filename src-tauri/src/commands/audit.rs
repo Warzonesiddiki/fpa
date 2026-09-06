@@ -282,7 +282,14 @@ pub fn audit_list(
 mod tests {
     use super::*;
 
-    fn insert(conn: &Connection, company: &str, actor: &str, action: &str, object_type: &str, created_at: &str) {
+    fn insert(
+        conn: &Connection,
+        company: &str,
+        actor: &str,
+        action: &str,
+        object_type: &str,
+        created_at: &str,
+    ) {
         conn.execute(
             "INSERT INTO audit_events
                (company_id, actor, action, object_type, object_id, before_json, after_json,
@@ -311,18 +318,45 @@ mod tests {
              );",
         )
         .unwrap();
-        insert(&conn, "c1", "owner", "company.create", "company", "2026-01-01T00:00:00Z");
-        insert(&conn, "c1", "owner", "import.commit", "import_batch", "2026-02-01T00:00:00Z");
-        insert(&conn, "c1", "reviewer", "scenario.approve", "scenario", "2026-03-01T00:00:00Z");
-        insert(&conn, "c2", "owner", "company.create", "company", "2026-01-15T00:00:00Z");
+        insert(
+            &conn,
+            "c1",
+            "owner",
+            "company.create",
+            "company",
+            "2026-01-01T00:00:00Z",
+        );
+        insert(
+            &conn,
+            "c1",
+            "owner",
+            "import.commit",
+            "import_batch",
+            "2026-02-01T00:00:00Z",
+        );
+        insert(
+            &conn,
+            "c1",
+            "reviewer",
+            "scenario.approve",
+            "scenario",
+            "2026-03-01T00:00:00Z",
+        );
+        insert(
+            &conn,
+            "c2",
+            "owner",
+            "company.create",
+            "company",
+            "2026-01-15T00:00:00Z",
+        );
         conn
     }
 
     #[test]
     fn lists_newest_first_and_is_company_scoped() {
         let conn = fresh();
-        let out =
-            audit_list_internal(&conn, "c1", &AuditFilters::default(), 1, None).unwrap();
+        let out = audit_list_internal(&conn, "c1", &AuditFilters::default(), 1, None).unwrap();
         assert_eq!(out.events.len(), 3, "c2's event must never appear");
         assert!(out.events[0].seq > out.events[1].seq, "seq DESC");
         assert_eq!(out.meta.total, 3);
@@ -344,7 +378,10 @@ mod tests {
         assert_eq!(out.events[0].action, "scenario.approve");
         assert_eq!(out.meta.total, 1);
         // Facets still offer every value in the Company chain so the filter is reversible.
-        assert_eq!(out.facets.actors, vec!["owner".to_string(), "reviewer".to_string()]);
+        assert_eq!(
+            out.facets.actors,
+            vec!["owner".to_string(), "reviewer".to_string()]
+        );
         assert!(out.facets.actions.contains(&"import.commit".to_string()));
         assert_eq!(out.chain_status.event_count, 3);
     }
@@ -377,7 +414,11 @@ mod tests {
             ..Default::default()
         };
         let out = audit_list_internal(&conn, "c1", &filters, 1, None).unwrap();
-        assert_eq!(out.events.len(), 3, "empty filters must not exclude everything");
+        assert_eq!(
+            out.events.len(),
+            3,
+            "empty filters must not exclude everything"
+        );
     }
 
     #[test]
@@ -433,5 +474,4 @@ mod tests {
         assert_eq!(out.chain_status.event_count, 0);
         assert!(out.facets.actors.is_empty());
     }
-
 }

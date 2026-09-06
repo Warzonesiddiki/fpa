@@ -29,7 +29,8 @@ if (indexed.length !== files.length)
     `count mismatch: index docs=${indexed.length} actual=${files.length} (README pointer row allowed)`,
   );
 
-const read = (f) => readFileSync(join(DOCS, f), "utf8");
+// CRLF-tolerant read (B18-8): a Windows checkout must parse identically to LF.
+const read = (f) => readFileSync(join(DOCS, f), "utf8").replace(/\r\n/g, "\n");
 const all = Object.fromEntries(files.map((f) => [f, read(f)]));
 const idDefs = (text, re) => new Set([...text.matchAll(re)].map((m) => m[1]));
 const idRefs = (re) => {
@@ -117,9 +118,9 @@ for (const [prefix, governing] of validatorPrefixes)
     err(
       `ERROR-HANDLING 2B: prefix ${prefix} cites governing code ${governing}, which §2 does not define`,
     );
-if (validatorPrefixes.size !== 7)
+if (validatorPrefixes.size !== 9)
   err(
-    `ERROR-HANDLING 2B: expected 7 validator prefixes, parsed ${validatorPrefixes.size} — the section format changed`,
+    `ERROR-HANDLING 2B: expected 9 validator prefixes, parsed ${validatorPrefixes.size} — the section format changed`,
   );
 const citations = (text) => {
   const out = new Set();
@@ -174,7 +175,7 @@ for (const [f, t] of Object.entries(all)) {
 /* 10. Ground-truth count claims embedded in headers */
 const claims = [
   ["42 screens", /42 screens/],
-  ["97 commands", /97 typed commands/],
+  ["102 commands", /102 typed commands/],
   ["56 tables", /56 \(49 original/],
   ["99 errors", /99 \(ZC revision/],
   ["60 docs", /60 docs\/ specs/],

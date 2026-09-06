@@ -59,6 +59,7 @@ export function CoaPage() {
   // Merge — remaps lines + children into the target, soft-deactivates the source (audited).
   const [mergeFrom, setMergeFrom] = useState("");
   const [mergeTo, setMergeTo] = useState("");
+  const [showMergeConfirm, setShowMergeConfirm] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeResult, setMergeResult] = useState<number | null>(null);
   const [mergeError, setMergeError] = useState<BridgeError | null>(null);
@@ -114,8 +115,8 @@ export function CoaPage() {
     }
   }, [companyId, packKey, filePath, load]);
 
-  const runMerge = useCallback(async () => {
-    if (!companyId) return;
+  const runMerge = useCallback(async (): Promise<boolean> => {
+    if (!companyId) return false;
     setMergeBusy(true);
     setMergeResult(null);
     setMergeError(null);
@@ -127,9 +128,12 @@ export function CoaPage() {
       setMergeResult(data.remapped);
       setMergeFrom("");
       setMergeTo("");
+      setShowMergeConfirm(false);
       await load(); // the merged source account is soft-deactivated → it leaves the tree
+      return true;
     } catch (err) {
       setMergeError(err as BridgeError);
+      return false;
     } finally {
       setMergeBusy(false);
     }
@@ -245,6 +249,15 @@ export function CoaPage() {
     </div>
   );
 
+  const sourceAccount = useMemo(
+    () => accounts.find((a) => a.id === mergeFrom) ?? null,
+    [accounts, mergeFrom],
+  );
+  const targetAccount = useMemo(
+    () => accounts.find((a) => a.id === mergeTo) ?? null,
+    [accounts, mergeTo],
+  );
+
   const mergeCard =
     accounts.length > 0 ? (
       <div className="rounded-lg border border-[var(--color-oneborder)] p-4">
@@ -254,7 +267,11 @@ export function CoaPage() {
             {t("coa.merge.from")}
             <select
               value={mergeFrom}
-              onChange={(e) => setMergeFrom(e.target.value)}
+              onChange={(e) => {
+                setMergeFrom(e.target.value);
+                setMergeResult(null);
+                setMergeError(null);
+              }}
               className="h-9 min-w-52 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
             >
               <option value="">{t("coa.merge.pick")}</option>
@@ -269,7 +286,11 @@ export function CoaPage() {
             {t("coa.merge.to")}
             <select
               value={mergeTo}
-              onChange={(e) => setMergeTo(e.target.value)}
+              onChange={(e) => {
+                setMergeTo(e.target.value);
+                setMergeResult(null);
+                setMergeError(null);
+              }}
               className="h-9 min-w-52 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 text-sm text-[var(--color-onetext)]"
             >
               <option value="">{t("coa.merge.pick")}</option>
@@ -282,22 +303,127 @@ export function CoaPage() {
           </label>
           <button
             type="button"
-            onClick={() => void runMerge()}
+            onClick={() => setShowMergeConfirm(true)}
             disabled={mergeBusy || !mergeFrom || !mergeTo || mergeFrom === mergeTo}
             className="h-9 rounded-md bg-[var(--color-oneprimary)] px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("coa.merge.cta")}
           </button>
         </div>
+
+        {sourceAccount && targetAccount && mergeFrom !== mergeTo && (
+          <div className="mt-3 rounded-md bg-[var(--color-onesurfacealt)] p-3 text-xs text-[var(--color-onetextsecondary)]">
+            <p className="font-semibold text-[var(--color-onetext)]">
+              {t("coa.merge.dialog.impact")}:
+            </p>
+            <p className="mt-1">
+              {sourceAccount.code} ({sourceAccount.usage_count} lines) &rarr; {targetAccount.code} (
+              {targetAccount.usage_count} lines).
+            </p>
+          </div>
+        )}
+
         {mergeResult !== null && (
           <p role="status" className="mt-2 text-sm text-[var(--color-onetext)]">
             {t("coa.merge.success", { remapped: mergeResult })}
           </p>
         )}
-        {mergeError && (
+        {mergeError && !showMergeConfirm && (
           <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
             {mergeError.userMessage}
           </p>
+        )}
+
+        {showMergeConfirm && sourceAccount && targetAccount && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <button
+              type="button"
+              aria-label={t("common.close")}
+              tabIndex={-1}
+              className="absolute inset-0 bg-black/40"
+              onClick={() => {
+                if (!mergeBusy) setShowMergeConfirm(false);
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="merge-dialog-title"
+              className="relative w-full max-w-lg rounded-xl border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-6 shadow-xl"
+            >
+              <h2
+                id="merge-dialog-title"
+                className="text-base font-semibold text-[var(--color-onetext)]"
+              >
+                {t("coa.merge.dialog.title")}
+              </h2>
+
+              <div
+                role="alert"
+                className="mt-3 rounded-md border border-[var(--color-onerror)]/40 bg-[var(--color-onerror)]/10 p-3 text-xs text-[var(--color-onerror)] font-medium"
+              >
+                {t("coa.merge.dialog.warning")}
+              </div>
+
+              <div className="mt-4 space-y-2 rounded-lg border border-[var(--color-oneborder)] p-3 text-xs">
+                <h3 className="font-semibold text-[var(--color-onetext)]">
+                  {t("coa.merge.dialog.impact")}
+                </h3>
+                <div className="grid grid-cols-2 gap-2 text-[var(--color-onetextsecondary)]">
+                  <div>
+                    <span className="font-medium text-[var(--color-onetext)]">
+                      {t("coa.merge.dialog.source")}:
+                    </span>{" "}
+                    {sourceAccount.code} — {sourceAccount.name}
+                  </div>
+                  <div>
+                    <span className="font-medium text-[var(--color-onetext)]">
+                      {t("coa.merge.dialog.target")}:
+                    </span>{" "}
+                    {targetAccount.code} — {targetAccount.name}
+                  </div>
+                </div>
+                <div className="border-t border-[var(--color-oneborder)] pt-2 text-[var(--color-onetextsecondary)]">
+                  <p>{t("coa.merge.dialog.sourceUsage", { count: sourceAccount.usage_count })}</p>
+                  <p>{t("coa.merge.dialog.targetUsage", { count: targetAccount.usage_count })}</p>
+                  <p className="mt-1 font-semibold text-[var(--color-onetext)]">
+                    {t("coa.merge.dialog.postMergeUsage", {
+                      count: sourceAccount.usage_count + targetAccount.usage_count,
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {mergeError && (
+                <p role="alert" className="mt-3 text-sm text-[var(--color-oneerror)]">
+                  {mergeError.userMessage}
+                </p>
+              )}
+
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={() => setShowMergeConfirm(false)}
+                  className="rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-4 py-2 text-sm font-medium text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacealt)] disabled:opacity-50"
+                >
+                  {t("coa.merge.dialog.cancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={async () => {
+                    await runMerge();
+                    // If error occurred, runMerge sets mergeError.
+                    // We only close if no error occurred.
+                  }}
+                  className="rounded-md bg-[var(--color-onerror)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {mergeBusy ? t("common.loading") : t("coa.merge.dialog.confirm")}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     ) : null;

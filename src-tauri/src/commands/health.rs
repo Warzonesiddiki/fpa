@@ -55,7 +55,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::Connection;
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::str::FromStr;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
@@ -70,13 +70,8 @@ use crate::storage::{db, keystore};
 
 /// The five categories, in run order (GLOSSARY "Model Health Check"). Mirrored by the
 /// `health_findings.category` CHECK constraint and by `HealthCategory` in `schema.ts`.
-pub const HEALTH_CATEGORIES: [&str; 5] = [
-    "tie_out",
-    "reference",
-    "rounding",
-    "driver_feed",
-    "anomaly",
-];
+pub const HEALTH_CATEGORIES: [&str; 5] =
+    ["tie_out", "reference", "rounding", "driver_feed", "anomaly"];
 
 /// A period-over-period move larger than this multiple of the prior magnitude is flagged as
 /// an anomaly (WARN, never auto-adjusted). Declared as an exact integer factor so the check
@@ -193,7 +188,12 @@ impl DraftFinding {
     }
 }
 
-fn fingerprint_of(category: &str, severity: &str, entity_ref: Option<&str>, message: &str) -> String {
+fn fingerprint_of(
+    category: &str,
+    severity: &str,
+    entity_ref: Option<&str>,
+    message: &str,
+) -> String {
     format!(
         "{}|{}|{}|{}",
         category,
@@ -358,7 +358,9 @@ fn check_tie_out(conn: &Connection, company_id: &str) -> AppResult<Vec<DraftFind
         let (batch_id, source_name) = row.map_err(AppError::from)?;
         out.push(DraftFinding::hard(
             "tie_out",
-            format!("Committed import batch \"{source_name}\" was committed with a failed tie-out."),
+            format!(
+                "Committed import batch \"{source_name}\" was committed with a failed tie-out."
+            ),
             Some(format!("batch:{batch_id}")),
         ));
     }
@@ -530,9 +532,7 @@ fn check_driver_feeds(
     for (driver_id, driver_name) in drivers {
         let mut fed: BTreeSet<(String, String)> = BTreeSet::new();
         let mut values = conn
-            .prepare(
-                "SELECT scenario_id, period_id FROM driver_values WHERE driver_id = ?1",
-            )
+            .prepare("SELECT scenario_id, period_id FROM driver_values WHERE driver_id = ?1")
             .map_err(AppError::from)?;
         let rows = values
             .query_map(rusqlite::params![driver_id], |r| {
@@ -738,10 +738,7 @@ fn company_currency(conn: &Connection, company_id: &str) -> AppResult<String> {
 
 /// Waivers recorded on the previous runs of this Model, keyed by finding fingerprint.
 /// The newest waiver wins when the same fingerprint was waived more than once.
-fn prior_waivers(
-    conn: &Connection,
-    model_id: &str,
-) -> AppResult<BTreeMap<String, HealthWaiver>> {
+fn prior_waivers(conn: &Connection, model_id: &str) -> AppResult<BTreeMap<String, HealthWaiver>> {
     let mut stmt = conn
         .prepare(
             "SELECT hf.category, hf.severity, hf.entity_ref, hf.message,
@@ -782,8 +779,10 @@ fn category_rollup(findings: &[HealthFinding]) -> Vec<HealthCategoryResult> {
     HEALTH_CATEGORIES
         .iter()
         .map(|category| {
-            let mine: Vec<&HealthFinding> =
-                findings.iter().filter(|f| f.category == *category).collect();
+            let mine: Vec<&HealthFinding> = findings
+                .iter()
+                .filter(|f| f.category == *category)
+                .collect();
             let blocking = mine
                 .iter()
                 .filter(|f| f.severity == "hard" && f.waiver.is_none())
@@ -806,10 +805,7 @@ fn category_rollup(findings: &[HealthFinding]) -> Vec<HealthCategoryResult> {
         .collect()
 }
 
-fn run_history(
-    conn: &Connection,
-    model_id: &str,
-) -> AppResult<Vec<HealthRunSummary>> {
+fn run_history(conn: &Connection, model_id: &str) -> AppResult<Vec<HealthRunSummary>> {
     let mut stmt = conn
         .prepare(
             "SELECT hc.id, hc.run_at, hc.status,
@@ -919,7 +915,11 @@ pub fn run_health_check(
         .count() as i64;
     let warning_count = findings.iter().filter(|f| f.severity == "warn").count() as i64;
     let waived_count = findings.iter().filter(|f| f.waiver.is_some()).count() as i64;
-    let status = if blocking_count > 0 { "failed" } else { "passed" };
+    let status = if blocking_count > 0 {
+        "failed"
+    } else {
+        "passed"
+    };
 
     tx.execute(
         "UPDATE health_checks SET status = ?1 WHERE id = ?2",
@@ -1154,7 +1154,11 @@ mod tests {
     fn the_five_categories_are_always_reported_in_the_documented_order() {
         let mut conn = fixture();
         let report = run(&mut conn);
-        let order: Vec<&str> = report.categories.iter().map(|c| c.category.as_str()).collect();
+        let order: Vec<&str> = report
+            .categories
+            .iter()
+            .map(|c| c.category.as_str())
+            .collect();
         assert_eq!(order, HEALTH_CATEGORIES.to_vec());
     }
 
@@ -1219,10 +1223,7 @@ mod tests {
         let refs = categories_of(&run(&mut conn), "reference");
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].severity, "hard");
-        assert_eq!(
-            refs[0].entity_ref.as_deref(),
-            Some("cell:ln-rev:sc-1:p-01")
-        );
+        assert_eq!(refs[0].entity_ref.as_deref(), Some("cell:ln-rev:sc-1:p-01"));
     }
 
     #[test]
@@ -1248,8 +1249,14 @@ mod tests {
         let refs = categories_of(&run(&mut conn), "reference");
         assert_eq!(refs.len(), 2);
         assert!(refs.iter().all(|f| f.severity == "hard"));
-        assert!(refs.iter().any(|f| f.message.contains("missing or inactive")));
-        assert!(refs.iter().any(|f| f.message.contains("references no Driver")));
+        assert!(
+            refs.iter()
+                .any(|f| f.message.contains("missing or inactive"))
+        );
+        assert!(
+            refs.iter()
+                .any(|f| f.message.contains("references no Driver"))
+        );
     }
 
     #[test]
@@ -1272,8 +1279,11 @@ mod tests {
     #[test]
     fn decimals_disagreeing_with_the_currency_scale_warn_once_per_line() {
         let mut conn = fixture();
-        conn.execute("UPDATE model_lines SET decimals = 0 WHERE id = 'ln-rev'", [])
-            .unwrap();
+        conn.execute(
+            "UPDATE model_lines SET decimals = 0 WHERE id = 'ln-rev'",
+            [],
+        )
+        .unwrap();
         let rounding = categories_of(&run(&mut conn), "rounding");
         assert_eq!(rounding.len(), 1, "two cells, one line ⇒ one warning");
         assert_eq!(rounding[0].severity, "warn");

@@ -4,8 +4,10 @@
 
 use tauri::{AppHandle, State};
 
-use crate::commands::company::app_data_dir;
-use crate::commands::session::{hash_pin, validate_pin_policy, verify_pin};
+use crate::commands::company::{app_data_dir, audited_hash};
+use crate::commands::session::{
+    SessionState, hash_pin, require_session_write, validate_pin_policy, verify_pin,
+};
 use crate::core::audit::{GENESIS_HASH, next_hash};
 use crate::core::error::{AppError, AppResult};
 use crate::storage::db;
@@ -15,17 +17,22 @@ use crate::storage::keystore;
 const PIN_ROW_ID: &str = "default";
 
 /// `security.change_pin` — {old_pin, new_pin} (PIN_POLICY_WEAK / AUTH_PIN_INVALID).
-/// The Company files are NOT re-encrypted: the same vault key is re-sealed under the new PIN's
-/// derived key with a fresh salt and nonce (AUTH-SPEC §2.4).
+/// Session-scoped mutation (API-SPEC §2 `session`): requires an unlocked, writable Company
+/// (`require_session_write` → SESSION_LOCKED / AUDIT_CHAIN_BREAK, which covers the
+/// `require_company_write` read-only residue). The Company files are NOT re-encrypted: the
+/// same vault key is re-sealed under the new PIN's derived key with a fresh salt and nonce
+/// (AUTH-SPEC §2.4). The reseal + `security.change_pin` audit event commit atomically.
 #[tauri::command(name = "security.change_pin", rename_all = "camelCase")]
 pub fn security_change_pin(
     app: AppHandle,
+    session: State<'_, SessionState>,
     old_pin: String,
     new_pin: String,
 ) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
     validate_pin_policy(&new_pin)?;
     let dir = app_data_dir(&app)?;
-    let conn = db::open_at(&dir)?;
+    let mut conn = db::open_at(&dir)?;
     let stored: Option<String> = conn
         .query_row(
             "SELECT argon2_params_json FROM pin_metadata WHERE id = ?1",
@@ -42,7 +49,9 @@ pub fn security_change_pin(
     let new_hash = hash_pin(&new_pin)?;
     let new_record = keys::reseal_pin_record(&vault_key, &new_pin, new_hash)?;
     keys::zeroize(&mut vault_key);
-    let changed = conn
+    let now = chrono::Utc::now().to_rfc3339();
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let changed = tx
         .execute(
             "UPDATE pin_metadata SET argon2_params_json = ?1, failed_attempts = 0, locked_until = NULL WHERE id = ?2",
             rusqlite::params![new_record.to_json()?, PIN_ROW_ID],
@@ -51,6 +60,24 @@ pub fn security_change_pin(
     if changed != 1 {
         return Err(AppError::internal("PIN_ROW_MISSING"));
     }
+    // HMAC audit of the rotation (keychain key — never the DB; payload = stored after_json).
+    let after_json = serde_json::json!({
+        "action": "security.change_pin",
+        "object_id": PIN_ROW_ID,
+        "changed_at": now,
+    })
+    .to_string();
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, &company_id).map_err(AppError::from)?;
+    let hash_value = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json,
+                                   prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'security.change_pin', 'pin_metadata', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![company_id, PIN_ROW_ID, after_json, prev, hash_value, now],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
     Ok(serde_json::json!({ "data": { "ok": true } }))
 }
 

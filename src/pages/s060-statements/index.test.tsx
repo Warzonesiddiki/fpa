@@ -290,6 +290,70 @@ describe("S-060 Statements", () => {
       largest_remainder: false,
     });
   });
+
+  it("switches the period scope and drives store loadStatement with appropriate periods", async () => {
+    const loadStatementSpy = vi.spyOn(storeState(), "loadStatement");
+    renderPage();
+    const periodSelect = screen.getByLabelText("Select statement period scope");
+    expect(periodSelect).toHaveValue("single");
+
+    await userEvent.selectOptions(periodSelect, "ytd");
+    expect(periodSelect).toHaveValue("ytd");
+    expect(loadStatementSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        periodScope: ["fp_2026_p01", "fp_2026_p02"],
+      }),
+    );
+
+    await userEvent.selectOptions(periodSelect, "fy");
+    expect(periodSelect).toHaveValue("fy");
+    expect(loadStatementSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        periodScope: expect.arrayContaining(["fp_2026_p01", "fp_2026_p12"]),
+      }),
+    );
+
+    await userEvent.selectOptions(periodSelect, "py");
+    expect(periodSelect).toHaveValue("py");
+    expect(loadStatementSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        periodScope: ["fp_2025_p01", "fp_2026_p01"],
+      }),
+    );
+  });
+
+  it("switches the business unit scope selector and drives store buScope", async () => {
+    const setBuScopeSpy = vi.spyOn(storeState(), "setBuScope");
+    renderPage();
+    const buSelect = screen.getByLabelText("Select business unit scope");
+    expect(buSelect).toHaveValue("all");
+
+    await userEvent.selectOptions(buSelect, "bu-us");
+    expect(setBuScopeSpy).toHaveBeenCalledWith({ kind: "single", bu_id: "bu-us" });
+
+    await userEvent.selectOptions(buSelect, "all");
+    expect(setBuScopeSpy).toHaveBeenCalledWith({ kind: "all", bu_id: null });
+  });
+
+  it("renders statement line labels as plain text — no fabricated drill-down (B18-5/6)", async () => {
+    setStoreState({
+      status: "populated",
+      rows: PL_ROWS,
+      totals: PL_TOTALS,
+      tieoutStatus: "pass",
+      roundingStatus: "exact",
+      findings: [],
+    });
+    renderPage();
+
+    // Labels are plain text — no drill-down affordance exists because native GL
+    // statement lines are not built; the browser never decomposes figures.
+    expect(screen.getByText("Sales Revenue")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Drill down into/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Constituent GL Accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/JE-2026-/i)).not.toBeInTheDocument();
+  });
 });
 
 describe("S-060 Statements axe", () => {

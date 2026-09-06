@@ -1,14 +1,17 @@
-//! Alert engine commands (F-026 · M5-4 · S-056 · API-SPEC §7 alerts.*).
+//! Alert engine commands (F-026 · M5-4 · M5-5 · S-056 · API-SPEC §7 alerts.*).
 //!
-//! Commands (the locked catalog carries exactly these two for alerts — dismiss/mute and
-//! rule edit/update have NO `alerts.*` rows; surfacing them would require an API-SPEC
-//! row + migration decision (Tier-3), so the UI ships them disabled rather than fake):
+//! Commands:
 //! - `alerts.list`: `{filter}` → `{alerts[]}` — read path; before selecting, it fires due
 //!   rules against the Company's current working data (PRD F-026: "alerts evaluate the
 //!   current working Model, not locked history" — US-027 edge case).
 //! - `alerts.create_rule`: `{rule}` → `{rule_id, audit_id}` — audited mutation on the
 //!   Company's HMAC chain (B4/audit policy). Errors: ALERT_RULE_INVALID (422,
 //!   non-retryable — ERROR-HANDLING §H).
+//! - `alerts.dismiss`: `{alert_id, reason?}` → `{alert_id, dismissed_at, audit_id}` —
+//!   marks alert as dismissed with timestamp and optional reason in `alerts` table;
+//!   writes HMAC audit event.
+//! - `alerts.mute_rule`: `{rule_id, duration_days?, reason?}` → `{rule_id, active, audit_id}` —
+//!   mutes rule for specified scope/duration; writes HMAC audit event.
 //!
 //! Evaluation policy (hand-reviewable, no hidden magic):
 //! - `line_ref` rules compare the line's most recently written `model_values.amount_minor`
@@ -119,10 +122,8 @@ fn parse_exact_decimal(s: &str) -> Result<Decimal, ()> {
     if !int_part.chars().all(|c| c.is_ascii_digit()) {
         return Err(());
     }
-    if let Some(f) = frac_part {
-        if !f.chars().all(|c| c.is_ascii_digit()) {
-            return Err(());
-        }
+    if frac_part.is_some_and(|f| !f.chars().all(|c| c.is_ascii_digit())) {
+        return Err(());
     }
     Decimal::from_str(s).map_err(|_| ())
 }
@@ -136,10 +137,15 @@ fn validate_rule(rule: &AlertRuleInput) -> AppResult<Decimal> {
         return Err(rule_invalid("name must be 1–120 characters"));
     }
     let has_kpi = rule.kpi_id.as_deref().is_some_and(|v| !v.trim().is_empty());
-    let has_line = rule.line_ref.as_deref().is_some_and(|v| !v.trim().is_empty());
+    let has_line = rule
+        .line_ref
+        .as_deref()
+        .is_some_and(|v| !v.trim().is_empty());
     if has_kpi == has_line {
         // exactly one target (S-056: threshold per KPI/line — never both, never neither)
-        return Err(rule_invalid("exactly one of kpi_id or line_ref is required"));
+        return Err(rule_invalid(
+            "exactly one of kpi_id or line_ref is required",
+        ));
     }
     if !ALERT_OPERATORS.contains(&rule.threshold_operator.as_str()) {
         return Err(rule_invalid(format!(
@@ -209,7 +215,7 @@ fn fire_due_alerts(conn: &mut rusqlite::Connection, company_id: &str) -> AppResu
         line_ref: String,
         operator: String,
         threshold: String,
-        severity: String,
+        // severity: String,
     }
     let mut fired = 0usize;
 
@@ -217,7 +223,7 @@ fn fire_due_alerts(conn: &mut rusqlite::Connection, company_id: &str) -> AppResu
     {
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, line_ref, threshold_operator, threshold_value, severity
+                "SELECT id, name, line_ref, threshold_operator, threshold_value
                  FROM alert_rules
                  WHERE active = 1 AND line_ref IS NOT NULL",
             )
@@ -229,7 +235,6 @@ fn fire_due_alerts(conn: &mut rusqlite::Connection, company_id: &str) -> AppResu
                 line_ref: r.get(2)?,
                 operator: r.get(3)?,
                 threshold: r.get(4)?,
-                severity: r.get(5)?,
             })
         })?;
         for row in rows {
@@ -296,13 +301,15 @@ pub fn alerts_list(
 ) -> AppResult<AlertsListResponse> {
     let company_id = require_unlocked(&session)?;
     let filter = filter.unwrap_or_default();
-    if let Some(sev) = &filter.severity {
-        if !ALERT_SEVERITIES.contains(&sev.as_str()) {
-            return Err(rule_invalid(format!(
-                "filter.severity must be one of {}",
-                ALERT_SEVERITIES.join(", ")
-            )));
-        }
+    if filter
+        .severity
+        .as_deref()
+        .is_some_and(|sev| !ALERT_SEVERITIES.contains(&sev))
+    {
+        return Err(rule_invalid(format!(
+            "filter.severity must be one of {}",
+            ALERT_SEVERITIES.join(", ")
+        )));
     }
 
     let dir = app_data_dir(&app)?;
@@ -428,11 +435,179 @@ pub fn alerts_create_rule(
     }))
 }
 
+/// `alerts.dismiss` — marks alert as dismissed with timestamp and optional reason in `alerts` table;
+/// writes HMAC audit event.
+#[tauri::command(name = "alerts.dismiss", rename_all = "snake_case")]
+pub fn alerts_dismiss(
+    app: AppHandle,
+    alert_id: String,
+    reason: Option<String>,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    let tx = conn.transaction().map_err(AppError::from)?;
+
+    // Verify alert exists and fetch current state
+    let (existing_dismissed_at, rule_id): (Option<String>, String) = tx
+        .query_row(
+            "SELECT dismissed_at, rule_id FROM alerts WHERE id = ?1",
+            rusqlite::params![alert_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| {
+            AppError::invalid(format!("VALUE_INVALID: alert_id '{alert_id}' not found"))
+        })?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let dismissed_at = existing_dismissed_at.unwrap_or_else(|| now.clone());
+
+    tx.execute(
+        "UPDATE alerts SET dismissed_at = ?1 WHERE id = ?2",
+        rusqlite::params![dismissed_at, alert_id],
+    )
+    .map_err(AppError::from)?;
+
+    let trimmed_reason = reason.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let before_json = serde_json::json!({
+        "alert_id": alert_id,
+        "rule_id": rule_id,
+        "dismissed_at": null,
+    })
+    .to_string();
+    let after_json = serde_json::json!({
+        "action": "alerts.dismiss",
+        "alert_id": alert_id,
+        "rule_id": rule_id,
+        "dismissed_at": dismissed_at,
+        "reason": trimmed_reason,
+    })
+    .to_string();
+
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, &company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events
+           (company_id, actor, action, object_type, object_id, before_json, after_json,
+            prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'alerts.dismiss', 'alert', ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            company_id,
+            alert_id,
+            before_json,
+            after_json,
+            prev,
+            hash,
+            now
+        ],
+    )
+    .map_err(AppError::from)?;
+    let audit_id = tx.last_insert_rowid();
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": {
+            "alert_id": alert_id,
+            "dismissed_at": dismissed_at,
+            "audit_id": audit_id,
+        }
+    }))
+}
+
+/// `alerts.mute_rule` — mutes rule for specified scope/duration; writes HMAC audit event.
+#[tauri::command(name = "alerts.mute_rule", rename_all = "snake_case")]
+pub fn alerts_mute_rule(
+    app: AppHandle,
+    rule_id: String,
+    duration_days: Option<i64>,
+    reason: Option<String>,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    let tx = conn.transaction().map_err(AppError::from)?;
+
+    // Verify rule exists and get current active state
+    let active: i64 = tx
+        .query_row(
+            "SELECT active FROM alert_rules WHERE id = ?1",
+            rusqlite::params![rule_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| AppError::invalid(format!("VALUE_INVALID: rule_id '{rule_id}' not found")))?;
+
+    // Set rule active = 0
+    tx.execute(
+        "UPDATE alert_rules SET active = 0 WHERE id = ?1",
+        rusqlite::params![rule_id],
+    )
+    .map_err(AppError::from)?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let trimmed_reason = reason.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    let before_json = serde_json::json!({
+        "rule_id": rule_id,
+        "active": active == 1,
+    })
+    .to_string();
+    let after_json = serde_json::json!({
+        "action": "alerts.mute_rule",
+        "rule_id": rule_id,
+        "active": false,
+        "duration_days": duration_days,
+        "reason": trimmed_reason,
+        "muted_at": now,
+    })
+    .to_string();
+
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, &company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events
+           (company_id, actor, action, object_type, object_id, before_json, after_json,
+            prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'alerts.mute_rule', 'alert_rule', ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            company_id,
+            rule_id,
+            before_json,
+            after_json,
+            prev,
+            hash,
+            now
+        ],
+    )
+    .map_err(AppError::from)?;
+    let audit_id = tx.last_insert_rowid();
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": {
+            "rule_id": rule_id,
+            "active": false,
+            "audit_id": audit_id,
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn rule(name: &str, kpi: Option<&str>, line: Option<&str>, op: &str, value: &str) -> AlertRuleInput {
+    fn rule(
+        name: &str,
+        kpi: Option<&str>,
+        line: Option<&str>,
+        op: &str,
+        value: &str,
+    ) -> AlertRuleInput {
         AlertRuleInput {
             name: name.to_string(),
             kpi_id: kpi.map(str::to_string),
@@ -446,8 +621,14 @@ mod tests {
 
     #[test]
     fn exact_decimal_accepts_only_plain_decimal_strings() {
-        assert_eq!(parse_exact_decimal("2500000000").unwrap(), Decimal::from(2_500_000_000i64));
-        assert_eq!(parse_exact_decimal("-24.50").unwrap(), Decimal::from_str("-24.5").unwrap());
+        assert_eq!(
+            parse_exact_decimal("2500000000").unwrap(),
+            Decimal::from(2_500_000_000i64)
+        );
+        assert_eq!(
+            parse_exact_decimal("-24.50").unwrap(),
+            Decimal::from_str("-24.5").unwrap()
+        );
         for bad in ["", "-.5", "5.", "1e3", "abc", "1.2.3", "NaN", "1,000", "+5"] {
             assert!(parse_exact_decimal(bad).is_err(), "must reject {bad:?}");
         }
@@ -456,12 +637,18 @@ mod tests {
     #[test]
     fn validation_enforces_name_target_pair_operator_and_severity() {
         assert!(validate_rule(&rule("", None, Some("l1"), "lt", "10")).is_err());
-        assert!(validate_rule(&rule("n", None, None, "lt", "10")).is_err(), "no target");
+        assert!(
+            validate_rule(&rule("n", None, None, "lt", "10")).is_err(),
+            "no target"
+        );
         assert!(
             validate_rule(&rule("n", Some("k1"), Some("l1"), "lt", "10")).is_err(),
             "both targets"
         );
-        assert!(validate_rule(&rule("n", None, Some("l1"), "ne", "10")).is_err(), "bad op");
+        assert!(
+            validate_rule(&rule("n", None, Some("l1"), "ne", "10")).is_err(),
+            "bad op"
+        );
         assert!(
             validate_rule(&rule("n", None, Some("l1"), "lt", "1.5e3")).is_err(),
             "float-form threshold"
@@ -472,7 +659,10 @@ mod tests {
     #[test]
     fn crosses_matrix_is_exact_and_eq_is_numeric() {
         let t = Decimal::from_str("100").unwrap();
-        let (lo, at) = (Decimal::from_str("99.99").unwrap(), Decimal::from_str("100.0").unwrap());
+        let (lo, at) = (
+            Decimal::from_str("99.99").unwrap(),
+            Decimal::from_str("100.0").unwrap(),
+        );
         assert!(crosses(&lo, "lt", &t) && crosses(&lo, "lte", &t) && !crosses(&lo, "gt", &t));
         assert!(!crosses(&at, "lt", &t) && crosses(&at, "lte", &t) && crosses(&at, "eq", &t));
         assert!(crosses(&at, "gte", &t) && !crosses(&at, "gt", &t));

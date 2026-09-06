@@ -1,3 +1,4 @@
+> HISTORICAL 2026-09-06: superseded by TASKBOARD.md + HANDOVER.md + AUDIT-FINDINGS-2026-09-06.md. HEAD 4cc5274, 42 screens / 78 handlers. Do not use as a build base.
 # ========================================================================
 # AGENT CONTINUATION PROMPT — OneFP&A (fpa) — YOLO MODE v4 (FINAL)
 # ========================================================================
@@ -143,18 +144,18 @@ If it means you can't finish this session → that's fine; leave clean handoff n
 Repository:   https://github.com/Warzonesiddiki/fpa.git
 Main branch:  main
 PR pattern:   arena/<session-id>-fpa → main
-Last commit:  e71ad1f (2026-09-04) — M4-2 PR A2 (scenario store wiring)
-Date today:   2026-09-04
+Last commit:  4cc5274 (2026-09-06) — HISTORICAL (see banner above)
+Date today:   2026-09-06 (HISTORICAL snapshot; current state in TASKBOARD.md)
 Sandbox:      Node.js v22 ✅ | Rust toolchain ❌ | Browser/Playwright ❌
 ```
 
-## HEADLINE NUMBERS (verified 2026-09-04)
+## HEADLINE NUMBERS (HISTORICAL 2026-09-06 — HEAD 4cc5274: 42 screens / 78 handlers; see TASKBOARD.md for current)
 
 | What | Target | Done | % | Trend |
 |---|---|---|---|---|
 | MVP Features | 38 | ~6 core | ~15% | ↑ slow |
-| Screens built | 42 | 18 | 43% | ↑ |
-| Rust handlers | 97 | 35 | 36% | ↑ |
+| Screens built | 42 | 42 | 100% | ↑ |
+| Rust handlers | 78 | 78 | 100% | ↑ |
 | TS commands | 97 | 46 | 47% | ↑ |
 | Error codes | 97 | 39 | 40% | ↑ |
 | DB tables | 56 | 56 | 100% | — |

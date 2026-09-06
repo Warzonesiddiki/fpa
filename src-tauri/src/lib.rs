@@ -12,19 +12,24 @@ pub mod commands;
 pub mod core;
 pub mod storage;
 
-use commands::alerts::{alerts_create_rule, alerts_list};
-use commands::assumption::{assumption_find_usages, assumption_list, assumption_upsert};
+use commands::alerts::{alerts_create_rule, alerts_dismiss, alerts_list, alerts_mute_rule};
+use commands::assumption::{
+    assumption_find_usages, assumption_list, assumption_upsert, assumption_waive,
+};
 use commands::audit::audit_list;
+use commands::backup::{backup_create, backup_restore};
 use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
     company_clone_sandbox, company_create, company_delete, company_list, company_open,
 };
+use commands::consolidation::{consolidation_run, consolidation_status};
 use commands::cycle::{
     collection_export, collection_import, collection_resolve_conflict, cycle_checklist_status,
     cycle_start, cycle_task_update,
 };
 use commands::driver::{driver_set_value, driver_upsert};
+use commands::export::{audit_export_dataroom, export_excel, export_model_dump, export_pdf};
 use commands::fva::fva_get;
 use commands::health::{health_run, health_waive};
 use commands::import::{
@@ -32,9 +37,12 @@ use commands::import::{
     import_rollback, import_tieout, import_validate,
 };
 use commands::license::{license_apply_response, license_request_file, license_verify};
-use commands::model::{ModelRegistry, model_cell_set_v1, model_diff, model_recalc};
-use commands::pack::pack_list;
+use commands::model::{
+    ModelRegistry, model_cell_set_v1, model_create, model_diff, model_recalc, model_sheet_add,
+};
+use commands::pack::{pack_builder_save_v1, pack_install, pack_list, pack_validate};
 use commands::plan::{plan_goal_seek, plan_sensitivity, plan_whatif_overlay};
+use commands::report::{kpi_define, report_layout_render, report_layout_save};
 use commands::scenario::{
     baseline_set, model_list, scenario_approve, scenario_create, scenario_delete,
     scenario_duplicate, scenario_lock, scenario_reopen, scenario_submit,
@@ -83,6 +91,9 @@ pub fn run() {
             coa_import,
             coa_merge_accounts,
             pack_list,
+            pack_validate,
+            pack_install,
+            pack_builder_save_v1,
             import_parse,
             import_map_save_v1,
             import_validate,
@@ -96,6 +107,8 @@ pub fn run() {
             settings_get,
             settings_set,
             model_cell_set_v1,
+            model_sheet_add,
+            model_create,
             model_recalc,
             model_diff,
             plan_whatif_overlay,
@@ -106,6 +119,7 @@ pub fn run() {
             assumption_upsert,
             assumption_list,
             assumption_find_usages,
+            assumption_waive,
             model_schedule_upsert,
             scenario_create,
             scenario_duplicate,
@@ -128,9 +142,22 @@ pub fn run() {
             statement_get,
             alerts_list,
             alerts_create_rule,
+            alerts_dismiss,
+            alerts_mute_rule,
             audit_list,
             health_run,
             health_waive,
+            consolidation_run,
+            consolidation_status,
+            report_layout_save,
+            report_layout_render,
+            kpi_define,
+            backup_create,
+            backup_restore,
+            export_excel,
+            export_pdf,
+            export_model_dump,
+            audit_export_dataroom,
         ])
         .setup(|_app| {
             // Least-privilege check: no shell plugin, no broad FS capability (SECURITY-CHECKLIST A05).

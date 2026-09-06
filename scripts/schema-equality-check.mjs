@@ -54,7 +54,8 @@ if (!existsSync(migDir)) {
 }
 
 /* ---- 2. Parse DATABASE-SCHEMA.md sections (heading → body) ---- */
-const doc = readFileSync("docs/DATABASE-SCHEMA.md", "utf8");
+// CRLF-tolerant (B18-8): `### table\r` must match the same as `### table`.
+const doc = readFileSync("docs/DATABASE-SCHEMA.md", "utf8").replace(/\r\n/g, "\n");
 const docSections = new Map(); // table -> section body text
 {
   const lines = doc.split("\n");

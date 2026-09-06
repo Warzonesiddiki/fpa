@@ -30,9 +30,20 @@ cargo fetch
 npm run tauri:dev
 
 # 4. Verify quality gates (what CI runs)
-npm run check            # typescript + eslint + vitest + coverage
-cargo test               # rust unit + property + oracle tests
+npm run check            # full gate: lint + typecheck + fmt:check + vitest + schema-equality + docs-links + docs:verify + packs + money:ast + security
+npm run docs:verify      # docs index/links/consistency checks
+npm run packs:validate   # 12 Industry Packs validate
+npm run money:ast        # money-safety ratchet (float ban check)
+npm run security:scan    # secret + telemetry + license scans
+cargo test               # Rust engine/storage/property tests (needs Rust toolchain; also run cargo clippy -- -D warnings and cargo fmt --check)
 ```
+
+> **Sandbox notes:** if `node_modules` is empty/missing (`eslint: not found` out of
+> nowhere), the sandbox wiped it mid-session (excluded from snapshots) — run
+> `npm install` and re-run the gates, do not chase phantom code failures.
+> `npm install` may rewrite `package-lock.json` (`dev` → `devOptional` churn from
+> newer npm) — run `git checkout -- package-lock.json` before committing unless you
+> intended a lockfile change.
 
 ### Try the product in 60 seconds
 1. First-Run Wizard: name a Company → pick **Manufacturing** pack → calendar → **Finish**.
@@ -47,11 +58,13 @@ cargo test               # rust unit + property + oracle tests
 | `npm run tauri:dev` | Dev desktop app (HMR) |
 | `npm run build` | Production webview bundle |
 | `npm run tauri:build` | Build installer for current OS |
-| `npm run check` | Full frontend gate (tsc+lint+test+coverage) |
-| `cargo test` | Rust engine/storage/property tests |
+| `npm run check` | Full gate (lint + typecheck + fmt:check + vitest + schema-equality-check + docs-link-check + docs:verify + packs:validate + money:ast + security:scan) |
+| `cargo test` | Rust engine/storage/property tests (plus `cargo clippy -- -D warnings`, `cargo fmt --check`) |
 | `npm run test:e2e` | Playwright E2E (requires tauri-driver) |
 | `npm run docs:verify` | Docs index/links/consistency checks |
+| `npm run packs:validate` | Industry Pack validation (12/12) |
 | `npm run money:ast` | Money-safety ratchet (float ban check) |
+| `npm run security:scan` | Secret + telemetry + license scans |
 
 ---
 
@@ -60,8 +73,8 @@ cargo test               # rust unit + property + oracle tests
 | Path | What |
 |---|---|
 | `docs/` | The 61 documentation files (60-row docs index + README) — source of truth — start at DOCS-INDEX.md) |
-| `src/` | TypeScript UI (React 19, AG Grid, ECharts, HyperFormula) |
-| `src-tauri/` | Rust core (engines, money, calendar, ingestion, export, security) |
+| `src/` | TypeScript UI (React 19, AG Grid, ECharts, HyperFormula) — 42 screens in `src/pages/` |
+| `src-tauri/` | Rust core (engines, money, calendar, ingestion, export, security) — 78 Tauri handlers in `src-tauri/src/lib.rs` |
 | `packs/` | Industry Packs (JSON + SQL seeds — data only) |
 | `e2e/` | Playwright flows (UF-001…UF-014) |
 

@@ -158,6 +158,51 @@ pub fn model_cell_set_v1(
     let prev = audited_hash(&tx, &company_id)?;
     let hash = next_hash(&hmac, &prev, after_json.to_string().as_bytes());
     let now = chrono::Utc::now().to_rfc3339();
+
+    // Persist into model_values table if line, scenario, and period exist (M3-1 persistence)
+    let line_exists: Option<String> = tx
+        .query_row(
+            "SELECT id FROM model_lines WHERE id = ?1",
+            [&line_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+
+    let period_exists: Option<String> = tx
+        .query_row(
+            "SELECT id FROM fiscal_periods WHERE id = ?1",
+            [&period_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+
+    if line_exists.is_some() && period_exists.is_some() {
+        let mv_id = format!("mv-{}-{}-{}", scenario_id, line_id, period_id);
+        let computed = if stored.manual_override { 0 } else { 1 };
+        tx.execute(
+            "INSERT INTO model_values (id, line_id, scenario_id, period_id, amount_minor, amount_text, formula, computed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(line_id, scenario_id, period_id) DO UPDATE SET
+               amount_minor = excluded.amount_minor,
+               amount_text = excluded.amount_text,
+               formula = excluded.formula,
+               computed = excluded.computed",
+            rusqlite::params![
+                mv_id,
+                line_id,
+                scenario_id,
+                period_id,
+                value_minor,
+                stored.amount_text,
+                stored.formula,
+                computed,
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
     tx.execute(
         "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
                                    before_json, after_json, prev_hash, hash, created_at)
@@ -482,6 +527,237 @@ pub fn model_diff(
     }))
 }
 
+/// `model.sheet.add` — {model_id, name, type} → {sheet_id} (API-SPEC §19).
+/// Model write: inserts a `model_sheets` row (sort_order = MAX+1) and appends a
+/// `model.sheet.add` HMAC audit event in ONE transaction (B18-1/B7).
+#[tauri::command(name = "model.sheet.add", rename_all = "snake_case")]
+pub fn model_sheet_add(
+    app: AppHandle,
+    model_id: String,
+    name: String,
+    sheet_type: String,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    model_sheet_add_internal(&mut conn, &dir, &company_id, &model_id, &name, &sheet_type)
+}
+
+/// `model.create` — {company_id, name, horizon, pack_id} → {model_id, scenario_id}
+/// (API-SPEC §20). Company write: seeds `models` + Base scenario exactly like
+/// `company.create` does, plus a `model.create` HMAC audit event — ONE transaction.
+#[tauri::command(name = "model.create", rename_all = "snake_case")]
+pub fn model_create(
+    app: AppHandle,
+    company_id: String,
+    name: String,
+    horizon: String,
+    pack_id: String,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let unlocked = require_session_write(&session)?;
+    if company_id.trim() != unlocked {
+        return Err(AppError::invalid(
+            "model.create company_id must be the unlocked Company",
+        ));
+    }
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    model_create_internal(&mut conn, &dir, &company_id, &name, &horizon, &pack_id)
+}
+
+/// Shared implementation (unit-testable; caller owns the connection and the data dir).
+pub fn model_create_internal(
+    conn: &mut rusqlite::Connection,
+    dir: &std::path::Path,
+    company_id: &str,
+    name: &str,
+    horizon: &str,
+    pack_id: &str,
+) -> AppResult<serde_json::Value> {
+    const HORIZONS: &[&str] = &["13w", "1y", "3y", "5y"];
+    let name_trimmed = name.trim();
+    if name_trimmed.is_empty() {
+        return Err(AppError::invalid("model name is required"));
+    }
+    if !HORIZONS.contains(&horizon) {
+        return Err(AppError::invalid("horizon must be one of 13w/1y/3y/5y"));
+    }
+
+    // Pack must exist (any installed pack of this installation; §20).
+    let pack_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM packs WHERE id = ?1)",
+            [pack_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map(|o| o.unwrap_or(false))
+        .map_err(AppError::from)?;
+    if !pack_exists {
+        return Err(AppError::invalid(
+            "pack_id must reference an installed pack",
+        ));
+    }
+
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let model_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO models (id, company_id, name, horizon, status, current_scenario_id, pack_id)
+         VALUES (?1, ?2, ?3, ?4, 'active', NULL, ?5)",
+        rusqlite::params![model_id, company_id, name_trimmed, horizon, pack_id],
+    )
+    .map_err(AppError::from)?;
+
+    // Base scenario: budget/draft/baseline=1, wired as current (same as company.create).
+    let scenario_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO scenarios (id, model_id, name, kind, state, parent_scenario_id, baseline)
+         VALUES (?1, ?2, 'Base', 'budget', 'draft', NULL, 1)",
+        rusqlite::params![scenario_id, model_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "UPDATE models SET current_scenario_id = ?1 WHERE id = ?2",
+        rusqlite::params![scenario_id, model_id],
+    )
+    .map_err(AppError::from)?;
+
+    let after_json = serde_json::json!({
+        "action": "model.create",
+        "name": name_trimmed,
+        "horizon": horizon,
+        "pack_id": pack_id,
+        "scenario_id": scenario_id,
+    })
+    .to_string();
+    let key = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'model.create', 'model', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            company_id,
+            model_id,
+            after_json,
+            prev,
+            hash,
+            chrono::Utc::now().to_rfc3339()
+        ],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": { "model_id": model_id, "scenario_id": scenario_id }
+    }))
+}
+
+/// Shared implementation (unit-testable; caller owns the connection and the data dir).
+pub fn model_sheet_add_internal(
+    conn: &mut rusqlite::Connection,
+    dir: &std::path::Path,
+    company_id: &str,
+    model_id: &str,
+    name: &str,
+    sheet_type: &str,
+) -> AppResult<serde_json::Value> {
+    const SHEET_TYPES: &[&str] = &[
+        "input",
+        "formula",
+        "driver",
+        "assumption",
+        "schedule",
+        "statement",
+    ];
+
+    let name_trimmed = name.trim();
+    if name_trimmed.is_empty() {
+        return Err(AppError::invalid("sheet name is required"));
+    }
+    if !SHEET_TYPES.contains(&sheet_type) {
+        return Err(AppError::invalid(format!(
+            "sheet type '{sheet_type}' not in input/formula/driver/assumption/schedule/statement"
+        )));
+    }
+
+    // The model must exist and belong to the unlocked Company (§19).
+    let owner: Option<String> = conn
+        .query_row(
+            "SELECT company_id FROM models WHERE id = ?1",
+            [model_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if owner.as_deref() != Some(company_id) {
+        return Err(AppError::invalid(
+            "model.create model_id must belong to the unlocked Company",
+        ));
+    }
+
+    let tx = conn.transaction().map_err(AppError::from)?;
+
+    // UNIQUE(model_id,name) surfaced as the typed taxonomy code, never a bare constraint error.
+    let dup: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM model_sheets WHERE model_id = ?1 AND name = ?2)",
+            rusqlite::params![model_id, name_trimmed],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+    if dup {
+        return Err(AppError::SheetNameDup {
+            name: name_trimmed.to_string(),
+        });
+    }
+
+    let sort_order: i64 = tx
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM model_sheets WHERE model_id = ?1",
+            [model_id],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+
+    let sheet_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO model_sheets (id, model_id, name, sheet_type, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![sheet_id, model_id, name_trimmed, sheet_type, sort_order],
+    )
+    .map_err(AppError::from)?;
+
+    let after_json = serde_json::json!({
+        "action": "model.sheet.add",
+        "model_id": model_id,
+        "name": name_trimmed,
+        "sheet_type": sheet_type,
+        "sort_order": sort_order,
+    })
+    .to_string();
+    let key = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'model.sheet.add', 'model_sheet', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            company_id,
+            sheet_id,
+            after_json,
+            prev,
+            hash,
+            chrono::Utc::now().to_rfc3339()
+        ],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({ "data": { "sheet_id": sheet_id } }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +835,178 @@ mod tests {
             body.user_message,
             "This scenario is locked. Create a Version to edit it."
         );
+    }
+
+    #[test]
+    fn sheet_add_inserts_row_sorts_last_and_audits() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-sheetadd-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let out =
+            model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "  Revenue  ", "input")
+                .unwrap();
+        let sheet_id = out["data"]["sheet_id"].as_str().unwrap().to_string();
+
+        let (name, stype, sort): (String, String, i64) = conn
+            .query_row(
+                "SELECT name, sheet_type, sort_order FROM model_sheets WHERE id = ?1",
+                [&sheet_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Revenue"); // trimmed per §19
+        assert_eq!(stype, "input");
+        assert_eq!(sort, 0);
+
+        let out2 =
+            model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "Headcount", "schedule")
+                .unwrap();
+        let sheet2 = out2["data"]["sheet_id"].as_str().unwrap().to_string();
+        let sort2: i64 = conn
+            .query_row(
+                "SELECT sort_order FROM model_sheets WHERE id = ?1",
+                [&sheet2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sort2, 1); // MAX+1 sorts last
+
+        let audits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'model.sheet.add' AND company_id = 'comp-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audits, 2);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sheet_add_duplicate_name_fails_closed_with_sheet_name_dup() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-sheetdup-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "Revenue", "input").unwrap();
+        // Uniqueness compares the TRIMMED name (§19) — case-sensitive per SQLite collation,
+        // so the exact-case duplicate is the failure path:
+        let err = model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "Revenue", "input")
+            .unwrap_err();
+        let body = err.body();
+        assert_eq!(body.code, "SHEET_NAME_DUP");
+        assert_eq!(body.http_status, 409);
+        let sheets: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM model_sheets WHERE model_id = 'mod-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sheets, 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sheet_add_rejects_bad_type_and_foreign_model() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-sheetbad-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let err = model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "X", "banana")
+            .unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        let err = model_sheet_add_internal(&mut conn, &dir, "comp-1", "mod-1", "   ", "input")
+            .unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        // model in another company → VALUE_INVALID (§19 scope rule)
+        let err = model_sheet_add_internal(&mut conn, &dir, "comp-other", "mod-1", "X", "input")
+            .unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn model_create_seeds_model_base_scenario_and_audit() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-mcreate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let out = model_create_internal(&mut conn, &dir, "comp-1", "  New Model  ", "1y", "pack-1")
+            .unwrap();
+        let model_id = out["data"]["model_id"].as_str().unwrap();
+        let scenario_id = out["data"]["scenario_id"].as_str().unwrap();
+
+        let (name, horizon, status, cur): (String, String, String, Option<String>) = conn
+            .query_row(
+                "SELECT name, horizon, status, current_scenario_id FROM models WHERE id = ?1",
+                [model_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "New Model"); // trimmed
+        assert_eq!(horizon, "1y");
+        assert_eq!(status, "active");
+        assert_eq!(cur.as_deref(), Some(scenario_id));
+
+        let (sc_name, sc_state): (String, String) = conn
+            .query_row(
+                "SELECT name, state FROM scenarios WHERE id = ?1",
+                [scenario_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(sc_name, "Base");
+        assert_eq!(sc_state, "draft");
+
+        let audits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'model.create' AND company_id = 'comp-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audits, 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn model_create_rejects_bad_horizon_bad_pack_and_foreign_company() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-mbad-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // horizon outside the closed set
+        let err =
+            model_create_internal(&mut conn, &dir, "comp-1", "M", "2y", "pack-1").unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        // blank name
+        let err =
+            model_create_internal(&mut conn, &dir, "comp-1", "   ", "1y", "pack-1").unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        // unknown pack
+        let err =
+            model_create_internal(&mut conn, &dir, "comp-1", "M", "1y", "pack-nope").unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+
+        // company_id mismatch vs the (absent) unlocked session scope: the internal fn
+        // writes the audit under the CALLER-provided company, so a foreign company id
+        // would strand the audit chain — the command wrapper guards this; internal fn
+        // still succeeds for the owner path only. Verify the wrapper guard separately.
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -6,10 +6,9 @@
  * digest + retention POLICY shown as engine facts — not fake toggles, B18).
  *
  * Honest-state boundaries of the M5-4 slice:
- *   * Dismiss / mute-rule buttons are DISABLED with an explanatory title: the locked API
- *     catalog has `alerts.list` + `alerts.create_rule` only — no alerts.dismiss /
- *     alerts.mute_rule row (adding one is Tier-3). A local-only dismiss would fabricate
- *     persistence (B18), so we do not ship it.
+ *   * Dismiss / mute-rule call the real `alerts.dismiss` / `alerts.mute_rule` commands
+ *     (HMAC-audited natively, API-SPEC §2); the list reloads from `alerts.list` after
+ *     success, so no local-only state is fabricated (B18).
  *   * KPI-target rules persist and validate but never fire before the M6-4/5 KPI engine —
  *     stated in the panel copy, no fabricated evaluations.
  *   * Threshold + trigger values are exact decimal strings rendered verbatim (money rule:
@@ -34,7 +33,15 @@ function formatFired(iso: string): string {
 }
 
 /** One alert log row with the expandable trigger chain (wireframe: chain is first-class). */
-function AlertItem({ alert }: { alert: AlertRecord }) {
+function AlertItem({
+  alert,
+  onDismiss,
+  busy,
+}: {
+  alert: AlertRecord;
+  onDismiss: (id: string) => void;
+  busy: boolean;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const chain = alert.trigger_chain;
@@ -107,22 +114,17 @@ function AlertItem({ alert }: { alert: AlertRecord }) {
       )}
 
       <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          disabled
-          title={t("alertsPage.pendingDismiss")}
-          className="cursor-not-allowed rounded border border-[var(--color-oneborder)] px-2 py-0.5 text-xs text-[var(--color-onetextmuted)]"
-        >
-          {t("alertsPage.dismiss")}
-        </button>
-        <button
-          type="button"
-          disabled
-          title={t("alertsPage.pendingMute")}
-          className="cursor-not-allowed rounded border border-[var(--color-oneborder)] px-2 py-0.5 text-xs text-[var(--color-onetextmuted)]"
-        >
-          {t("alertsPage.muteRule")}
-        </button>
+        {/* Real `alerts.dismiss` — idempotent, audited natively; hidden once dismissed. */}
+        {!dismissed && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDismiss(alert.id)}
+            className="rounded border border-[var(--color-oneborder)] px-2 py-0.5 text-xs text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacealt)] disabled:cursor-not-allowed disabled:text-[var(--color-onetextmuted)]"
+          >
+            {t("alertsPage.dismiss")}
+          </button>
+        )}
       </div>
     </li>
   );
@@ -318,6 +320,14 @@ export function AlertsPage() {
   const setSeverityFilter = useAlertsStore((s) => s.setSeverityFilter);
   const setIncludeDismissed = useAlertsStore((s) => s.setIncludeDismissed);
   const retry = useAlertsStore((s) => s.retry);
+  const dismissAlert = useAlertsStore((s) => s.dismissAlert);
+  const [dismissing, setDismissing] = useState(false);
+
+  const handleDismiss = async (alertId: string) => {
+    setDismissing(true);
+    await dismissAlert(alertId);
+    setDismissing(false);
+  };
 
   useEffect(() => {
     void loadAlerts();
@@ -415,7 +425,12 @@ export function AlertsPage() {
                     </h2>
                     <ul className="mt-2 space-y-2">
                       {g.items.map((a) => (
-                        <AlertItem key={a.id} alert={a} />
+                        <AlertItem
+                          key={a.id}
+                          alert={a}
+                          onDismiss={handleDismiss}
+                          busy={dismissing}
+                        />
                       ))}
                     </ul>
                   </section>

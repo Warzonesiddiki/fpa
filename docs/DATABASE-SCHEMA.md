@@ -2,7 +2,7 @@
 
 > OneFP&A · v1.0.0 · **SQLite (WAL, foreign_keys=ON, `journal_mode=WAL`, `synchronous=NORMAL`).**
 > Money = `INTEGER` minor units (currency-scaled) or `TEXT` decimal — **never REAL** (I1).
-> IDs = `TEXT` UUID v4. All tables have `created_at`, most `updated_at` (`TEXT ISO-8601 UTC`).
+> IDs = `TEXT` UUID v4. Timestamps are per-table (`created_at` / `updated_at` only where listed — others use domain dates like `installed_at`, `committed_at`, `run_at`, `fired_at` — `TEXT ISO-8601 UTC`).
 > Migrations: `src-tauri/migrations/001_initial.sql …` — versioned, forward-tested, rollback-tested.
 > One example row per table (SQL INSERT). Indexes named `ix_*`. FKs named `fk_*`.
 > **Table count: 56 (49 original incl. grouped headings + 7 ZC supplemental: planning_cycles, cycle_tasks, collection_uploads, reason_codes, annotations, currency_scales, license_requests).**
@@ -161,7 +161,7 @@ INSERT INTO account_dimension_map VALUES ('a-4100','d-cc',1);
 | company_id | TEXT | NOT NULL FK |
 | name | TEXT | NOT NULL |
 | preset | TEXT | NOT NULL CHECK (`'12month'`,`'454'`,`'445'`,`'544'`,`'3334'`) |
-| fy_start_month | INTEGER | NOT NULL (1–12; NULL for week-based: use anchor rule) |
+| fy_start_month | INTEGER | NULL (1–12 for month-based; NULL for week-based: use anchor rule) |
 | week_start_day | INTEGER | NOT NULL (0=Sun…6=Sat) |
 | anchor_rule | TEXT | NULL CHECK (`'sunday_near_feb_1'`,`'nearest_weekday'`,`'first_day'`) for week-presets |
 | year_end_rule | TEXT | NULL CHECK (`'nrf_4_day'`,`'full_week'`) |
@@ -210,7 +210,7 @@ INSERT INTO fiscal_periods VALUES ('fp-2027-p08','fy-2027',8,'P08','2026-09-06',
 | bu_id | TEXT | NOT NULL FK |
 | group_period_id | TEXT | NOT NULL FK→fiscal_periods |
 | bu_period_id | TEXT | NOT NULL FK→fiscal_periods |
-| mapping | TEXT | NOT NULL CHECK (`'exact'`,`'transit_start`?`–`transit_end'`) — stored as `'exact'` or `'partial'` |
+| mapping | TEXT | NOT NULL CHECK (`'exact'`,`'partial'`) |
 | share_pct | NUMERIC(9,6) | NULL (for partial; e.g. 45.2) |
 
 ```sql

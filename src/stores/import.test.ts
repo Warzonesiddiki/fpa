@@ -182,7 +182,9 @@ describe("S-030 import working-set store", () => {
     const state = useImportStore.getState();
     expect(state.status).toBe("error");
     expect(state.error?.code).toBe("INTERNAL");
-    expect(state.error?.userMessage).toBe("An unexpected error occurred. Please try again.");
+    expect(state.error?.userMessage).toBe(
+      "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
+    );
     expect(state.parsed).toBeNull();
   });
 
@@ -677,7 +679,8 @@ describe("S-030 import working-set store", () => {
       parsed: null,
       error: {
         code: "INTERNAL",
-        userMessage: "An unexpected error occurred. Please try again.",
+        userMessage:
+          "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
       },
     });
 

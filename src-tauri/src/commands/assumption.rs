@@ -690,6 +690,61 @@ pub fn assumption_find_usages(
     Ok(serde_json::json!({ "data": { "cells": cells } }))
 }
 
+/// `assumption.waive` — waive a hardcoded-value finding on an assumption/formula cell with audit justification.
+#[tauri::command(name = "assumption.waive", rename_all = "snake_case")]
+pub fn assumption_waive(
+    app: AppHandle,
+    model_id: String,
+    cell_ref: String,
+    reason: String,
+    state: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&state)?;
+    let reason_trimmed = reason.trim();
+    if reason_trimmed.is_empty() {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: waiver reason is required",
+        ));
+    }
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    if !model_belongs_to_company(&conn, &model_id, &company_id).map_err(AppError::from)? {
+        return Err(AppError::Scope(
+            "model is not owned by the active Company".into(),
+        ));
+    }
+
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let after_json = serde_json::json!({
+        "action": "assumption.waive",
+        "model_id": model_id,
+        "cell_ref": cell_ref,
+        "reason": reason_trimmed,
+    })
+    .to_string();
+
+    let key = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, &company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    let now = chrono::Utc::now().to_rfc3339();
+    tx.execute(
+        "INSERT INTO audit_events
+           (company_id, actor, action, object_type, object_id, before_json, after_json,
+            prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'assumption.waive', 'assumption_waiver', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![company_id, cell_ref, after_json, prev, hash, now],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": {
+            "waived": true,
+            "cell_ref": cell_ref,
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

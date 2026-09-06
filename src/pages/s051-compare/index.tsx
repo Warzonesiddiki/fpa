@@ -13,18 +13,13 @@ import { ArrowLeftRight, Download, Filter } from "lucide-react";
 import { Button, StatePanel } from "@/components/ui";
 import { useCompareStore } from "@/stores/compare";
 import { useScenarioStore } from "@/stores/scenarios";
-import { formatPercent } from "@/utils/money";
+import { formatMinor, formatPercent } from "@/utils/money";
 import type { ScenarioRow, ModelDiffRow } from "@/api/schema";
 
-/** Format i64 minor units as a display string with thousands separators. */
-function fmtMoney(minor: number | null): string {
-  if (minor == null) return "\u2014";
-  const sign = minor < 0 ? "-" : "";
-  const abs = Math.abs(minor);
-  const major = Math.floor(abs / 100);
-  const frac = abs % 100;
-  const majorStr = major.toLocaleString("en-US");
-  return `${sign}${majorStr}.${String(frac).padStart(2, "0")}`;
+/** Null-safe display wrapper — delegates to the shared money owner (B14, utils/money.ts). */
+function formatDiffMinor(minor: number | null): string {
+  if (minor == null) return "—";
+  return formatMinor(minor, "USD");
 }
 
 /** Scenario selector dropdown. */
@@ -402,10 +397,10 @@ export function ComparePage() {
                     <td className="px-3 py-2 font-medium">{row.line_name}</td>
                     <td className="px-3 py-2">{row.period_label}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">
-                      {fmtMoney(row.value_a_minor)}
+                      {formatDiffMinor(row.value_a_minor)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">
-                      {fmtMoney(row.value_b_minor)}
+                      {formatDiffMinor(row.value_b_minor)}
                     </td>
                     <td
                       className={`px-3 py-2 text-right font-mono text-xs ${
@@ -416,7 +411,7 @@ export function ComparePage() {
                             : ""
                       }`}
                     >
-                      {row.delta_minor === 0 ? "\u2014" : fmtMoney(row.delta_minor)}
+                      {row.delta_minor === 0 ? "\u2014" : formatDiffMinor(row.delta_minor)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">
                       {formatPercent(row.delta_pct)}

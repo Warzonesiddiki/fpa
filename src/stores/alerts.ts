@@ -7,6 +7,11 @@
  *   * `alerts.create_rule` `{rule}` → `{rule_id, audit_id}` — Company-write mutation;
  *     HMAC-audited natively (commands/alerts.rs). Validation failures surface as typed
  *     ALERT_RULE_INVALID inline in the rule form (the list is never blanked by a form error).
+ *   * `alerts.dismiss` `{alert_id, reason?}` → `{alert_id, dismissed_at, audit_id}` —
+ *     idempotent, HMAC-audited (API-SPEC §2); the list reloads after success so the
+ *     90-day window and include-dismissed filter stay the single source of truth.
+ *   * `alerts.mute_rule` `{rule_id, duration_days?, reason?}` → `{rule_id, active: false,
+ *     audit_id}` — HMAC-audited; muted rules stop firing natively, so the preview reloads.
  *   * 5 canonical states: error/loading/empty("All clear" per SCREENS-SPEC)/success(populated
  *     rule-creation flow states)/populated(list with alerts).
  *   * Dismiss / mute rule have NO catalog command — the UI ships them disabled (see docs),
@@ -23,7 +28,9 @@ import type {
   AlertRuleInput,
   AlertSeverity,
   AlertsCreateRuleData,
+  AlertsDismissData,
   AlertsListData,
+  AlertsMuteRuleData,
 } from "@/api/schema";
 
 export interface AlertFilterState {
@@ -50,6 +57,10 @@ export interface AlertsStoreState {
   setIncludeDismissed: (include: boolean) => Promise<void>;
   loadAlerts: () => Promise<boolean>;
   createRule: (rule: AlertRuleInput) => Promise<boolean>;
+  /** Dismiss an alert via the real `alerts.dismiss` command (idempotent, audited natively). */
+  dismissAlert: (alertId: string, reason?: string) => Promise<boolean>;
+  /** Mute a rule via the real `alerts.mute_rule` command (audited natively). */
+  muteRule: (ruleId: string, reason?: string) => Promise<boolean>;
   retry: () => Promise<boolean>;
   reset: () => void;
 }
@@ -129,6 +140,35 @@ export const useAlertsStore = create<AlertsStoreState>((set, get) => ({
       return true;
     } catch (e) {
       set({ creating: false, createError: toBridgeError(e) });
+      return false;
+    }
+  },
+
+  async dismissAlert(alertId, reason) {
+    try {
+      (await call("alerts.dismiss", {
+        alert_id: alertId,
+        ...(reason ? { reason } : {}),
+      })) as AlertsDismissData;
+      // Reload so the 90-day window / include-dismissed filter re-rank the list.
+      await get().loadAlerts();
+      return true;
+    } catch (e) {
+      set({ status: "error", error: toBridgeError(e) });
+      return false;
+    }
+  },
+
+  async muteRule(ruleId, reason) {
+    try {
+      (await call("alerts.mute_rule", {
+        rule_id: ruleId,
+        ...(reason ? { reason } : {}),
+      })) as AlertsMuteRuleData;
+      await get().loadAlerts();
+      return true;
+    } catch (e) {
+      set({ status: "error", error: toBridgeError(e) });
       return false;
     }
   },

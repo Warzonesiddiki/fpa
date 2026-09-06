@@ -14,14 +14,15 @@ test("S-001 unlock: shows recent company, wrong PIN errors, correct PIN unlocks"
   const submit = page.getByRole("button", { name: "Unlock" });
   await expect(submit).toBeDisabled();
 
-  // Error state: wrong PIN
-  await page.getByLabel("PIN").fill("wrong");
+  // Error state: wrong PIN (must satisfy PIN policy length/classes to submit)
+  const pinInput = page.getByRole("textbox", { name: "PIN" });
+  await pinInput.fill("WrongPin9!");
   await expect(submit).toBeEnabled();
   await submit.click();
-  await expect(page.getByText("Incorrect PIN.")).toBeVisible();
+  await expect(page.getByText("Incorrect PIN.").first()).toBeVisible();
 
   // Success state: correct PIN
-  await page.getByLabel("PIN").fill("1234");
+  await pinInput.fill("CorrectPin9!");
   await submit.click();
   await expect(page).toHaveURL(/\/app\/dashboard/);
 });

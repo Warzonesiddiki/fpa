@@ -181,6 +181,11 @@ pub enum AppError {
     },
     #[error("statement scope mixes periods, calendars or currencies")]
     StatementSourceMixed,
+    // ── Consolidation & Segment Reporting (F-028 · M6-2 · M6-3) ───────────────────────────
+    #[error("intercompany line {id} has no matching counterpart")]
+    IcUnmatched { id: String },
+    #[error("FX rates missing for {periods}")]
+    SegmentTranslationPending { periods: String },
     // ── Alerts (F-026 / ERROR-HANDLING §H-domain ALERT_RULE_INVALID) ──────────────────────
     /// Rule failed validation (target pair, operator/severity domain, or exact-decimal
     /// threshold). The catalog user text is "Alert rule invalid: {detail}".
@@ -195,6 +200,57 @@ pub enum AppError {
     /// export layer (M6-6) can raise the documented text without re-deriving the count.
     #[error("export blocked by {count} unwaived Health Check finding(s)")]
     HealthCheckBlocked { count: i64 },
+    // ── Report & KPI Builder (F-029 · M6-4 · ERROR-HANDLING §G) ───────────────────────────
+    #[error("layout references {count} missing lines")]
+    LayoutReferenceBroken { count: i64 },
+    #[error("layout schema invalid at {path}")]
+    LayoutInvalid { path: String },
+    #[error("kpi formula invalid: {detail}")]
+    KpiFormulaInvalid { detail: String },
+    #[error("kpi divides by zero")]
+    KpiDivZero,
+    // ── Export Suite (F-031 · M6-6 · ERROR-HANDLING §H) ───────────────────────────────────
+    #[error("formula injection guard: cells starting with '=' were quoted")]
+    ExportFormulaInjectionGuard,
+    // ── Backup Suite (F-037 · M6-9 · ERROR-HANDLING §B) ───────────────────────────────────
+    #[error("backup failed: disk full")]
+    BackupDiskFull,
+    #[error("incorrect backup passphrase")]
+    BackupPassphraseInvalid,
+    #[error("backup io error: {0}")]
+    BackupIoError(String),
+    // ── Model / Pack batch (ERROR-HANDLING §E — appended at end to avoid batch-A conflict) ──
+    #[error("model exceeds the 1,000,000-cell limit")]
+    ModelSizeLimit,
+    #[error("sheet name already exists: {name}")]
+    SheetNameDup { name: String },
+    #[error("driver feed missing: {driver_id}")]
+    DriverFeedMissing { driver_id: String },
+    #[error("seasonality weights invalid: sum {sum}")]
+    SpreadWeightsInvalid { sum: String },
+    #[error("industry pack schema invalid at {path}")]
+    PackSchemaInvalid { path: String },
+    #[error("pack version already installed: {version}")]
+    PackVersionExists { version: String },
+    #[error("pack version in use by a locked baseline: {pack_id}")]
+    PackInUseLocked { pack_id: String },
+    #[error("pack update available: {old_version} -> {new_version}")]
+    PackUpdateAvailable {
+        old_version: String,
+        new_version: String,
+    },
+    #[error("capex in-service date invalid")]
+    CapexInServiceInvalid,
+    #[error("production exceeds capacity: {units} > {capacity}")]
+    ProductionCapacity { units: String, capacity: String },
+    #[error("revrec cost estimate invalid: non-zero total required")]
+    RevrecCostEstimateInvalid,
+    #[error("model already exists for fiscal year {fiscal_year}")]
+    ModelYearExists { fiscal_year: String },
+    #[error("source year has no values to bootstrap")]
+    SourceBootstrapEmpty,
+    #[error("variance commentary required before board pack generation")]
+    PackNoCommentary,
 }
 
 impl AppError {
@@ -285,11 +341,42 @@ impl AppError {
                 ("STATEMENT_TIE_OUT_FAILED", 422, false, None)
             }
             AppError::StatementSourceMixed => ("STATEMENT_SOURCE_MIXED", 422, false, None),
+            AppError::IcUnmatched { .. } => ("IC_UNMATCHED", 422, false, None),
+            AppError::SegmentTranslationPending { .. } => {
+                ("SEGMENT_TRANSLATION_PENDING", 409, true, None)
+            }
             AppError::AlertRuleInvalid { .. } => ("ALERT_RULE_INVALID", 422, false, None),
             AppError::HealthWaiverReasonRequired => {
                 ("HEALTH_WAIVER_REASON_REQUIRED", 422, false, None)
             }
             AppError::HealthCheckBlocked { .. } => ("HEALTH_CHECK_BLOCKED", 422, false, None),
+            AppError::LayoutReferenceBroken { .. } => ("LAYOUT_REFERENCE_BROKEN", 422, false, None),
+            AppError::LayoutInvalid { .. } => ("LAYOUT_INVALID", 422, false, None),
+            AppError::KpiFormulaInvalid { .. } => ("KPI_FORMULA_INVALID", 422, false, None),
+            AppError::KpiDivZero => ("KPI_DIV_ZERO", 200, false, None),
+            AppError::ExportFormulaInjectionGuard => {
+                ("EXPORT_FORMULA_INJECTION_GUARD", 200, false, None)
+            }
+            AppError::BackupDiskFull => ("BACKUP_DISK_FULL", 507, true, None),
+            AppError::BackupPassphraseInvalid => ("BACKUP_PASSPHRASE_INVALID", 401, false, None),
+            AppError::BackupIoError(_) => ("BACKUP_IO_ERROR", 500, true, None),
+            // ERROR-HANDLING §E (model/pack batch — appended at end to avoid batch-A conflict).
+            AppError::ModelSizeLimit => ("MODEL_SIZE_LIMIT", 422, false, None),
+            AppError::SheetNameDup { .. } => ("SHEET_NAME_DUP", 409, false, None),
+            AppError::DriverFeedMissing { .. } => ("DRIVER_FEED_MISSING", 422, false, None),
+            AppError::SpreadWeightsInvalid { .. } => ("SPREAD_WEIGHTS_INVALID", 422, false, None),
+            AppError::PackSchemaInvalid { .. } => ("PACK_SCHEMA_INVALID", 422, false, None),
+            AppError::PackVersionExists { .. } => ("PACK_VERSION_EXISTS", 409, false, None),
+            AppError::PackInUseLocked { .. } => ("PACK_IN_USE_LOCKED", 422, false, None),
+            AppError::PackUpdateAvailable { .. } => ("PACK_UPDATE_AVAILABLE", 200, false, None),
+            AppError::CapexInServiceInvalid => ("CAPEX_IN_SERVICE_INVALID", 422, false, None),
+            AppError::ProductionCapacity { .. } => ("PRODUCTION_CAPACITY", 422, false, None),
+            AppError::RevrecCostEstimateInvalid => {
+                ("REVREC_COST_ESTIMATE_INVALID", 422, false, None)
+            }
+            AppError::ModelYearExists { .. } => ("MODEL_YEAR_EXISTS", 409, false, None),
+            AppError::SourceBootstrapEmpty => ("SOURCE_BOOTSTRAP_EMPTY", 422, false, None),
+            AppError::PackNoCommentary => ("PACK_NO_COMMENTARY", 422, false, None),
         };
         let user_message = match self {
             // ERROR-HANDLING §A userMessages (KI-013) — kept verbatim with the doc templates.
@@ -754,6 +841,206 @@ impl AppError {
             AppError::StatementSourceMixed => {
                 "Period/currency mix in scope is not comparable. Align scope or use Group translation."
             }
+            AppError::IcUnmatched { id } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Intercompany line {id} has no matching counterpart. Pair or classify as external."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "id": id }),
+                };
+            }
+            AppError::SegmentTranslationPending { periods } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "FX rates missing for {periods}. Add rates or set policy."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "periods": periods }),
+                };
+            }
+            AppError::LayoutReferenceBroken { count } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Layout references {count} missing lines. Auto-remap or fix."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "count": count }),
+                };
+            }
+            AppError::LayoutInvalid { path } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!("Layout schema invalid at {path}."),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "path": path }),
+                };
+            }
+            AppError::KpiFormulaInvalid { detail } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!("KPI formula invalid: {detail}."),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "detail": detail }),
+                };
+            }
+            AppError::KpiDivZero => {
+                "KPI divides by zero — shows n/a. Add a denominator source or guard."
+            }
+            AppError::ExportFormulaInjectionGuard => {
+                "Text cells starting with '=' were quoted (formula-injection protection) — review before export."
+            }
+            AppError::BackupDiskFull => "Backup failed — no space. Your Company data is unchanged.",
+            AppError::BackupPassphraseInvalid => "Incorrect backup passphrase.",
+            AppError::BackupIoError(_) => {
+                "Backup could not be written. Check permissions and retry."
+            }
+            // ERROR-HANDLING §E verbatim (model/pack batch — appended at end).
+            AppError::ModelSizeLimit => {
+                "This Model exceeds the 1,000,000-cell limit. Split it or reduce the horizon."
+            }
+            AppError::SheetNameDup { name } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "A Sheet with this name already exists.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "name": name }),
+                };
+            }
+            AppError::DriverFeedMissing { driver_id } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "Driver has no data and no feed source. Import, collect, or set a static value."
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "driverId": driver_id }),
+                };
+            }
+            AppError::SpreadWeightsInvalid { sum } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Seasonality weights total {sum}% — normalize to 100% or fix."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "sum": sum }),
+                };
+            }
+            AppError::PackSchemaInvalid { path } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Industry Pack failed validation at {path}. Retry or use the bundled Core Pack."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "path": path }),
+                };
+            }
+            AppError::PackVersionExists { version } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!("Pack version {version} is already installed."),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "version": version }),
+                };
+            }
+            AppError::PackInUseLocked { pack_id } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message:
+                        "This Pack version is used by a Locked Baseline. Clone the Pack before editing."
+                            .to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "packId": pack_id }),
+                };
+            }
+            AppError::PackUpdateAvailable {
+                old_version,
+                new_version,
+            } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "A newer version of this Industry Pack is available ({old_version} → {new_version}) for new Models."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "oldVersion": old_version, "newVersion": new_version }),
+                };
+            }
+            AppError::CapexInServiceInvalid => {
+                "Depreciation cannot start before the capital project's in-service date."
+            }
+            AppError::ProductionCapacity { units, capacity } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: format!(
+                        "Production exceeds available capacity ({units} > {capacity}). Raise capacity (audited) or reduce the plan."
+                    ),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "units": units, "capacity": capacity }),
+                };
+            }
+            AppError::RevrecCostEstimateInvalid => {
+                "Revenue recognition needs a non-zero total cost estimate (over-time method)."
+            }
+            AppError::ModelYearExists { fiscal_year } => {
+                return ErrorBody {
+                    code: code.to_string(),
+                    message: self.to_string(),
+                    user_message: "A Model already exists for this fiscal year.".to_string(),
+                    http_status,
+                    retryable,
+                    retry_after_ms,
+                    details: serde_json::json!({ "fiscalYear": fiscal_year }),
+                };
+            }
+            AppError::SourceBootstrapEmpty => "The source year has no values to bootstrap.",
+            AppError::PackNoCommentary => {
+                "Variance commentary is required before this Board Pack can be generated. Add Reason Codes/narrative in S-054."
+            }
         };
         ErrorBody {
             code: code.to_string(),
@@ -1010,6 +1297,16 @@ impl AppError {
 
     pub fn statement_source_mixed() -> Self {
         AppError::StatementSourceMixed
+    }
+
+    pub fn ic_unmatched(id: impl Into<String>) -> Self {
+        AppError::IcUnmatched { id: id.into() }
+    }
+
+    pub fn segment_translation_pending(periods: impl Into<String>) -> Self {
+        AppError::SegmentTranslationPending {
+            periods: periods.into(),
+        }
     }
 
     pub fn health_waiver_reason_required() -> Self {
@@ -1316,6 +1613,80 @@ mod tests {
         assert_eq!(
             fva_restated.user_message,
             "Actuals were restated for these periods — FVA recomputed; versions unchanged."
+        );
+    }
+
+    #[test]
+    fn report_kpi_and_export_errors_match_contract() {
+        let layout_broken = AppError::LayoutReferenceBroken { count: 3 }.body();
+        assert_eq!(layout_broken.code, "LAYOUT_REFERENCE_BROKEN");
+        assert_eq!(layout_broken.http_status, 422);
+        assert!(!layout_broken.retryable);
+        assert_eq!(
+            layout_broken.user_message,
+            "Layout references 3 missing lines. Auto-remap or fix."
+        );
+        assert_eq!(layout_broken.details["count"], 3);
+
+        let layout_inv = AppError::LayoutInvalid {
+            path: "columns[0]".to_string(),
+        }
+        .body();
+        assert_eq!(layout_inv.code, "LAYOUT_INVALID");
+        assert_eq!(layout_inv.http_status, 422);
+        assert!(!layout_inv.retryable);
+        assert_eq!(
+            layout_inv.user_message,
+            "Layout schema invalid at columns[0]."
+        );
+        assert_eq!(layout_inv.details["path"], "columns[0]");
+
+        let kpi_inv = AppError::KpiFormulaInvalid {
+            detail: "syntax error".to_string(),
+        }
+        .body();
+        assert_eq!(kpi_inv.code, "KPI_FORMULA_INVALID");
+        assert_eq!(kpi_inv.http_status, 422);
+        assert_eq!(kpi_inv.user_message, "KPI formula invalid: syntax error.");
+
+        let kpi_zero = AppError::KpiDivZero.body();
+        assert_eq!(kpi_zero.code, "KPI_DIV_ZERO");
+        assert_eq!(kpi_zero.http_status, 200);
+        assert_eq!(
+            kpi_zero.user_message,
+            "KPI divides by zero — shows n/a. Add a denominator source or guard."
+        );
+
+        let exp_guard = AppError::ExportFormulaInjectionGuard.body();
+        assert_eq!(exp_guard.code, "EXPORT_FORMULA_INJECTION_GUARD");
+        assert_eq!(exp_guard.http_status, 200);
+        assert_eq!(
+            exp_guard.user_message,
+            "Text cells starting with '=' were quoted (formula-injection protection) — review before export."
+        );
+
+        let bk_full = AppError::BackupDiskFull.body();
+        assert_eq!(bk_full.code, "BACKUP_DISK_FULL");
+        assert_eq!(bk_full.http_status, 507);
+        assert!(bk_full.retryable);
+        assert_eq!(
+            bk_full.user_message,
+            "Backup failed — no space. Your Company data is unchanged."
+        );
+
+        let bk_pass = AppError::BackupPassphraseInvalid.body();
+        assert_eq!(bk_pass.code, "BACKUP_PASSPHRASE_INVALID");
+        assert_eq!(bk_pass.http_status, 401);
+        assert!(!bk_pass.retryable);
+        assert_eq!(bk_pass.user_message, "Incorrect backup passphrase.");
+
+        let bk_io = AppError::BackupIoError("permission denied".to_string()).body();
+        assert_eq!(bk_io.code, "BACKUP_IO_ERROR");
+        assert_eq!(bk_io.http_status, 500);
+        assert!(bk_io.retryable);
+        assert_eq!(
+            bk_io.user_message,
+            "Backup could not be written. Check permissions and retry."
         );
     }
 }

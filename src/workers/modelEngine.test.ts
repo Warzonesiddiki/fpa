@@ -59,7 +59,119 @@ function engineWithLayout(ytdThrough?: number): ModelEngine {
   return e;
 }
 
-describe("ModelEngine (HyperFormula graph, FORMULA-ENGINE-SPEC §5)", () => {
+describe("ModelEngine fiscal date functions (FORMULA-ENGINE-SPEC §2, I5)", () => {
+  /** FY2026 Jul–Jun 12-month calendar: P01=2026-07-01..2026-07-31, …, P12=2027-06-01..2027-06-30. */
+  const FY_PERIODS: ModelGridPeriod[] = [
+    { id: "fp-2026-p01", code: "P01", start_date: "2026-07-01", end_date: "2026-07-31" },
+    { id: "fp-2026-p02", code: "P02", start_date: "2026-08-01", end_date: "2026-08-31" },
+    { id: "fp-2026-p03", code: "P03", start_date: "2026-09-01", end_date: "2026-09-30" },
+    { id: "fp-2026-p04", code: "P04", start_date: "2026-10-01", end_date: "2026-10-31" },
+    { id: "fp-2026-p05", code: "P05", start_date: "2026-11-01", end_date: "2026-11-30" },
+    { id: "fp-2026-p06", code: "P06", start_date: "2026-12-01", end_date: "2026-12-31" },
+    { id: "fp-2026-p07", code: "P07", start_date: "2027-01-01", end_date: "2027-01-31" },
+    { id: "fp-2026-p08", code: "P08", start_date: "2027-02-01", end_date: "2027-02-28" },
+    { id: "fp-2026-p09", code: "P09", start_date: "2027-03-01", end_date: "2027-03-31" },
+    { id: "fp-2026-p10", code: "P10", start_date: "2027-04-01", end_date: "2027-04-30" },
+    { id: "fp-2026-p11", code: "P11", start_date: "2027-05-01", end_date: "2027-05-31" },
+    { id: "fp-2026-p12", code: "P12", start_date: "2027-06-01", end_date: "2027-06-30" },
+  ];
+
+  /** P01 of FY2026 starts 2026-07-01 → Excel serial 46204. */
+  const D = (iso: string): string => {
+    const [y, m, dd] = iso.split("-").map(Number);
+    const ms = Date.UTC(y, m - 1, dd) - Date.UTC(1899, 11, 30);
+    return String(Math.floor(ms / 86_400_000));
+  };
+
+  function fyEngine(): ModelEngine {
+    const e = new ModelEngine();
+    e.loadGrid({ lines: LINES, periods: FY_PERIODS });
+    return e;
+  }
+
+  it("FPERIOD maps a date to its fiscal period number (1–12)", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=FPERIOD(DATE(2026,8,15))`,
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.computed_text).toBe("2");
+  });
+
+  it("FPERIOD returns VALUE_INVALID for a date outside the loaded fiscal grid", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=FPERIOD(DATE(2030,1,1))`,
+    });
+    expect(cell.error_code).toBe("VALUE_INVALID");
+  });
+
+  it("FQTR returns the fiscal quarter (3 periods per quarter)", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=FQTR(DATE(2027,2,10))`,
+    });
+    expect(cell.computed_text).toBe("3"); // P08 → quarter ceil(8/3)=3
+  });
+
+  it("FYEAR returns the fiscal-year designator year (FY2026 → 2026)", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=FYEAR(DATE(2027,6,30))`,
+    });
+    expect(cell.computed_text).toBe("2026"); // late-FY date still belongs to FY2026
+  });
+
+  it("FPERIODSTART returns the period start date as a date serial", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=FPERIODSTART(1)`,
+    });
+    expect(cell.computed_text).toBe(D("2026-07-01"));
+  });
+
+  it("PERIODLEN returns the period length in days (incl. Feb non-leap = 28)", () => {
+    const e = fyEngine();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: FY_PERIODS[0].id,
+      formula: `=PERIODLEN(8)`,
+    });
+    expect(cell.computed_text).toBe("28");
+  });
+
+  it("FPERIODSTART/PERIODLEN reject out-of-range period numbers", () => {
+    const e = fyEngine();
+    for (const f of ["=FPERIODSTART(0)", "=FPERIODSTART(13)", "=PERIODLEN(14)"]) {
+      const { cell } = e.setCell({
+        line_id: LINES[0].id,
+        period_id: FY_PERIODS[0].id,
+        formula: f,
+      });
+      expect(cell.error_code).toBe("VALUE_INVALID");
+    }
+  });
+
+  it("fiscal functions degrade to VALUE_INVALID without calendar dates (legacy grids)", () => {
+    const e = engineWithLayout();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: PERIODS[0].id,
+      formula: "=FPERIOD(DATE(2026,8,15))",
+    });
+    expect(cell.error_code).toBe("VALUE_INVALID");
+  });
+
   it("loads the grid and reports the period count", () => {
     const e = engineWithLayout();
     expect(e.periodCount).toBe(3);

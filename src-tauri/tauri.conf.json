@@ -28,7 +28,17 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis", "dmg", "appimage", "deb"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "publisher": "OneFP&A Contributors",
+    "copyright": "Copyright \u00a9 2026 OneFP&A Contributors. All rights reserved.",
     "category": "Finance",
     "shortDescription": "Local-first, encrypted, all-industry FP&A",
     "longDescription": "OneFP&A \u2014 plan, model, consolidate and report entirely on your machine. GL-Dump-first ingestion for any ERP, Excel-parity formulas, 12 config-driven Industry Packs, audit-grade statements.",

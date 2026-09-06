@@ -9,6 +9,12 @@ import { join } from "node:path";
 const root = join(process.cwd(), "packs");
 const problems = [];
 const err = (m) => problems.push(m);
+// Spec §8 warning tier: legacy-pack debts (KPI formula/bands, driver links,
+// unverifiable checksum) surface as warnings "until re-issued" — visible in the
+// gate output, non-blocking by spec. Blocking checks keep using err().
+const warnings = [];
+const warn = (m) => warnings.push(m);
+const createHash = (await import("node:crypto")).createHash;
 
 const PACK_KEYS = new Set([
   "saas",
@@ -78,6 +84,12 @@ for (const d of packDirs) {
         err(`${d}: KPI missing key/definition (rendered in KPIExplainer)`);
       if (!/^\d+(\.\d+)?$/.test(String(k.target?.value ?? 0)))
         err(`${d}: KPI '${k.key}' target must be decimal`);
+      // §8: formula present (non-empty string) — warning until re-issued.
+      if (typeof k.formula !== "string" || k.formula.trim() === "")
+        warn(`${d}: KPI '${k.key}' formula missing (§3) — re-issue the pack`);
+      // §8: bands good/watch numeric — warning until re-issued.
+      if (!k.bands || typeof k.bands.good !== "number" || typeof k.bands.watch !== "number")
+        warn(`${d}: KPI '${k.key}' bands missing/invalid (§3) — alerts fall back to target-only`);
     }
   }
 
@@ -88,13 +100,40 @@ for (const d of packDirs) {
   )
     err(`${d}: drivers must be 3–7 (B16 advisory)`);
   if (drivers) {
-    for (const dr of drivers.drivers)
+    for (const dr of drivers.drivers) {
       if (!driverTypes.has(dr.type)) err(`${d}: invalid driver type '${dr.type}'`);
+      // §8: bounds numeric decimal — invalid (wrong path).
+      for (const side of ["low", "high"]) {
+        const v = dr.bounds?.[side];
+        if (v === undefined || v === null || !/^\d+(\.\d+)?$/.test(String(v)))
+          err(`${d}: driver '${dr.key}' bounds.${side} must be a decimal value`);
+      }
+      // §8: links non-empty — warning (Federation + attribution degraded).
+      if (!Array.isArray(dr.links) || dr.links.length === 0)
+        warn(
+          `${d}: driver '${dr.key}' has no links (§4) — Federation/attribution degraded until re-issued`,
+        );
+    }
   }
 
   const layouts = readJson(join(dir, pk.report_layouts), `${d}/layouts`);
   if (layouts && (!Array.isArray(layouts.layouts) || layouts.layouts.length < 1))
     err(`${d}: ≥1 report layout`);
+  if (layouts) {
+    const columnTypes = new Set(["period", "ytd", "fy", "variance", "threeway"]);
+    for (const l of layouts.layouts) {
+      if (!Array.isArray(l.rows) || l.rows.some((r) => typeof r !== "string" || !r.trim()))
+        err(`${d}: layout '${l.key}' rows must be non-empty line-key strings (LAYOUT_INVALID)`);
+      if (!Array.isArray(l.columns) || l.columns.length === 0)
+        err(`${d}: layout '${l.key}' needs columns (LAYOUT_INVALID)`);
+      else
+        for (const c of l.columns)
+          if (!columnTypes.has(c.type))
+            err(
+              `${d}: layout '${l.key}' column type '${c.type}' not in period/ytd/fy/variance/threeway (LAYOUT_INVALID)`,
+            );
+    }
+  }
   const gl = readJson(join(dir, pk.gl_template), `${d}/gl_template`);
   if (gl && typeof gl.columns !== "object") err(`${d}: gl_template.columns required`);
 }
@@ -109,8 +148,14 @@ function readJson(p, label) {
 }
 
 if (problems.length) {
-  console.error(`packs:validate FAILED — ${problems.length}`);
+  console.error(`packs:validate FAILED — ${problems.length} blocking, ${warnings.length} warnings`);
   problems.forEach((p) => console.error(`  ✗ ${p}`));
   process.exit(1);
 }
-console.log(`packs:validate PASS — ${packDirs.length}/12 packs data-only & schema-conformant`);
+if (warnings.length) {
+  console.log(`packs:validate warnings (${warnings.length}) — non-blocking per spec §8:`);
+  warnings.forEach((w) => console.log(`  ⚠ ${w}`));
+}
+console.log(
+  `packs:validate PASS — ${packDirs.length}/12 packs data-only & schema-conformant (${warnings.length} legacy warnings)`,
+);

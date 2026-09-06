@@ -192,7 +192,7 @@ describe("S-021 Chart of Accounts (F-002)", () => {
     expect(alert).not.toBeNull();
   });
 
-  it("merges two accounts and reports the remapped line count", async () => {
+  it("merges two accounts via confirmation dialog with transfer impact and audit warning", async () => {
     queue({
       "coa.list": ACCOUNTS,
       "pack.list": PACKS,
@@ -203,7 +203,25 @@ describe("S-021 Chart of Accounts (F-002)", () => {
     await screen.findByText("Software Licenses");
     await user.selectOptions(screen.getByLabelText("Merge from"), ACCOUNTS[0].id);
     await user.selectOptions(screen.getByLabelText("Into account"), ACCOUNTS[2].id);
+
+    // Balance & transfer impact preview shown before clicking merge
+    expect(screen.getByText(/Balance & Transfer Impact:/)).toBeInTheDocument();
+
+    // Open confirmation dialog
     await user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Confirm Account Merge" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Audit warning: Merging will remap all associated ledger lines/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Source line usage: 0 line\(s\) will transfer to target/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Target current usage: 1 line\(s\)/)).toBeInTheDocument();
+
+    // Confirm merge
+    await user.click(screen.getByRole("button", { name: "Confirm & Merge Accounts" }));
     expect(await screen.findByText("Merge complete: 5 lines remapped.")).toBeInTheDocument();
     expect(callMock).toHaveBeenCalledWith("coa.merge_accounts", {
       from_id: ACCOUNTS[0].id,
@@ -211,7 +229,7 @@ describe("S-021 Chart of Accounts (F-002)", () => {
     });
   });
 
-  it("surfaces the COA_TYPE_MISMATCH user message on merge failure", async () => {
+  it("surfaces the COA_TYPE_MISMATCH user message on merge failure in dialog", async () => {
     queue({
       "coa.list": ACCOUNTS,
       "pack.list": PACKS,
@@ -231,6 +249,10 @@ describe("S-021 Chart of Accounts (F-002)", () => {
     await user.selectOptions(screen.getByLabelText("Merge from"), ACCOUNTS[0].id);
     await user.selectOptions(screen.getByLabelText("Into account"), ACCOUNTS[2].id);
     await user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Confirm Account Merge" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm & Merge Accounts" }));
     // role="alert" elements don't take their accessible name from content — query by text
     const alert = (await screen.findByText(/Cannot merge: account types differ/)).closest(
       '[role="alert"]',

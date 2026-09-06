@@ -37,6 +37,7 @@ import {
   type SelectionRect,
 } from "@/stores/modelHistory";
 import { generatePeriodLabel } from "@/utils/periodLabel";
+import type { CalendarPreviewData } from "@/api/schema";
 
 /** M3-1 working scenario (API-SPEC §3 example id). Scenario selection ships with S-050. */
 export const WORKING_SCENARIO_ID = "3f9f2c9e-9f8b-4e2d-9a1c-400000000003";
@@ -309,15 +310,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
         year_end_rule: null,
         from: new Date().toISOString().slice(0, 10),
         year_count: 1,
-      })) as {
-        fiscal_years: {
-          fy_label: string;
-          periods: {
-            period_no: number;
-            code: string;
-          }[];
-        }[];
-      };
+      })) as CalendarPreviewData;
       const firstYear = calendar.fiscal_years[0];
       const lines: ModelGridLine[] = accounts.map((a) => ({
         id: a.id,
@@ -327,6 +320,8 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       const periods: ModelGridPeriod[] = (firstYear?.periods ?? []).map((p) => ({
         id: periodIdFromPreview(firstYear.fy_label, p.period_no),
         code: p.code,
+        start_date: p.start_date,
+        end_date: p.end_date,
       }));
 
       if (lines.length === 0) {

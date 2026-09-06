@@ -9,7 +9,7 @@ const files = readdirSync("docs")
 const out = files.map((f) => ({
   file: f,
   bytes: readFileSync(join("docs", f), "utf8").length,
-  lines: readFileSync(join("docs", f), "utf8").split("\n").length,
+  lines: readFileSync(join("docs", f), "utf8").replace(/\r\n/g, "\n").split("\n").length,
 }));
 writeFileSync(
   "docs-index.json",

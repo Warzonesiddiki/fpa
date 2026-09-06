@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 import { AuditTrailPage } from "./index";
+import * as bridge from "@/api/bridge";
 import { useAuditStore, type AuditStoreState } from "@/stores/audit";
 import { useSessionStore } from "@/stores/session";
 import type { AuditEventRecord } from "@/api/schema";
@@ -230,13 +231,93 @@ describe("S-070 Audit Trail", () => {
     }
   });
 
-  it("ships the export buttons disabled while their commands do not exist", () => {
+  it("enables export buttons when company is active and triggers audit.export_dataroom with success feedback", async () => {
+    const user = userEvent.setup();
+    const callSpy = vi.spyOn(bridge, "call").mockResolvedValueOnce({
+      file: "auditor_dataroom.zip",
+      counts: { events: 2 },
+    });
     setPopulated();
     renderPage();
+
     const dataRoom = screen.getByRole("button", { name: /auditor data-room export/i });
-    expect(dataRoom).toBeDisabled();
-    expect(dataRoom).toHaveAttribute("title", expect.stringContaining("not implemented yet"));
-    expect(screen.getByRole("button", { name: /export log/i })).toBeDisabled();
+    expect(dataRoom).not.toBeDisabled();
+
+    await user.click(dataRoom);
+    expect(callSpy).toHaveBeenCalledWith("audit.export_dataroom", {
+      company_id: COMPANY_ID,
+      period_scope: [],
+    });
+    expect(screen.getByTestId("audit-export-success-banner")).toBeInTheDocument();
+    expect(
+      screen.getByText(/auditor data-room package exported successfully/i),
+    ).toBeInTheDocument();
+  });
+
+  it("triggers export.excel when 'Export log' is clicked with success feedback", async () => {
+    const user = userEvent.setup();
+    const callSpy = vi.spyOn(bridge, "call").mockResolvedValueOnce({
+      file: "audit_log.xlsx",
+      audit_id: 101,
+    });
+    setPopulated();
+    renderPage();
+
+    const exportLog = screen.getByRole("button", { name: /export log/i });
+    expect(exportLog).not.toBeDisabled();
+
+    await user.click(exportLog);
+    expect(callSpy).toHaveBeenCalledWith("export.excel", {
+      scope: { company_id: COMPANY_ID, type: "audit_log" },
+    });
+    expect(screen.getByTestId("audit-export-success-banner")).toBeInTheDocument();
+    expect(screen.getByText(/audit log exported to excel successfully/i)).toBeInTheDocument();
+  });
+
+  it("displays error banner on AUDIT_CHAIN_BREAK during export", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(bridge, "call").mockRejectedValueOnce({
+      code: "AUDIT_CHAIN_BREAK",
+      message: "hash mismatch",
+      userMessage: "Audit integrity check failed. Restore from the last verified Snapshot?",
+      httpStatus: 409,
+      retryable: false,
+    });
+    setPopulated();
+    renderPage();
+
+    const dataRoom = screen.getByRole("button", { name: /auditor data-room export/i });
+    await user.click(dataRoom);
+
+    const errorBanner = screen.getByTestId("audit-export-error-banner");
+    expect(errorBanner).toBeInTheDocument();
+    expect(errorBanner).toHaveTextContent("AUDIT_CHAIN_BREAK");
+    expect(errorBanner).toHaveTextContent(
+      "Audit integrity check failed. Restore from the last verified Snapshot?",
+    );
+  });
+
+  it("displays error banner on HEALTH_CHECK_BLOCKED during export", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(bridge, "call").mockRejectedValueOnce({
+      code: "HEALTH_CHECK_BLOCKED",
+      message: "findings",
+      userMessage: "Export blocked by 2 Health Check findings. Fix or waive (reason required).",
+      httpStatus: 422,
+      retryable: false,
+    });
+    setPopulated();
+    renderPage();
+
+    const exportLog = screen.getByRole("button", { name: /export log/i });
+    await user.click(exportLog);
+
+    const errorBanner = screen.getByTestId("audit-export-error-banner");
+    expect(errorBanner).toBeInTheDocument();
+    expect(errorBanner).toHaveTextContent("HEALTH_CHECK_BLOCKED");
+    expect(errorBanner).toHaveTextContent(
+      "Export blocked by 2 Health Check findings. Fix or waive (reason required).",
+    );
   });
 
   it("reports the chain event count in the footstrip", () => {
@@ -310,6 +391,32 @@ describe("S-070 Audit Trail", () => {
     it("broken chain has no axe violations", async () => {
       setPopulated({ chainStatus: { verified: false, broken_at_seq: 3, event_count: 2 } });
       const { container } = renderPage();
+      expect((await axe(container)).violations).toEqual([]);
+    });
+
+    it("export success banner has no axe violations", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(bridge, "call").mockResolvedValueOnce({
+        file: "auditor_dataroom.zip",
+        counts: { events: 2 },
+      });
+      setPopulated();
+      const { container } = renderPage();
+      await user.click(screen.getByRole("button", { name: /auditor data-room export/i }));
+      expect((await axe(container)).violations).toEqual([]);
+    });
+
+    it("export error banner has no axe violations", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(bridge, "call").mockRejectedValueOnce({
+        code: "AUDIT_CHAIN_BREAK",
+        userMessage: "Audit integrity check failed. Restore from the last verified Snapshot?",
+        httpStatus: 409,
+        retryable: false,
+      });
+      setPopulated();
+      const { container } = renderPage();
+      await user.click(screen.getByRole("button", { name: /auditor data-room export/i }));
       expect((await axe(container)).violations).toEqual([]);
     });
   });

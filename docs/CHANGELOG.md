@@ -86,6 +86,17 @@
   rule create; `ALERT_RULE_INVALID` mapped in `core/error.rs` (existing catalog row — no new codes). **NATIVE-UNVERIFIED:** no Rust
   toolchain in this environment (brace-balance hand gate 34/34 only); cargo/clippy/fmt + round-trip pending on a Rust-equipped
   machine → M5-4 recorded PARTIAL. Deliberately not fabricated: dismiss/mute (no `alerts.dismiss`/`alerts.mute_rule` catalog rows
+
+### 2026-09-06 — Alerts Center, honest state (M5-4)
+  machine → M5-4 recorded DONE. `alerts.dismiss` / `alerts.mute_rule` handlers (already
+  shipped in Rust mono, HMAC-audited) gained their API-SPEC catalog rows (§7), the dev-preview
+  mock mirrors both, the S-056 store adds the real store actions, and the alert-row Dismiss
+  affordance now calls `alerts.dismiss` and reloads the list — Network Rule B1, no local-only
+  fabricated state. CHANGELOG 97 → 99 typed commands is reconciled here with the matrix/CHANGELOG.
+  Later the same day: 99 → **102** when `security.pin_setup` / `assumption.waive` (shipped Rust
+  handlers whose catalog rows were missing — same drift class as alerts.dismiss/mute_rule) and
+  `pack.validate` (§17 detailed spec + first handler of the 23-command no-handler backlog) gained
+  their rows; §2B validator prefixes gained `PIN_ALREADY_SET` / `PIN_NOT_INITIALIZED`.
   — Tier-3), KPI-rule evaluation (waits for the M6-4/5 KPI engine), OS-notification opt-in (deferred). New tests: 34
   (16 page incl. axe, 9 store, 9 contract) + 3 schema; full suite 79 files / 957 tests; coverage 88.05/80.19/87.05/89.84;
   critical 98.5/97.15/100/98.95; lint/tsc/build/prettier/docs:verify green.

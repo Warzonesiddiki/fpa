@@ -171,6 +171,14 @@ export const SecurityPinSetupArgs = z
   });
 export const SecurityPinSetupData = z.object({ ok: z.literal(true) });
 
+export const SecurityChangePinArgs = z
+  .object({
+    old_pin: z.string().min(1, "AUTH_PIN_INVALID: old PIN required"),
+    new_pin: PinPolicy,
+  })
+  .strict();
+export const SecurityChangePinData = z.object({ ok: z.literal(true) });
+
 export const SessionLockArgs = z.object({}).strict();
 export const SessionLockData = z.object({ locked: z.literal(true) });
 
@@ -394,6 +402,37 @@ export type PackMeta = z.infer<typeof PackMeta>;
 
 export const PackListArgs = z.object({}).strict();
 export const PackListData = z.array(PackMeta).default([]);
+
+/** `pack.validate` (API-SPEC §17): a path-shaped verdict — errors/warnings are plain
+ *  "field: problem" strings for the S-023 validation panel. Read-only, session required. */
+export const PackValidateArgs = z
+  .object({
+    pack_path: z.string().trim().min(1, "pack_path is required"),
+  })
+  .strict();
+export type PackValidateArgs = z.infer<typeof PackValidateArgs>;
+export const PackValidateData = z.object({
+  valid: z.boolean(),
+  errors: z.array(z.string()),
+  warnings: z.array(z.string()),
+});
+export type PackValidateData = z.infer<typeof PackValidateData>;
+
+/** `pack.install` (API-SPEC §18): company write; installs a validated pack directory.
+ *  Success returns the new pack id + version; §8 legacy warnings ride the payload. */
+export const PackInstallArgs = z
+  .object({
+    pack_path: z.string().trim().min(1, "pack_path is required"),
+    company_id: z.string().uuid(),
+  })
+  .strict();
+export type PackInstallArgs = z.infer<typeof PackInstallArgs>;
+export const PackInstallData = z.object({
+  pack_id: z.string().min(1),
+  version: z.string().min(1),
+  warnings: z.array(z.string()).default([]),
+});
+export type PackInstallData = z.infer<typeof PackInstallData>;
 
 /* ── import.* (B19 — GL-Dump-first ingestion; GL-TEMPLATE-SPEC, DATABASE-SCHEMA §7) ── */
 
@@ -1102,6 +1141,56 @@ export const ModelRecalcData = z.object({
   changed_cells: z.array(z.string()),
   issues: z.array(RecalcCellIssue).default([]),
 });
+
+/** `model.create` (API-SPEC §20): company write; seeds the model + Base scenario.
+ *  `horizon` is the closed DATABASE-SCHEMA `models.horizon` set. */
+export const ModelCreateArgs = z
+  .object({
+    company_id: Uuid,
+    name: z.string().trim().min(1, "model name is required"),
+    horizon: z.enum(["13w", "1y", "3y", "5y"]),
+    pack_id: Uuid,
+  })
+  .strict();
+export type ModelCreateArgs = z.infer<typeof ModelCreateArgs>;
+export const ModelCreateData = z.object({
+  model_id: z.string().min(1),
+  scenario_id: z.string().min(1),
+});
+export type ModelCreateData = z.infer<typeof ModelCreateData>;
+
+/** `pack.builder.save_v1` (API-SPEC §21): company write; saves a builder definition as a
+ *  new pack version. Inline components ride the document; the core validates with the §8
+ *  check set and enforces §9 versioning (editing is versioned, never in-place). */
+export const PackBuilderSaveV1Args = z
+  .object({
+    pack_id: z.string().min(1).nullable(),
+    definition_json: z.object({}).passthrough(), // deep shape is core-owned; envelope typed here
+  })
+  .strict();
+export type PackBuilderSaveV1Args = z.infer<typeof PackBuilderSaveV1Args>;
+export const PackBuilderSaveV1Data = z.object({
+  pack_id: z.string().min(1),
+  version: z.string().min(1),
+  warnings: z.array(z.string()).default([]),
+});
+export type PackBuilderSaveV1Data = z.infer<typeof PackBuilderSaveV1Data>;
+
+/** `model.sheet.add` (API-SPEC §19): model write; appends to the sheet tree.
+ *  `sheet_type` is the closed DATABASE-SCHEMA §2 enum; duplicate trimmed name →
+ *  SHEET_NAME_DUP (409). */
+export const ModelSheetAddArgs = z
+  .object({
+    model_id: Uuid,
+    name: z.string().trim().min(1, "sheet name is required"),
+    type: z.enum(["input", "formula", "driver", "assumption", "schedule", "statement"]),
+  })
+  .strict();
+export type ModelSheetAddArgs = z.infer<typeof ModelSheetAddArgs>;
+export const ModelSheetAddData = z.object({
+  sheet_id: z.string().min(1),
+});
+export type ModelSheetAddData = z.infer<typeof ModelSheetAddData>;
 
 /** `model.inspect` — read-only formula inspection (F-012 · M3-2 · FORMULA-ENGINE-SPEC §6). */
 export const ModelInspectArgs = z
@@ -1908,6 +1997,151 @@ export const StatementGetArgs = z
   });
 export type StatementGetArgs = z.infer<typeof StatementGetArgs>;
 
+/* ── Consolidation (F-028 · M6-3 · API-SPEC §5) ─────────────────── */
+
+export const ConsolidationOptions = z
+  .object({
+    fx_policy: z.string().optional(),
+    include_nci: z.boolean().optional(),
+    eliminate_ic: z.boolean().optional(),
+  })
+  .strict();
+export type ConsolidationOptions = z.infer<typeof ConsolidationOptions>;
+
+export const ConsolidationRunArgs = z
+  .object({
+    company_id: Uuid,
+    period_id: Uuid,
+    options: ConsolidationOptions.optional(),
+  })
+  .strict();
+export type ConsolidationRunArgs = z.infer<typeof ConsolidationRunArgs>;
+
+export const ConsolidationRunData = z
+  .object({
+    run_id: Uuid,
+    status: z.string(),
+  })
+  .strict();
+export type ConsolidationRunData = z.infer<typeof ConsolidationRunData>;
+
+export const ConsolidationStatusArgs = z
+  .object({
+    run_id: Uuid,
+  })
+  .strict();
+export type ConsolidationStatusArgs = z.infer<typeof ConsolidationStatusArgs>;
+
+export const ConsolidationStatusData = z
+  .object({
+    stage: z.string(),
+    progress: z.number().int().min(0).max(100),
+    issues: z.array(z.string()),
+  })
+  .strict();
+export type ConsolidationStatusData = z.infer<typeof ConsolidationStatusData>;
+
+/* ── Report Layouts & KPI Builder (F-029 · M6-4 · S-062 · S-063 · API-SPEC §6/§7) ── */
+
+export const LayoutColumnConfig = z
+  .object({
+    col_type: z.enum(["period", "ytd", "fy", "variance", "threeway", "custom"]),
+    period_ref: z.string().optional(),
+    sort_order: z.number().int(),
+  })
+  .strict();
+export type LayoutColumnConfig = z.infer<typeof LayoutColumnConfig>;
+
+export const ReportLayoutInput = z
+  .object({
+    id: z.string().optional(),
+    company_id: Uuid,
+    name: z.string().trim().min(1),
+    kind: z.string().trim().min(1),
+    row_line_ids: z.array(z.string()),
+    columns: z.array(LayoutColumnConfig).min(1),
+  })
+  .strict();
+export type ReportLayoutInput = z.infer<typeof ReportLayoutInput>;
+
+export const ReportLayoutSaveArgs = z
+  .object({
+    layout: ReportLayoutInput,
+  })
+  .strict();
+export type ReportLayoutSaveArgs = z.infer<typeof ReportLayoutSaveArgs>;
+
+export const ReportLayoutSaveData = z
+  .object({
+    saved: z.boolean(),
+    layout_id: z.string(),
+  })
+  .strict();
+export type ReportLayoutSaveData = z.infer<typeof ReportLayoutSaveData>;
+
+export const ReportLayoutRenderArgs = z
+  .object({
+    layout_id: z.string(),
+    scope: z.array(z.string()),
+    company_id: Uuid,
+  })
+  .strict();
+export type ReportLayoutRenderArgs = z.infer<typeof ReportLayoutRenderArgs>;
+
+export const ReportRenderCell = z
+  .object({
+    col_index: z.number().int().min(0),
+    amount_minor: z.number().int().nullable().optional(),
+    text: z.string().nullable().optional(),
+  })
+  .strict();
+export type ReportRenderCell = z.infer<typeof ReportRenderCell>;
+
+export const ReportRenderRow = z
+  .object({
+    line_id: z.string(),
+    label: z.string(),
+    cells: z.array(ReportRenderCell),
+  })
+  .strict();
+export type ReportRenderRow = z.infer<typeof ReportRenderRow>;
+
+export const ReportLayoutRenderData = z
+  .object({
+    layout_id: z.string(),
+    name: z.string(),
+    rows: z.array(ReportRenderRow),
+  })
+  .strict();
+export type ReportLayoutRenderData = z.infer<typeof ReportLayoutRenderData>;
+
+export const KpiDefineInput = z
+  .object({
+    id: z.string().optional(),
+    company_id: Uuid,
+    name: z.string().trim().min(1),
+    formula: z.string().trim().min(1),
+    unit: z.string().trim().min(1),
+    target_owner: z.string().trim().optional(),
+    definition_text: z.string().trim().optional(),
+  })
+  .strict();
+export type KpiDefineInput = z.infer<typeof KpiDefineInput>;
+
+export const KpiDefineArgs = z
+  .object({
+    kpi: KpiDefineInput,
+  })
+  .strict();
+export type KpiDefineArgs = z.infer<typeof KpiDefineArgs>;
+
+export const KpiDefineData = z
+  .object({
+    kpi_id: z.string(),
+  })
+  .strict();
+export type KpiDefineData = z.infer<typeof KpiDefineData>;
+
 /* ── FVA (Forecast Value Add) (F-025, S-055) ────────────────────── */
 
 export const FvaTrend = z.enum(["improving", "worsening", "neutral"]);
@@ -2032,6 +2266,41 @@ export const AlertsCreateRuleData = z
   .strict();
 export type AlertsCreateRuleData = z.infer<typeof AlertsCreateRuleData>;
 
+export const AlertsDismissArgs = z
+  .object({
+    alert_id: Uuid,
+    reason: z.string().nullable().optional(),
+  })
+  .strict();
+export type AlertsDismissArgs = z.infer<typeof AlertsDismissArgs>;
+
+export const AlertsDismissData = z
+  .object({
+    alert_id: Uuid,
+    dismissed_at: z.string().datetime({ offset: true }),
+    audit_id: z.number().int().positive(),
+  })
+  .strict();
+export type AlertsDismissData = z.infer<typeof AlertsDismissData>;
+
+export const AlertsMuteRuleArgs = z
+  .object({
+    rule_id: Uuid,
+    duration_days: z.number().int().positive().nullable().optional(),
+    reason: z.string().nullable().optional(),
+  })
+  .strict();
+export type AlertsMuteRuleArgs = z.infer<typeof AlertsMuteRuleArgs>;
+
+export const AlertsMuteRuleData = z
+  .object({
+    rule_id: Uuid,
+    active: z.literal(false),
+    audit_id: z.number().int().positive(),
+  })
+  .strict();
+export type AlertsMuteRuleData = z.infer<typeof AlertsMuteRuleData>;
+
 /* ── Audit Trail (F-033 · API-SPEC §2 `audit.list` · SCREENS-SPEC S-070 · M7) ─────── */
 
 /**
@@ -2063,6 +2332,118 @@ export const AuditListArgs = z
   })
   .strict();
 export type AuditListArgs = z.infer<typeof AuditListArgs>;
+
+export const AuditExportDataroomArgs = z
+  .object({
+    company_id: Uuid,
+    period_scope: z.array(z.string()).optional().default([]),
+    path: z.string().optional(),
+  })
+  .strict();
+export type AuditExportDataroomArgs = z.infer<typeof AuditExportDataroomArgs>;
+
+export const AuditExportDataroomResult = z
+  .object({
+    file: z.string(),
+    counts: z.record(z.string(), z.number()),
+    /** Row id of the HMAC-chained audit event written by this export (B7). */
+    audit_id: z.number().int(),
+  })
+  .strict();
+export type AuditExportDataroomResult = z.infer<typeof AuditExportDataroomResult>;
+
+export const ExportExcelArgs = z
+  .object({
+    layout_id: z.string().optional(),
+    scope: z.record(z.string(), z.unknown()).optional(),
+    options: z.record(z.string(), z.unknown()).optional(),
+    path: z.string().optional(),
+  })
+  .strict();
+export type ExportExcelArgs = z.infer<typeof ExportExcelArgs>;
+
+export const ExportExcelResult = z
+  .object({
+    file: z.string(),
+    audit_id: z.number().int(),
+  })
+  .strict();
+export type ExportExcelResult = z.infer<typeof ExportExcelResult>;
+
+export const ExportPdfArgs = z
+  .object({
+    layout_id: z.string().optional(),
+    scope: z.record(z.string(), z.unknown()).optional(),
+    options: z.record(z.string(), z.unknown()).optional(),
+    path: z.string().optional(),
+  })
+  .strict();
+export type ExportPdfArgs = z.infer<typeof ExportPdfArgs>;
+
+export const ExportPdfResult = z
+  .object({
+    file: z.string(),
+    audit_id: z.number().int(),
+  })
+  .strict();
+export type ExportPdfResult = z.infer<typeof ExportPdfResult>;
+
+export const ExportModelDumpArgs = z
+  .object({
+    layout_id: z.string().optional(),
+    scope: z.record(z.string(), z.unknown()).optional(),
+    options: z.record(z.string(), z.unknown()).optional(),
+    path: z.string().optional(),
+  })
+  .strict();
+export type ExportModelDumpArgs = z.infer<typeof ExportModelDumpArgs>;
+
+export const ExportModelDumpResult = z
+  .object({
+    file: z.string(),
+    audit_id: z.number().int(),
+  })
+  .strict();
+export type ExportModelDumpResult = z.infer<typeof ExportModelDumpResult>;
+
+export const BackupCreateArgs = z
+  .object({
+    path: z.string().min(1),
+    passphrase: z.string().min(1),
+  })
+  .strict();
+export type BackupCreateArgs = z.infer<typeof BackupCreateArgs>;
+
+export const BackupCreateResult = z
+  .object({
+    backup_id: z.string(),
+    path: z.string(),
+    size_bytes: z.number(),
+    sha256: z.string(),
+  })
+  .strict();
+export type BackupCreateResult = z.infer<typeof BackupCreateResult>;
+
+export const BackupRestoreArgs = z
+  .object({
+    backup_id: z.string().optional(),
+    snapshot_id: z.string().optional(),
+    path: z.string().optional(),
+    passphrase: z.string().min(1),
+  })
+  .strict()
+  .refine((val) => Boolean(val.backup_id || val.snapshot_id || val.path), {
+    message: "One of backup_id, snapshot_id, or path is required",
+  });
+export type BackupRestoreArgs = z.infer<typeof BackupRestoreArgs>;
+
+export const BackupRestoreResult = z
+  .object({
+    restored: z.boolean(),
+    snapshot_id: z.string(),
+  })
+  .strict();
+export type BackupRestoreResult = z.infer<typeof BackupRestoreResult>;
 
 /**
  * One immutable event. `before_json`/`after_json` are the raw persisted payload strings —
@@ -2246,6 +2627,7 @@ export const CommandArgs = {
   "session.unlock": SessionUnlockArgs,
   "session.lock": SessionLockArgs,
   "security.pin_setup": SecurityPinSetupArgs,
+  "security.change_pin": SecurityChangePinArgs,
   "license.verify": LicenseVerifyArgs,
   "license.request_file": LicenseRequestFileArgs,
   "license.apply_response": LicenseApplyResponseArgs,
@@ -2263,6 +2645,9 @@ export const CommandArgs = {
   "coa.import": CoaImportArgs,
   "coa.merge_accounts": CoaMergeArgs,
   "pack.list": PackListArgs,
+  "pack.validate": PackValidateArgs,
+  "pack.install": PackInstallArgs,
+  "pack.builder.save_v1": PackBuilderSaveV1Args,
   "import.parse": ImportParseArgs,
   "import.map.save_v1": ImportMapSaveArgs,
   "import.validate": ImportValidateArgs,
@@ -2272,6 +2657,8 @@ export const CommandArgs = {
   "import.history": ImportHistoryArgs,
   "model.cell.set.v1": ModelCellSetArgs,
   "model.recalc": ModelRecalcArgs,
+  "model.create": ModelCreateArgs,
+  "model.sheet.add": ModelSheetAddArgs,
   "model.inspect": ModelInspectArgs,
   "model.schedule.upsert": ModelScheduleUpsertArgs,
   "driver.upsert": DriverUpsertArgs,
@@ -2303,9 +2690,22 @@ export const CommandArgs = {
   "variance.set_reason_code": VarianceSetReasonCodeArgs,
   "fva.get": FvaGetArgs,
   "statement.get.v1": StatementGetArgs,
+  "consolidation.run": ConsolidationRunArgs,
+  "consolidation.status": ConsolidationStatusArgs,
+  "report.layout.save": ReportLayoutSaveArgs,
+  "report.layout.render": ReportLayoutRenderArgs,
+  "kpi.define": KpiDefineArgs,
   "alerts.list": AlertsListArgs,
   "alerts.create_rule": AlertsCreateRuleArgs,
+  "alerts.dismiss": AlertsDismissArgs,
+  "alerts.mute_rule": AlertsMuteRuleArgs,
   "audit.list": AuditListArgs,
+  "audit.export_dataroom": AuditExportDataroomArgs,
+  "export.excel": ExportExcelArgs,
+  "export.pdf": ExportPdfArgs,
+  "export.model_dump": ExportModelDumpArgs,
+  "backup.create": BackupCreateArgs,
+  "backup.restore": BackupRestoreArgs,
   "health.run": HealthRunArgs,
   "health.waive": HealthWaiveArgs,
 } as const;

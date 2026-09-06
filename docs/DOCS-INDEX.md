@@ -1,10 +1,10 @@
 # DOCS-INDEX.md
 
-> OneFP&A · **Master index of all documents with 1-line summary + dependency map.** Off-index docs are forbidden (B8) — adding a doc = adding it here. Generated/verified by `scripts/docs-index.mjs` in CI.
+> OneFP&A · **Master index of all documents with 1-line summary + dependency map.** Off-index docs are forbidden (B8) — adding a doc = adding it here. Generated/verified by `scripts/docs-index-gen.mjs` in CI.
 
 ---
 
-## MASTER INDEX (60 docs/ specs + root README = 61 files; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
+## MASTER INDEX (63 docs/specs + README pointer = 64 rows; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
 
 | # | File | One-line summary | Depends on |
 |---|---|---|---|
@@ -22,7 +22,7 @@
 | 12 | `TECH-STACK.md` | Exact packages/versions + why + rejected alternatives + version policy | 1 |
 | 13 | `ARCHITECTURE.md` | Mermaid system + data flow + exact folder tree + engine contracts | 12 |
 | 14 | `DATABASE-SCHEMA.md` | 56 tables: types/PK/FK/constraints/indexes + example row each | 13 |
-| 15 | `API-SPEC.md` | ~70 typed IPC commands incl. 4 detailed specs + error code index | 14, 31 |
+| 15 | `API-SPEC.md` | 102 typed IPC commands incl. 17 detailed specs + error code index | 14, 31 |
 | 16 | `AUTH-SPEC.md` | Local auth: PIN/recovery/lock/license flows + permission matrix | 13, 14 |
 | 17 | `STATE-MANAGEMENT.md` | State table (scope/storage/invalidation) + race rules | 13, 15 |
 | 18 | `INTEGRATIONS.md` | 11 integrations: purpose/secrets/rate-limits/fallbacks | 13, 16 |
@@ -69,6 +69,9 @@
 | 59 | `COPY-GUIDELINES.md` | Voice, mechanics, per-slot copy formulas, locked verb/noun lexicon, 33-key i18n seed registry | 1, 6, 19 |
 | 60 | `DOCUMENTATION-GAP-ANALYSIS.md` | 101-item checklist audit + remaining-gap register + parking lot (OQ-01…OQ-11) | 1–59 |
 | 61 | `PRICING-AND-ENTITLEMENTS.md` | What license `plan` means (nothing enforced today), the never-paywalled floor, the one sanctioned seam, axis + pricing decision sheet | 3, 14, 19, 55, 56 |
+| 62 | `DESKTOP-PACKAGING.md` | Native desktop packaging (MSI/NSIS, DMG, AppImage/DEB), signing, least-privilege security, and build verification | 12, 26, 28 |
+| 63 | `E2E-TESTING.md` | Playwright E2E testing architecture, execution commands, and user journey specs | 12, 23, 24 |
+| 64 | `BENCHMARKS.md` | Performance benchmarking suite, methodology, numeric targets (<5s GL, <50ms recalc), and baseline results | 12, 23, 25 |
 
 ## DEPENDENCY MAP (subset — build order)
 

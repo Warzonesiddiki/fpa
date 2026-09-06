@@ -190,7 +190,12 @@ when its governing code exists in §2.
 - `IMPORT_KIND_DESTINATION_UNAVAILABLE` → **VALUE_INVALID** · `import.rs:2372` (command error) · Import kind that does not post to the GL and has no destination pipeline
 
 `INVALID_ARGUMENT` is **not** a prefix and not a code: it is the Rust variant `AppError::InvalidArgument`, which
-`core/error.rs:168` serializes as **`VALUE_INVALID` (422, not retryable)**. Specs and trackers must cite the wire code.
+`core/error.rs:168` serializes as **`VALUE_INVALID` (422, not retryable)**.
+
+- `PIN_ALREADY_SET` → **VALUE_INVALID** · `security.rs:111` (command error) · a second `security.pin_setup`
+  on an installation that already registered a PIN — fails closed, no silent overwrite (AUTH-SPEC §2.1)
+- `PIN_NOT_INITIALIZED` → **VALUE_INVALID** · `security.rs:43` (command error) · `security.change_pin` before
+  any PIN was registered — first-run registration is the explicit `security.pin_setup` command (F-004) Specs and trackers must cite the wire code.
 
 ---
 

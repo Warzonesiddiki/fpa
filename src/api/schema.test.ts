@@ -27,6 +27,9 @@ import {
   ModelInspectData,
   ModelRecalcArgs,
   ModelRecalcData,
+  ModelSheetAddData,
+  ModelCreateData,
+  PackBuilderSaveV1Data,
   ModelListArgs,
   ModelListData,
   ModelScheduleUpsertArgs,
@@ -59,6 +62,8 @@ import {
   SecurityPinSetupData,
   SessionStatusData,
   SessionUnlockData,
+  PackValidateData,
+  PackInstallData,
   SUPPORTED_FUNCTIONS,
   findUnsupportedFunction,
   pinPolicyChecks,
@@ -1717,5 +1722,113 @@ describe("alerts schemas (F-026 · M5-4 · API-SPEC §7 alerts.*)", () => {
     expect(parsed.filter?.include_dismissed).toBe(false);
     expect(args.safeParse({ filter: { severity: "fatal" } }).success).toBe(false);
     expect(args.safeParse({ filter: {}, extra: 1 }).success).toBe(false); // strict
+  });
+});
+
+describe("pack.validate + pack.install contracts (F-005 · API-SPEC §17/§18)", () => {
+  it("requires a non-empty trimmed pack_path and is strict", () => {
+    const args = CommandArgs["pack.validate"];
+    expect(args.safeParse({ pack_path: "/packs/saas" }).success).toBe(true);
+    expect(args.safeParse({ pack_path: "  /packs/saas  " }).success).toBe(true); // trimmed
+    expect(args.safeParse({ pack_path: "" }).success).toBe(false);
+    expect(args.safeParse({ pack_path: "   " }).success).toBe(false);
+    expect(args.safeParse({}).success).toBe(false);
+    expect(args.safeParse({ pack_path: "/p", extra: 1 }).success).toBe(false); // strict
+  });
+
+  it("data shape carries valid + errors[] + warnings[] string entries", () => {
+    const ok = PackValidateData.safeParse({ valid: true, errors: [], warnings: ["w"] });
+    expect(ok.success).toBe(true);
+    const bad = PackValidateData.safeParse({ valid: "yes", errors: [], warnings: [] });
+    expect(bad.success).toBe(false);
+    const badEntry = PackValidateData.safeParse({ valid: false, errors: [3], warnings: [] });
+    expect(badEntry.success).toBe(false);
+  });
+
+  it("pack.install requires an absolute pack_path + uuid company_id and is strict", () => {
+    const args = CommandArgs["pack.install"];
+    expect(
+      args.safeParse({ pack_path: "/packs/custom", company_id: crypto.randomUUID() }).success,
+    ).toBe(true);
+    expect(args.safeParse({ pack_path: "", company_id: crypto.randomUUID() }).success).toBe(false);
+    expect(args.safeParse({ pack_path: "/p", company_id: "not-a-uuid" }).success).toBe(false);
+    expect(args.safeParse({ pack_path: "/p" }).success).toBe(false);
+    expect(
+      args.safeParse({ pack_path: "/p", company_id: crypto.randomUUID(), extra: 1 }).success,
+    ).toBe(false); // strict
+  });
+
+  it("pack.install data carries pack_id + version + default-empty warnings", () => {
+    const ok = PackInstallData.safeParse({ pack_id: "p1", version: "2.0.0" });
+    expect(ok.success).toBe(true);
+    expect(
+      ok.success && PackInstallData.parse({ pack_id: "p1", version: "2.0.0" }).warnings,
+    ).toEqual([]);
+    const bad = PackInstallData.safeParse({ pack_id: "", version: "2.0.0" });
+    expect(bad.success).toBe(false);
+  });
+});
+
+describe("model.sheet.add contract (F-012 · API-SPEC §19)", () => {
+  it("requires uuid model_id, trimmed non-empty name, closed sheet_type enum, strict", () => {
+    const args = CommandArgs["model.sheet.add"];
+    const base = { model_id: crypto.randomUUID(), name: "Revenue", type: "input" } as const;
+    expect(args.safeParse(base).success).toBe(true);
+    expect(args.safeParse({ ...base, name: "  Revenue  " }).success).toBe(true); // trimmed
+    expect(args.safeParse({ ...base, name: "" }).success).toBe(false);
+    expect(args.safeParse({ ...base, name: "   " }).success).toBe(false);
+    expect(args.safeParse({ ...base, type: "banana" }).success).toBe(false);
+    expect(args.safeParse({ ...base, model_id: "nope" }).success).toBe(false);
+    expect(args.safeParse({ ...base, extra: 1 }).success).toBe(false); // strict
+  });
+
+  it("data shape carries sheet_id", () => {
+    expect(ModelSheetAddData.safeParse({ sheet_id: "s-1" }).success).toBe(true);
+    expect(ModelSheetAddData.safeParse({ sheet_id: "" }).success).toBe(false);
+  });
+});
+
+describe("model.create contract (F-012 · API-SPEC §20)", () => {
+  it("requires uuid company/pack, trimmed name, closed horizon set, strict", () => {
+    const args = CommandArgs["model.create"];
+    const base = {
+      company_id: crypto.randomUUID(),
+      name: "FY27 Plan",
+      horizon: "1y",
+      pack_id: crypto.randomUUID(),
+    } as const;
+    expect(args.safeParse(base).success).toBe(true);
+    expect(args.safeParse({ ...base, horizon: "2y" }).success).toBe(false);
+    expect(args.safeParse({ ...base, name: "" }).success).toBe(false);
+    expect(args.safeParse({ ...base, company_id: "nope" }).success).toBe(false);
+    expect(args.safeParse({ ...base, pack_id: "nope" }).success).toBe(false);
+    expect(args.safeParse({ ...base, extra: 1 }).success).toBe(false); // strict
+  });
+
+  it("data shape carries model_id + scenario_id", () => {
+    expect(ModelCreateData.safeParse({ model_id: "m1", scenario_id: "s1" }).success).toBe(true);
+    expect(ModelCreateData.safeParse({ model_id: "m1" }).success).toBe(false);
+  });
+});
+
+describe("pack.builder.save_v1 contract (F-005 · API-SPEC §21)", () => {
+  it("requires nullable pack_id + a definition_json object, strict", () => {
+    const args = CommandArgs["pack.builder.save_v1"];
+    const def = { pack: { key: "k", version: "1.0.0" } };
+    expect(args.safeParse({ pack_id: null, definition_json: def }).success).toBe(true);
+    expect(args.safeParse({ pack_id: "p-1", definition_json: def }).success).toBe(true);
+    expect(args.safeParse({ pack_id: null }).success).toBe(false);
+    expect(args.safeParse({ pack_id: null, definition_json: "not-an-object" }).success).toBe(false);
+    expect(args.safeParse({ pack_id: null, definition_json: def, extra: 1 }).success).toBe(false); // strict
+  });
+
+  it("data shape carries pack_id + version + default-empty warnings", () => {
+    const ok = PackBuilderSaveV1Data.safeParse({ pack_id: "p1", version: "1.0.0" });
+    expect(ok.success).toBe(true);
+    expect(
+      ok.success && PackBuilderSaveV1Data.parse({ pack_id: "p1", version: "1.0.0" }).warnings,
+    ).toEqual([]);
+    const bad = PackBuilderSaveV1Data.safeParse({ pack_id: "p1" });
+    expect(bad.success).toBe(false);
   });
 });

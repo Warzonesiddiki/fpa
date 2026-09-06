@@ -3,9 +3,9 @@
  *
  * The store is real but pre-seeded per test (load/create actions stubbed), mirroring the
  * S-060 harness idiom. Covers: header/filters chrome, severity grouping with h2 sections,
- * trigger-chain disclosure (first-class row per WIREFRAMES), the disabled pending
- * dismiss/mute buttons, all five states including the "All clear" empty copy, the
- * inline (non-blanking) create error, and axe on the substantive states.
+ * trigger-chain disclosure (first-class row per WIREFRAMES), the real dismiss action
+ * (alerts.dismiss, reloads the list), all five states including the "All clear" empty copy,
+ * the inline (non-blanking) create error, and axe on the substantive states.
  */
 
 import { render, screen, within } from "@testing-library/react";
@@ -58,6 +58,8 @@ function seed(partial: Record<string, unknown> = {}) {
     setSeverityFilter: vi.fn().mockResolvedValue(undefined),
     setIncludeDismissed: vi.fn().mockResolvedValue(undefined),
     createRule: vi.fn().mockResolvedValue(true),
+    dismissAlert: vi.fn().mockResolvedValue(true),
+    muteRule: vi.fn().mockResolvedValue(true),
     retry: vi.fn().mockResolvedValue(true),
     ...partial,
   });
@@ -110,15 +112,27 @@ describe("S-056 Alerts page", () => {
     expect(el).not.toBeNull();
   });
 
-  it("dismiss and mute are present but honestly disabled with explanation", () => {
+  it("dismiss calls the real alerts.dismiss action and reloads the list", async () => {
+    const dismissAlert = vi.fn().mockResolvedValue(true);
+    seed({ dismissAlert });
     render(<AlertsPage />);
     const item = screen.getByText("Cash floor (13-week)").closest("li") as HTMLElement;
-    const dismiss = within(item).getByRole("button", { name: "Dismiss" });
-    const mute = within(item).getByRole("button", { name: "Mute rule" });
-    expect(dismiss).toBeDisabled();
-    expect(mute).toBeDisabled();
-    expect(dismiss.getAttribute("title")).toMatch(/not in the locked API catalog/i);
-    expect(mute.getAttribute("title")).toMatch(/alerts\.mute_rule/);
+    await userEvent.click(within(item).getByRole("button", { name: "Dismiss" }));
+    expect(dismissAlert).toHaveBeenCalledWith("b0b00000-0000-4000-8000-000000000001");
+  });
+
+  it("a dismissed alert hides its Dismiss affordance instead of faking a second dismiss", () => {
+    const dismissed = [alertRecord({ dismissed_at: "2026-09-05T07:00:00Z" })];
+    seed({ alerts: dismissed });
+    render(<AlertsPage />);
+    const item = screen.getByText("Cash floor (13-week)").closest("li") as HTMLElement;
+    expect(within(item).queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+    expect(within(item).getByText(/Dismissed/i)).toBeInTheDocument();
+  });
+
+  it("never fabricates a local-only Mute rule button (mute_rule has no alert-row surface)", () => {
+    render(<AlertsPage />);
+    expect(screen.queryByRole("button", { name: "Mute rule" })).not.toBeInTheDocument();
   });
 
   it("filter buttons call the store setters", async () => {

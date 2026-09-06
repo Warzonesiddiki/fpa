@@ -107,15 +107,46 @@ pub fn largest_remainder_allocate(exact_values: &[Decimal], unit: Decimal) -> Ve
         rj.cmp(&ri).then_with(|| i.cmp(&j))
     });
 
-    // 3. distribute residual in whole units
+    // 3. distribute residual in whole units.
+    //    ROUND-TIE SEMANTICS: `(residual / unit).round()` is HALF_EVEN
+    //    (`RoundingStrategy::MidpointNearestEven`) — a residual of exactly half a unit
+    //    rounds to the even grid neighbour, mirroring `spreading.ts` target quantize
+    //    (`ROUND_HALF_EVEN`). Display rounding itself stays HALF_UP (§2); HALF_EVEN
+    //    applies ONLY to this residual-to-grid step (§4). Remainder ties between lines
+    //    break by smallest index first (deterministic, no float).
+    debug_assert!(
+        unit.scale() <= 4,
+        "largest_remainder_allocate: unit scale must be ≤ 4"
+    );
     let mut result = floored;
     let mut units_left = (residual / unit).round();
-    let mut idx = 0usize;
-    while units_left > Decimal::ZERO && idx < order.len() {
-        result[order[idx]] += unit;
-        residual -= unit;
-        units_left -= Decimal::ONE;
-        idx += 1;
+    if units_left > Decimal::ZERO {
+        // Positive residual: award whole units to the LARGEST remainders first (§4b),
+        // wrapping past the end when the residual exceeds the line count.
+        let mut idx = 0usize;
+        while units_left > Decimal::ZERO {
+            result[order[idx % order.len()]] += unit;
+            residual -= unit;
+            units_left -= Decimal::ONE;
+            idx += 1;
+        }
+    } else if units_left < Decimal::ZERO {
+        // Negative residual — port of `spreading.ts:222-228`: subtract whole units from
+        // the SMALLEST remainders first (re-sorted ascending, index tie-break kept),
+        // wrapping past the end when |residual| exceeds the line count.
+        order.sort_by(|&i, &j| {
+            // `result == floored` here: nothing distributed yet, so these are the §4b remainders.
+            let ri = exact_values[i] - result[i];
+            let rj = exact_values[j] - result[j];
+            ri.cmp(&rj).then_with(|| i.cmp(&j))
+        });
+        let mut idx = 0usize;
+        while units_left < Decimal::ZERO {
+            result[order[idx % order.len()]] -= unit;
+            residual += unit;
+            units_left += Decimal::ONE;
+            idx += 1;
+        }
     }
     let _ = residual;
     result
@@ -208,6 +239,47 @@ mod tests {
             .map(|s| Decimal::from_str_exact(s).unwrap())
             .collect();
         assert_eq!(displayed, expected);
+    }
+
+    #[test]
+    fn largest_remainder_negative_residual_stays_exact() {
+        // Refunds/credits (negative exacts) still tie: floored [-13,-4,-8], total -24,
+        // residual +1 lands on the LARGEST remainder (0.6 at index 0). The subtract
+        // path (negative residual, smallest-remainder-first per spreading.ts:222-228)
+        // keeps the mirror invariant Σ displayed == total when drift goes the other way.
+        let values = vec![
+            Decimal::from_str_exact("-12.4").unwrap(),
+            Decimal::from_str_exact("-3.7").unwrap(),
+            Decimal::from_str_exact("-7.9").unwrap(),
+        ];
+        let displayed = largest_remainder_allocate(&values, Decimal::ONE);
+        let expected: Vec<Decimal> = ["-12", "-4", "-8"]
+            .iter()
+            .map(|s| Decimal::from_str_exact(s).unwrap())
+            .collect();
+        assert_eq!(displayed, expected);
+        let sum: Decimal = displayed.iter().sum();
+        assert_eq!(sum, values.iter().sum::<Decimal>());
+    }
+
+    #[test]
+    fn exact_multiplication_one_ten_by_two_twenty_is_two_forty_two() {
+        // 1.10 × 2.20 == 2.42 exactly — decimal arithmetic, never binary float
+        // (f64 would give 2.4200000000000004).
+        let a = Decimal::from_str_exact("1.10").unwrap();
+        let b = Decimal::from_str_exact("2.20").unwrap();
+        let m = MoneyValue::from_decimal(&(a * b).to_string(), "USD").unwrap();
+        assert_eq!(m.minor, 242);
+        assert_eq!(m.to_decimal_string(), "2.42");
+    }
+
+    #[test]
+    fn ten_thousand_round_trip_is_exact() {
+        // 10,000.00 USD → 1,000,000 minor units → back without loss.
+        let m = MoneyValue::from_decimal("10000.00", "USD").unwrap();
+        assert_eq!(m.minor, 1_000_000);
+        assert_eq!(m.to_decimal_string(), "10000");
+        assert_eq!(MoneyValue::new(m.minor, "USD").unwrap(), m);
     }
 
     proptest::proptest! {

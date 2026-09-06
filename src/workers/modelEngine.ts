@@ -48,6 +48,11 @@ export interface ModelGridPeriod {
   id: string;
   /** Short code e.g. "P08" for the column header. */
   code: string;
+  /** Fiscal period start date (ISO `yyyy-mm-dd`) — carried from `calendar.preview` for the
+   * fiscal-aware date functions FPERIOD/FPERIODSTART/PERIODLEN (FORMULA-ENGINE-SPEC §2, I5). */
+  start_date?: string;
+  /** Fiscal period end date (ISO `yyyy-mm-dd`, inclusive). */
+  end_date?: string;
 }
 
 /** Input for a single cell edit — same shape as `model.cell.set.v1` args. */
@@ -179,6 +184,14 @@ export interface HardcodedFinding {
   literals: HardcodedLiteral[];
 }
 
+/** Fiscal metadata for one loaded period column (dates optional — legacy grids omit them). */
+export interface PeriodMeta {
+  id: string;
+  code: string;
+  start_date?: string;
+  end_date?: string;
+}
+
 /** Column layout: the engine adds derived columns after the real periods. */
 export interface GridLayout {
   lines: ModelGridLine[];
@@ -207,6 +220,40 @@ const SHEET_NAME = "Model";
 let _engineRef: ModelEngine | null = null;
 
 /** Parse `fp-{year}-p{period_no}` → `{year, periodNo}`. Returns null for non-matching ids. */
+/** Convert a HyperFormula date serial (1900 system, `leapYear1900` default) to a UTC date.
+ * Excel-compatible serials count days since 1899-12-30; the floor takes the date part. */
+function serialToUtcDate(serial: number): Date | null {
+  if (!Number.isFinite(serial)) return null;
+  const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86_400_000);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Convert an ISO `yyyy-mm-dd` string to a UTC-midnight date (calendar metadata is date-only). */
+function utcOfIso(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const d = new Date(Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10)));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Convert a UTC-midnight date back to a HyperFormula date serial (1900 system). */
+function dateSerial(d: Date): number {
+  return Math.floor((d.getTime() - Date.UTC(1899, 11, 30)) / 86_400_000);
+}
+
+/** The loaded period with the given period number (fiscal functions: FPERIODSTART/PERIODLEN). */
+function findLoadedPeriod(periodNo: number): PeriodMeta | null {
+  const engine = _engineRef;
+  if (engine === null) return null;
+  const n = Math.floor(periodNo);
+  if (n !== periodNo || n < 1 || n > engine.periodMeta.length) return null;
+  const exact = engine.periodMeta.find((p) => {
+    const parsed = parsePeriodId(p.id);
+    return parsed !== null && parsed.periodNo === n;
+  });
+  return exact ?? null;
+}
+
 function parsePeriodId(id: string): { year: number; periodNo: number } | null {
   const match = /^fp-(\d+)-p(\d+)$/.exec(id);
   if (!match) return null;
@@ -278,6 +325,26 @@ class OneFPAPlugin extends FunctionPlugin {
     },
     PRIORYEAR: {
       method: "prioryear",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    FPERIOD: {
+      method: "fperiod",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    FQTR: {
+      method: "fqtr",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    FYEAR: {
+      method: "fyear",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    FPERIODSTART: {
+      method: "fperiodstart",
+      parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
+    },
+    PERIODLEN: {
+      method: "periodlen",
       parameters: [{ argumentType: FunctionArgumentType.NUMBER }],
     },
   };
@@ -426,6 +493,96 @@ class OneFPAPlugin extends FunctionPlugin {
     const priorId = `fp-${priorYear}-p${String(priorNo).padStart(2, "0")}`;
     return engine.getCellNumberAtPeriod(ref.row, priorId);
   }
+
+  /* ── Fiscal-aware date functions (FORMULA-ENGINE-SPEC §2, computed against the loaded
+   * fiscal grid — I5: the calendar engine owns the periods; these only read them). ── */
+
+  /** FPERIOD(date) — the fiscal period number (1–13) whose [start,end] contains the date. */
+  fperiod(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("FPERIOD"), (serial: number) => {
+      const engine = _engineRef;
+      if (engine === null) return new CellError(ErrorType.VALUE);
+      const d = serialToUtcDate(serial);
+      if (d === null) return new CellError(ErrorType.VALUE);
+      for (const p of engine.periodMeta) {
+        if (!p.start_date || !p.end_date) continue;
+        const s = utcOfIso(p.start_date);
+        const e = utcOfIso(p.end_date);
+        if (s && e && d >= s && d <= e) {
+          const parsed = parsePeriodId(p.id);
+          return parsed === null ? new CellError(ErrorType.VALUE) : parsed.periodNo;
+        }
+      }
+      return new CellError(ErrorType.VALUE);
+    });
+  }
+
+  /** FQTR(date) — the fiscal quarter (1–4) containing the date (3 periods per quarter, or 4×13w). */
+  fqtr(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("FQTR"), (serial: number) => {
+      const engine = _engineRef;
+      if (engine === null) return new CellError(ErrorType.VALUE);
+      const d = serialToUtcDate(serial);
+      if (d === null) return new CellError(ErrorType.VALUE);
+      for (const p of engine.periodMeta) {
+        if (!p.start_date || !p.end_date) continue;
+        const s = utcOfIso(p.start_date);
+        const e = utcOfIso(p.end_date);
+        if (s && e && d >= s && d <= e) {
+          const parsed = parsePeriodId(p.id);
+          if (parsed === null) return new CellError(ErrorType.VALUE);
+          const per = engine.periodsPerYear >= 13 ? 4 : 3;
+          return Math.ceil(parsed.periodNo / per);
+        }
+      }
+      return new CellError(ErrorType.VALUE);
+    });
+  }
+
+  /** FYEAR(date) — the fiscal year (calendar year of the FY start) containing the date. */
+  fyear(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("FYEAR"), (serial: number) => {
+      const engine = _engineRef;
+      if (engine === null) return new CellError(ErrorType.VALUE);
+      const d = serialToUtcDate(serial);
+      if (d === null) return new CellError(ErrorType.VALUE);
+      for (const p of engine.periodMeta) {
+        if (!p.start_date || !p.end_date) continue;
+        const s = utcOfIso(p.start_date);
+        const e = utcOfIso(p.end_date);
+        if (s && e && d >= s && d <= e) {
+          const parsed = parsePeriodId(p.id);
+          if (parsed === null) return new CellError(ErrorType.VALUE);
+          // The period id's year IS the fiscal-year designator (`FY2026` → `fp-2026-*`).
+          return parsed.year;
+        }
+      }
+      return new CellError(ErrorType.VALUE);
+    });
+  }
+
+  /** FPERIODSTART(p) — the start date of fiscal period `p` (1–13) of the loaded fiscal year, as a date serial. */
+  fperiodstart(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("FPERIODSTART"), (periodNo: number) => {
+      const target = findLoadedPeriod(periodNo);
+      if (target === null || !target.start_date) return new CellError(ErrorType.VALUE);
+      const d = utcOfIso(target.start_date);
+      return d === null ? new CellError(ErrorType.VALUE) : dateSerial(d);
+    });
+  }
+
+  /** PERIODLEN(p) — the length in days of fiscal period `p` (1–13) of the loaded fiscal year. */
+  periodlen(ast: any, state: any): any {
+    return this.runFunction(ast.args, state, this.metadata("PERIODLEN"), (periodNo: number) => {
+      const target = findLoadedPeriod(periodNo);
+      if (target === null || !target.start_date || !target.end_date)
+        return new CellError(ErrorType.VALUE);
+      const s = utcOfIso(target.start_date);
+      const e = utcOfIso(target.end_date);
+      if (s === null || e === null) return new CellError(ErrorType.VALUE);
+      return Math.floor((e.getTime() - s.getTime()) / 86_400_000) + 1;
+    });
+  }
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -443,6 +600,11 @@ HyperFormula.registerFunctionPlugin(OneFPAPlugin, {
     YOY: "YOY",
     PRIORPERIOD: "PRIORPERIOD",
     PRIORYEAR: "PRIORYEAR",
+    FPERIOD: "FPERIOD",
+    FQTR: "FQTR",
+    FYEAR: "FYEAR",
+    FPERIODSTART: "FPERIODSTART",
+    PERIODLEN: "PERIODLEN",
   },
 });
 
@@ -488,6 +650,9 @@ export class ModelEngine {
   private driverPeriods: ModelGridPeriod[] = [];
   /** Periods per fiscal year (12 for standard, 13 for 4-5-4; auto-detected from loaded periods). */
   private _periodsPerYear = 12;
+  /** Fiscal metadata for the loaded period columns (dates carried from `calendar.preview`) —
+   * consumed by the fiscal-aware date functions FPERIOD/FQTR/FYEAR/FPERIODSTART/PERIODLEN (I5). */
+  private _periodMeta: PeriodMeta[] = [];
 
   constructor(scale = 2) {
     this.hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
@@ -506,6 +671,11 @@ export class ModelEngine {
   /** Periods per fiscal year (12 or 13), auto-detected when the grid loads (M3-10). */
   get periodsPerYear(): number {
     return this._periodsPerYear;
+  }
+
+  /** Fiscal metadata (id/code/dates) for the loaded period columns. */
+  get periodMeta(): PeriodMeta[] {
+    return this._periodMeta;
   }
 
   /* ── Named Ranges (M3-10 · FORMULA-ENGINE-SPEC §1) ───────────────────────────────────
@@ -586,6 +756,12 @@ export class ModelEngine {
     this.modelLines = [...layout.lines];
     this.periods = [...layout.periods];
     this._periodsPerYear = detectPeriodsPerYear(this.periods);
+    this._periodMeta = this.periods.map((p) => ({
+      id: p.id,
+      code: p.code,
+      start_date: p.start_date,
+      end_date: p.end_date,
+    }));
     this.lineRow.clear();
     this.periodCol.clear();
     this.dirtyLines.clear();
@@ -604,33 +780,35 @@ export class ModelEngine {
     }
     this.sheetId = sheetId;
 
-    // Row 0 = header (line label + period codes) so A1 refs in formulas are 1-based & readable.
-    this.hf.setCellContents({ sheet: sheetId, col: 0, row: 0 }, "Line");
-    this.periods.forEach((p, ci) => {
-      const col = ci + 1;
-      this.periodCol.set(p.id, col);
-      this.colPeriod.set(col, p.id);
-      this.hf.setCellContents({ sheet: sheetId, col, row: 0 }, p.code);
-    });
-    // Derived columns after the real periods.
-    const ytdCol = this.periods.length + 1;
-    const fyCol = this.periods.length + 2;
-    this.hf.setCellContents({ sheet: sheetId, col: ytdCol, row: 0 }, "YTD");
-    this.hf.setCellContents({ sheet: sheetId, col: fyCol, row: 0 }, "FY");
+    this.hf.batch(() => {
+      // Row 0 = header (line label + period codes) so A1 refs in formulas are 1-based & readable.
+      this.hf.setCellContents({ sheet: sheetId, col: 0, row: 0 }, "Line");
+      this.periods.forEach((p, ci) => {
+        const col = ci + 1;
+        this.periodCol.set(p.id, col);
+        this.colPeriod.set(col, p.id);
+        this.hf.setCellContents({ sheet: sheetId, col, row: 0 }, p.code);
+      });
+      // Derived columns after the real periods.
+      const ytdCol = this.periods.length + 1;
+      const fyCol = this.periods.length + 2;
+      this.hf.setCellContents({ sheet: sheetId, col: ytdCol, row: 0 }, "YTD");
+      this.hf.setCellContents({ sheet: sheetId, col: fyCol, row: 0 }, "FY");
 
-    this.lines.forEach((line, ri) => {
-      const row = ri + 1;
-      this.lineRow.set(line.id, row);
-      this.rowLine.set(row, line.id);
-      this.hf.setCellContents({ sheet: sheetId, col: 0, row }, line.label);
-      // YTD = SUM(period1..periodYTD); FY = SUM(period1..periodN). Deterministic formulas.
-      const first = 1;
-      const last = Math.max(1, this.periods.length);
-      const ytdTo = Math.max(first, Math.min(this.periods.length, layout.ytdThrough ?? last));
-      const rangeYtd = this.range(sheetId, row, first, ytdTo);
-      const rangeFy = this.range(sheetId, row, first, last);
-      this.hf.setCellContents({ sheet: sheetId, col: ytdCol, row }, `=SUM(${rangeYtd})`);
-      this.hf.setCellContents({ sheet: sheetId, col: fyCol, row }, `=SUM(${rangeFy})`);
+      this.lines.forEach((line, ri) => {
+        const row = ri + 1;
+        this.lineRow.set(line.id, row);
+        this.rowLine.set(row, line.id);
+        this.hf.setCellContents({ sheet: sheetId, col: 0, row }, line.label);
+        // YTD = SUM(period1..periodYTD); FY = SUM(period1..periodN). Deterministic formulas.
+        const first = 1;
+        const last = Math.max(1, this.periods.length);
+        const ytdTo = Math.max(first, Math.min(this.periods.length, layout.ytdThrough ?? last));
+        const rangeYtd = this.range(sheetId, row, first, ytdTo);
+        const rangeFy = this.range(sheetId, row, first, last);
+        this.hf.setCellContents({ sheet: sheetId, col: ytdCol, row }, `=SUM(${rangeYtd})`);
+        this.hf.setCellContents({ sheet: sheetId, col: fyCol, row }, `=SUM(${rangeFy})`);
+      });
     });
   }
 

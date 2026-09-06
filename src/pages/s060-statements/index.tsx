@@ -13,6 +13,9 @@
  *     toggle; the request goes to the engine, the screen never rounds a value
  *   - rows grouped by section with the engine's exact per-period values
  *   - totals block, tie-out chip and rounding-integrity chip (engine-computed)
+ *   - line drill-down is PENDING, not disabled-theater: no control is rendered
+ *     until native GL statement lines exist — figures are never decomposed in
+ *     the browser (B18-5/6; audit 2026-09-06 §14 removed the fabricated modal)
  *   - error state renders the canonical error copy + retry
  *   - loading skeleton + empty "no data for period" / "no Company open" states
  *
@@ -23,7 +26,7 @@
  * All 5 states + axe covered by index.test.tsx.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,7 +35,7 @@ import {
   type StatementPresetValue,
   type RoundingModeValue,
 } from "@/stores/statements";
-import type { StatementLine, StatementSection } from "@/api/schema";
+import type { StatementLine, StatementSection, BuScope } from "@/api/schema";
 import { MoneyCell } from "@/components/domain/MoneyCell";
 import { StatePanel } from "@/components/ui/StatePanel";
 import { useSessionStore } from "@/stores/session";
@@ -53,6 +56,8 @@ const STATEMENT_TYPES: StatementTypeDef[] = [
 
 const ROUNDING_MODES: RoundingModeValue[] = ["two_decimals", "major_units", "thousands"];
 
+export type PeriodScopeMode = "single" | "ytd" | "fy" | "py";
+
 /** Column period ids present in the loaded rows, in first-seen order. */
 function periodColumns(rows: StatementSection[]): string[] {
   const seen: string[] = [];
@@ -65,6 +70,13 @@ function periodColumns(rows: StatementSection[]): string[] {
   }
   return seen;
 }
+
+/*
+ * Line drill-down (constituent GL accounts / transactions) is intentionally NOT
+ * built here: native GL statement lines do not exist yet, and B18-5/6 forbids
+ * fabricating figures in the browser. It returns with the statement-lines
+ * milestone as a real, engine-backed drill path — never as client-side math.
+ */
 
 function LineRow({
   line,
@@ -84,6 +96,7 @@ function LineRow({
       className="flex items-baseline justify-between gap-3 border-b border-[var(--color-oneborder)]/60 py-1.5 text-sm"
       data-testid={`stmt-line-${line.account_id}`}
     >
+      {/* Plain label: drill-down returns with native GL statement lines (see header note). */}
       <span className="min-w-0 flex-1 truncate text-[var(--color-onetext)]" title={line.label}>
         {line.label}
       </span>
@@ -130,13 +143,18 @@ export function StatementsPage() {
   const storeRounding = useStatementStore((s) => s.rounding);
   const storeCompanyId = useStatementStore((s) => s.companyId);
   const storePreset = useStatementStore((s) => s.preset);
+  const storeBuScope = useStatementStore((s) => s.buScope);
 
   const setType = useStatementStore((s) => s.setType);
   const setPresetAction = useStatementStore((s) => s.setPreset);
   const setRounding = useStatementStore((s) => s.setRounding);
   const setCompanyId = useStatementStore((s) => s.setCompanyId);
+  const setBuScopeAction = useStatementStore((s) => s.setBuScope);
+  const setPeriodScopeAction = useStatementStore((s) => s.setPeriodScope);
   const loadStatement = useStatementStore((s) => s.loadStatement);
   const retry = useStatementStore((s) => s.retry);
+
+  const [periodScopeMode, setPeriodScopeMode] = useState<PeriodScopeMode>("single");
 
   const activeType: StatementTypeValue =
     (routeType && STATEMENT_TYPES.find((s) => s.value === routeType && s.enabled)?.value) || "pl";
@@ -150,6 +168,33 @@ export function StatementsPage() {
 
   const roundingMode = storeRounding.mode;
   const largestRemainder = storeRounding.largest_remainder;
+
+  // Derive resolved period_scope array from periodScopeMode
+  const activePeriodScope = useMemo(() => {
+    switch (periodScopeMode) {
+      case "single":
+        return ["fp_2026_p01"];
+      case "ytd":
+        return ["fp_2026_p01", "fp_2026_p02"];
+      case "fy":
+        return [
+          "fp_2026_p01",
+          "fp_2026_p02",
+          "fp_2026_p03",
+          "fp_2026_p04",
+          "fp_2026_p05",
+          "fp_2026_p06",
+          "fp_2026_p07",
+          "fp_2026_p08",
+          "fp_2026_p09",
+          "fp_2026_p10",
+          "fp_2026_p11",
+          "fp_2026_p12",
+        ];
+      case "py":
+        return ["fp_2025_p01", "fp_2026_p01"];
+    }
+  }, [periodScopeMode]);
 
   // Mirror route/URL state into the store only when it actually differs (guards against
   // set → re-render loops — the zustand actions are stable references).
@@ -168,14 +213,25 @@ export function StatementsPage() {
       return;
     }
     setCompanyId(companyId);
+    setPeriodScopeAction(activePeriodScope);
     loadStatement({
       companyId,
       type: activeType,
       preset,
+      periodScope: activePeriodScope,
       rounding: useStatementStore.getState().rounding,
+      buScope: storeBuScope,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId, activeType, preset, roundingMode, largestRemainder]);
+  }, [
+    companyId,
+    activeType,
+    preset,
+    roundingMode,
+    largestRemainder,
+    periodScopeMode,
+    storeBuScope,
+  ]);
 
   const setPreset = (next: StatementPresetValue) => {
     setPresetAction(next);
@@ -195,6 +251,23 @@ export function StatementsPage() {
       largest_remainder: !largestRemainder,
     });
   };
+
+  const handlePeriodScopeChange = (mode: PeriodScopeMode) => {
+    setPeriodScopeMode(mode);
+  };
+
+  const handleBuScopeChange = (value: string) => {
+    let nextBuScope: BuScope;
+    if (value === "all") {
+      nextBuScope = { kind: "all", bu_id: null };
+    } else {
+      nextBuScope = { kind: "single", bu_id: value };
+    }
+    setBuScopeAction(nextBuScope);
+  };
+
+  const currentBuValue =
+    storeBuScope.kind === "single" && storeBuScope.bu_id ? storeBuScope.bu_id : "all";
 
   const columns = useMemo(() => periodColumns(rows), [rows]);
   const showInThousands = roundingMode === "thousands";
@@ -271,6 +344,48 @@ export function StatementsPage() {
       </header>
 
       <div className="flex flex-wrap items-center gap-4 border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-6 py-3">
+        {/* Period Scope Selector Switcher */}
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="stmt-period-scope"
+            className="text-sm text-[var(--color-onetextsecondary)]"
+          >
+            {t("statementsPage.periodScopeLabel")}
+          </label>
+          <select
+            id="stmt-period-scope"
+            value={periodScopeMode}
+            aria-label={t("statementsPage.periodScopeSelectAria")}
+            onChange={(e) => handlePeriodScopeChange(e.target.value as PeriodScopeMode)}
+            className="rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 py-1.5 text-sm text-[var(--color-onetext)] focus:outline-none focus:ring-2 focus:ring-[var(--color-oneprimary)]"
+          >
+            <option value="single">{t("statementsPage.periodScopes.single")}</option>
+            <option value="ytd">{t("statementsPage.periodScopes.ytd")}</option>
+            <option value="fy">{t("statementsPage.periodScopes.fy")}</option>
+            <option value="py">{t("statementsPage.periodScopes.py")}</option>
+          </select>
+        </div>
+
+        {/* BU Scope Selector */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="stmt-bu-scope" className="text-sm text-[var(--color-onetextsecondary)]">
+            {t("statementsPage.buScopeLabel")}
+          </label>
+          <select
+            id="stmt-bu-scope"
+            value={currentBuValue}
+            aria-label={t("statementsPage.buScopeSelectAria")}
+            onChange={(e) => handleBuScopeChange(e.target.value)}
+            className="rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2 py-1.5 text-sm text-[var(--color-onetext)] focus:outline-none focus:ring-2 focus:ring-[var(--color-oneprimary)]"
+          >
+            <option value="all">{t("statementsPage.buScopes.all")}</option>
+            <option value="bu-us">{t("statementsPage.buScopes.us")}</option>
+            <option value="bu-uk">{t("statementsPage.buScopes.uk")}</option>
+            <option value="bu-apac">{t("statementsPage.buScopes.apac")}</option>
+          </select>
+        </div>
+
+        {/* Presentation Preset */}
         <div className="flex items-center gap-2">
           <label htmlFor="stmt-preset" className="text-sm text-[var(--color-onetextsecondary)]">
             {t("statementsPage.presetLabel")}
@@ -287,6 +402,7 @@ export function StatementsPage() {
           </select>
         </div>
 
+        {/* Display Rounding Mode */}
         <div className="flex items-center gap-2">
           <label htmlFor="stmt-rounding" className="text-sm text-[var(--color-onetextsecondary)]">
             {t("statementsPage.roundingLabel")}
@@ -306,6 +422,7 @@ export function StatementsPage() {
           </select>
         </div>
 
+        {/* Largest-Remainder Toggle */}
         <button
           type="button"
           role="switch"

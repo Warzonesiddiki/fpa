@@ -102,6 +102,9 @@ describe("toBridgeError — defensive error shape (B12)", () => {
   it("normalizes an error whose code is explicitly undefined", () => {
     const err = toBridgeError({ code: undefined });
     expect(err.code).toBe("INTERNAL");
-    expect(err.userMessage).toBe("An unexpected error occurred.");
+    // ERROR-HANDLING §169 verbatim user-facing copy for INTERNAL.
+    expect(err.userMessage).toBe(
+      "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
+    );
   });
 });
