@@ -139,7 +139,7 @@ the product path (B18-3).
 
 | ID   | Unit                                 | Status     | Notes                                                                                                |
 | ---- | ------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------- |
-| M7-1 | CI 12-stage 3-OS + branch protection | ❌ TODO    | `.github/workflows` intentionally not pushed (token lacks Workflows permission); keep `infra/ci.yml` |
+| M7-1 | CI 12-stage 3-OS + branch protection | 🚧 BLOCKED (perms) | `.github/workflows/ci.yml` is written & ready on disk (js-gates = `npm run check` + schema-equality + docs-link --strict; unit-ts + both coverage gates; rust fmt/clippy/test ×3 OS; tauri dry-run ×3 OS; audits). **Push refused: Arena GitHub App token lacks `workflows` permission** (git push + Contents API both rejected 2026-09-06). Owner: reconnect GitHub in Arena with Workflows permission, or commit `.github/workflows/ci.yml` via github.com — then add branch protection. `infra/ci.yml` is now a pointer. |
 | M7-2 | Signing/notarization/manifest/SBOM   | ❗ TODO    | —                                                                                                    |
 | M7-3 | Perf bench + baseline                | ❗ TODO    | —                                                                                                    |
 | M7-4 | A11y full sweep + keyboard E2E       | 🚧 PARTIAL | per-screen tests; full sweep not                                                                     |
