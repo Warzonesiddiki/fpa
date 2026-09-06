@@ -45,7 +45,7 @@ ERROR-HANDLING.md) · COMPETITIVE-ANALYSIS.md (why a differentiator claim is tru
 7. Write **tests with the change**: Rust proptest for math/calendar invariants; Vitest for components/stores; Playwright for user flows (UF-ids).
 8. Keep accessibility: contrast tokens, focus ring, aria on grids/charts/modals, keyboard parity (ACCESSIBILITY.md).
 9. Write an **Audit event** for every mutation command.
-10. Run the full gate before submitting: `pnpm lint && pnpm test && cargo test && cargo clippy -- -D warnings && pnpm build`.
+10. Run the full gate before submitting: `npm run check && cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check && npm run build`.
 11. Update docs-index.json when adding a doc; add terms to GLOSSARY before using them.
 12. Use `Pack` data, not code, for any new industry need (B15) — opened Pack Builder feature in Pack schema.
 
