@@ -12,7 +12,7 @@
  * documented working scenario/model UUIDs (API-SPEC §2/§3 examples) until scenario picker lands.
  */
 import { create } from "zustand";
-import { call } from "@/api/bridge";
+import { call, registerEngineCommand } from "@/api/bridge";
 import type { BridgeError } from "@/api/bridge";
 import { useSessionStore } from "@/stores/session";
 import type { ScreenState } from "@/components/ui/StatePanel";
@@ -260,6 +260,49 @@ function getClient(): ModelEngineClient {
  */
 export function getModelEngineClient(): ModelEngineClient {
   return getClient();
+}
+
+/**
+ * `model.inspect` is answered by the shared HyperFormula engine — the single cell-graph
+ * owner (B14; ARCHITECTURE "Worker split"; ADR-029). The catalogued command keeps its
+ * Zod schema and dev-mock contract; the bridge routes it to this in-process handler
+ * instead of IPC. D1's original "native Rust handler" premise predates the M3 worker
+ * engine: references through INDIRECT/OFFSET/named ranges can only be resolved by the
+ * engine that evaluates them — a Rust text-parser over stored formulas would be a second,
+ * divergent graph. Wiring is exported and called from the app entrypoint (composition
+ * root), not run at module scope — tests that mock the bridge stay untouched.
+ */
+export function registerModelInspectCommand(): void {
+  registerEngineCommand("model.inspect", async (args) => {
+    try {
+      const result = await getClient().inspectCell(args.line_id, args.period_id);
+      // Return exactly the catalogued shape (API-SPEC `model.inspect`); the engine's richer
+      // direct-channel fields stay on the direct channel (S-042 uses inspectCell directly).
+      return {
+        line_id: result.line_id,
+        period_id: result.period_id,
+        formula: result.formula,
+        computed_text: result.computed_text,
+        error_code: result.error_code,
+        precedents: result.precedents,
+        dependents: result.dependents,
+        cycle: result.cycle,
+        is_cycle: result.is_cycle,
+      };
+    } catch (err) {
+      const opError = parseEngineOpError(err);
+      throw {
+        code: opError.code,
+        userMessage:
+          opError.userMessage ??
+          "The formula engine could not inspect this cell. Retry after reopening the Model.",
+        httpStatus: 422,
+        retryable: false,
+        retryAfterMs: null,
+        details: opError.details,
+      };
+    }
+  });
 }
 
 export const useModelGridStore = create<ModelGridState>((set, get) => ({

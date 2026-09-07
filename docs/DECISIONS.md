@@ -201,6 +201,24 @@ UX) stays TODO with M7-2 signing. `cargo` dependency tree shrinks (reqwest/rustl
 subtree). The B18-9 offline promise is unaffected — no telemetry, no phone-home; there never was an update check
 call. Security posture: no unsigned update path can ship by default again.
 
+### ADR-029 · `model.inspect` is served by the HyperFormula engine, not a Rust handler (WS-05)
+**Why:** D1 ordered all three mock-only commands implemented as native Rust handlers. That premise predates the M3-1/M3-2
+landing of the model engine: the cell graph — precedents, dependents, cycle paths — is owned by the HyperFormula engine in
+the webview Worker (ARCHITECTURE "Worker split"; S-042 already inspects through it). Faithful precedent extraction is
+*impossible* from persisted formula text alone: `INDIRECT`, `OFFSET` and named ranges resolve only inside the evaluating
+engine, so a Rust text-parser over `model_values` would be a second, guaranteed-divergent graph — exactly what B14 (one
+owner per concern) and WS-05's own "do not build a second graph" note forbid.
+**Decision:** the bridge gains an in-process engine-command registry (`registerEngineCommand`; routing order in `call`:
+Zod arg gate → engine handler → Tauri IPC → dev mock). `src/stores/model.ts` — the engine singleton's composition root —
+registers `model.inspect` to the shared client's `inspectCell`, returning exactly the catalogued 9-field shape. The
+command keeps its Zod schema, API-SPEC row, and dev-mock case (fallback when no engine is registered). No Rust handler
+is written; the Rust core stays the owner of everything persisted.
+**Consequences:** `model.inspect` now answers identically in the dev preview and the desktop shell, from the same graph
+S-042 shows — zero drift by construction. The command is an in-process read of session-gated data (the grid reached the
+engine only through `require_unlocked`-gated loads), so it performs no separate session check; API-SPEC marks it
+engine-served. `CommandArgs`/mock parity tests are untouched. D1's remaining half — `company.archive_year` (WS-07) —
+stays a genuine Rust handler: company lifecycle is Rust-owned, no graph involved.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

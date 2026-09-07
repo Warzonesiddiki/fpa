@@ -46,8 +46,12 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `model.sheet.add` | session | `{model_id, name, type}` | `{sheet_id}` | SHEET_NAME_DUP |
 | `model.cell.set.v1` | session | `{line_id, scenario_id, period_id, value?, formula?, manual_override?}` | `{recalc: {dirty_cells, cycles, changed_cells[], duration_ms}}` | MODEL_CELL_LOCKED, FORMULA_CYCLE, REFERENCE_BROKEN, DRIVER_OUT_OF_BOUNDS, HARDCODED_ASSUMPTION |
 | `model.recalc` | session | `{model_id, scenario_id}` | `{duration_ms, changed_cells, issues[]}` | — |
-| `model.inspect` | session | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
+| `model.inspect` | session (engine-served¹) | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
 | `model.diff` | session | `{scenario_a, version_a?, scenario_b, version_b?}` | `{diff_rows[]}` | COMPARE_INCOMPATIBLE |
+
+¹ `model.inspect` is engine-served (ADR-029): the bridge routes it to the in-process HyperFormula engine — the single
+  cell-graph owner (precedents/dependents/cycles resolve only inside the evaluating engine: `INDIRECT`/`OFFSET`/named
+  ranges). It is an in-process read of session-gated data; no separate session check, no IPC, no Rust handler.
 | `model.dump_export` | session | `{model_id, path}` | `{file, audit_id}` | HEALTH_CHECK_BLOCKED |
 | `scenario.create` / `scenario.duplicate` / `scenario.submit` / `scenario.approve` / `scenario.lock` / `scenario.reopen` / `scenario.delete` | session | `{model_id, name?, base_id?}` / `{scenario_id}` / `{reason?}` | `{scenario_id, version_id}` | SCENARIO_NAME_DUP, SCENARIO_LOCK_CONFLICT |
 | `baseline.set` | session | `{scenario_id, reason?}` | `{baseline_version_id}` | BASELINE_REPLACE_REASON_REQUIRED |

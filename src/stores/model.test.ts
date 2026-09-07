@@ -3,7 +3,13 @@ import Decimal from "decimal.js";
 import { useModelGridStore, WORKING_SCENARIO_ID, WORKING_MODEL_ID } from "./model";
 
 const callMock = vi.fn();
-vi.mock("@/api/bridge", () => ({ call: (...args: unknown[]) => callMock(...args) }));
+// registerEngineCommand is a no-op here: engine-command routing is covered by
+// src/api/bridge.test.ts (ADR-029); this suite exercises the store, not the bridge.
+vi.mock("@/api/bridge", () => ({
+  call: (...args: unknown[]) => callMock(...args),
+  registerEngineCommand: () => undefined,
+  unregisterEngineCommand: () => undefined,
+}));
 
 const { companyIdMock, modelIdMock } = vi.hoisted(() => ({
   companyIdMock: vi.fn(),

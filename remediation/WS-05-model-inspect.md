@@ -1,5 +1,15 @@
 # WS-05 · Implement `model.inspect` natively
 
+> **RESOLVED 2026-09-07 — via ADR-029, deviating from this plan's letter with reason.**
+> The plan's premise (graph extractable in Rust) predates the M3-1/M3-2 worker engine:
+> precedents/dependents/cycles are owned by HyperFormula in the webview Worker, and
+> `INDIRECT`/`OFFSET`/named ranges make faithful extraction from stored formula text
+> impossible — a Rust parser would be the second, divergent graph B14 forbids. Resolution:
+> the bridge routes `model.inspect` to the shared engine client (`registerEngineCommand`),
+> returning the exact catalogued shape; schema, API-SPEC row, and dev-mock contract
+> unchanged. The command now works identically in dev preview and the desktop shell.
+> Details: `docs/DECISIONS.md` ADR-029; tests in `src/api/bridge.test.ts`.
+
 **Priority:** Phase B. **Decision:** D1. **Finding:** `model.inspect` has a Zod schema
 (`src/api/schema.ts:1195`), a mock case (`src/api/mock.ts:2035`), and an API-SPEC row
 (§; `{line_id, period_id}` → `{precedents[], dependents[], cycle?}`), but **no Rust
