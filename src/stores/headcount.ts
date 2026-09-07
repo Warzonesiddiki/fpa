@@ -48,7 +48,7 @@ export interface HeadcountStoreState {
   load: () => Promise<void>;
   saveRow: (row: HeadcountScheduleRow) => Promise<boolean>;
   removeRow: (rowId: string) => Promise<boolean>;
-  importDriverData: (filePath: string, mappingId: string) => Promise<boolean>;
+  importDriverData: (filePath: string, mappingId: string, scenarioId: string) => Promise<boolean>;
   retry: () => Promise<void>;
   reset: () => void;
 }
@@ -252,7 +252,7 @@ export const useHeadcountStore = create<HeadcountStoreState>((set, get) => ({
   },
 
   /** Hand off a driver-data file to the catalogued import path; row materialisation is native follow-on. */
-  importDriverData: async (filePath, mappingId) => {
+  importDriverData: async (filePath, mappingId, scenarioId) => {
     if (!filePath.trim() || !mappingId.trim()) {
       set({
         status: "error",
@@ -268,6 +268,7 @@ export const useHeadcountStore = create<HeadcountStoreState>((set, get) => ({
       const written = (await call("driver.import", {
         file_path: filePath.trim(),
         mapping_id: mappingId.trim(),
+        scenario_id: scenarioId.trim(),
       })) as { batch_id: string };
       set({
         status: get().rows.length > 0 ? "success" : "empty",

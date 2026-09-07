@@ -9,6 +9,10 @@ test-results/
 *.fpa
 *.fpa-backup
 *.fpa-license
+# Keystore fallback artifacts must never be committed (SECURITY-CHECKLIST A02):
+# the audit HMAC key lives in the OS keychain / app data dir, never in the repo.
+# Named precisely — a blanket *.key would also ignore legitimate shipped key files.
+audit.key
 src-tauri/target/
 docs-index.json
 .env

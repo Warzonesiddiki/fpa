@@ -51,14 +51,17 @@ fn init(conn: &mut Connection) -> AppResult<()> {
 }
 
 fn migrate(conn: &mut Connection) -> AppResult<()> {
-    let migrations = Migrations::new(vec![
+    migrations()
+        .to_latest(conn)
+        .map_err(|e| AppError::Db(format!("MIGRATION: {e}")))
+}
+
+fn migrations() -> Migrations<'static> {
+    Migrations::new(vec![
         M::up(include_str!("../../migrations/001_initial.sql")),
         M::up(include_str!("../../migrations/002_packs_description.sql"))
             .down("ALTER TABLE packs DROP COLUMN description;"),
-    ]);
-    migrations
-        .to_latest(conn)
-        .map_err(|e| AppError::Db(format!("MIGRATION: {e}")))
+    ])
 }
 
 #[cfg(test)]
@@ -74,6 +77,39 @@ mod tests {
             })
             .unwrap();
         assert_eq!(count, 56, "DATABASE-SCHEMA.md claims 56 tables");
+    }
+
+    #[test]
+    fn migration_forward_rollback_roundtrip() {
+        // DATABASE-SCHEMA §11: every migration must survive a down→up cycle.
+        let mut conn = open_in_memory().unwrap();
+        migrations()
+            .to_version(&mut conn, 1)
+            .map_err(|e| panic!("rollback to v1 failed: {e}"))
+            .unwrap();
+        let has_description: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('packs') WHERE name='description'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_description, 0, "002.down must drop packs.description");
+        migrations()
+            .to_latest(&mut conn)
+            .map_err(|e| panic!("re-apply to latest failed: {e}"))
+            .unwrap();
+        let has_description: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('packs') WHERE name='description'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            has_description, 1,
+            "re-apply must restore packs.description"
+        );
     }
 
     #[test]

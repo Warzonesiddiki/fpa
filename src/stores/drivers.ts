@@ -58,7 +58,7 @@ interface DriverStoreState {
   load: () => Promise<void>;
   upsertDriver: (def: SchemaDriverDef) => Promise<boolean>;
   setValue: (driverId: string, periodId: string, value: string) => Promise<boolean>;
-  importDrivers: (filePath: string, mappingId: string) => Promise<boolean>;
+  importDrivers: (filePath: string, mappingId: string, scenarioId: string) => Promise<boolean>;
   retry: () => Promise<void>;
   reset: () => void;
 }
@@ -254,11 +254,12 @@ export const useDriverStore = create<DriverStoreState>((set, get) => ({
   },
 
   /** Import a driver-data file (`driver.import`) — batch id is tracked; values are loaded in a later milestone. */
-  importDrivers: async (filePath: string, mappingId: string) => {
+  importDrivers: async (filePath: string, mappingId: string, scenarioId: string) => {
     try {
       const written = (await call("driver.import", {
         file_path: filePath,
         mapping_id: mappingId,
+        scenario_id: scenarioId,
       })) as { batch_id: string };
       void written;
       set({ status: "populated", error: null });

@@ -21,20 +21,99 @@ import { isTauriRuntime } from "@/api/runtime";
 import type { ImportKind, ImportParseData } from "@/api/schema";
 import { Button, Card, StatePanel } from "@/components/ui";
 import { useImportStore } from "@/stores/import";
+import { useScenarioStore } from "@/stores/scenarios";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
 import { ImportHistoryPanel } from "./ImportHistoryPanel";
 
 const ACCEPTED_EXTENSIONS = ["xlsx", "xlsm", "xlsb", "xls", "ods", "csv", "tsv", "txt"];
 
-const SOURCE_TABS: { kind: ImportKind; key: "gl" | "files" | "opening" }[] = [
+const SOURCE_TABS: { kind: ImportKind; key: "gl" | "files" | "opening" | "drivers" }[] = [
   { kind: "gl_dump", key: "gl" },
   { kind: "excel_csv", key: "files" },
   { kind: "opening_balances", key: "opening" },
+  { kind: "driver_data", key: "drivers" },
 ];
 
+/** M2-5b: driver_data destination panel — scenario + saved driver mapping → `driver.import`. */
+function DriverImportPanel() {
+  const { t } = useTranslation();
+  const readOnly = useSessionStore((s) => s.readOnly);
+  const scenarios = useScenarioStore((s) => s.scenarios);
+  const mappingId = useImportStore((s) => s.mappingId);
+  const driverImportStatus = useImportStore((s) => s.driverImportStatus);
+  const driverImportError = useImportStore((s) => s.driverImportError);
+  const driverImportResult = useImportStore((s) => s.driverImportResult);
+  const driverImport = useImportStore((s) => s.driverImport);
+  const [scenarioId, setScenarioId] = useState("");
+  const busy = driverImportStatus === "loading";
+  const ready = Boolean(mappingId && scenarioId) && !busy && !readOnly;
+
+  if (driverImportStatus === "success" && driverImportResult) {
+    return (
+      <div
+        role="status"
+        aria-label={t("importHub.driver.successAria")}
+        className="mt-4 rounded-md border border-[var(--color-onesuccess)] bg-[var(--color-onesuccess)]/10 p-3"
+      >
+        <p className="flex items-center gap-2 text-sm font-medium text-[var(--color-onetext)]">
+          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+          {t("importHub.driver.success", { rows: driverImportResult.rows })}
+        </p>
+        <p className="mt-1 break-all text-xs text-[var(--color-onetextsecondary)]">
+          {t("importHub.driver.batch")}: {driverImportResult.batch_id}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)] p-3">
+      <label
+        htmlFor="driver-import-scenario"
+        className="text-sm font-medium text-[var(--color-onetext)]"
+      >
+        {t("importHub.driver.scenario")}
+      </label>
+      <select
+        id="driver-import-scenario"
+        value={scenarioId}
+        disabled={busy}
+        onChange={(event) => setScenarioId(event.target.value)}
+        className="mt-1 w-full rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-3 py-2 text-sm text-[var(--color-onetext)]"
+      >
+        <option value="">{t("importHub.driver.scenarioPlaceholder")}</option>
+        {scenarios.map((scenario) => (
+          <option key={scenario.id} value={scenario.id}>
+            {scenario.name}
+            {scenario.state === "locked" ? ` (${t("importHub.driver.locked")})` : ""}
+          </option>
+        ))}
+      </select>
+      {!mappingId && (
+        <p className="mt-2 text-xs text-[var(--color-onewarning)]">
+          {t("importHub.driver.mappingRequired")}
+        </p>
+      )}
+      {driverImportStatus === "error" && driverImportError && (
+        <StatePanel
+          state="error"
+          message={driverImportError.userMessage}
+          errorCode={driverImportError.code}
+        />
+      )}
+      <div className="mt-3 flex justify-end">
+        <Button disabled={!ready} onClick={() => void driverImport(scenarioId)}>
+          <Database aria-hidden="true" className="h-4 w-4" />
+          {t("importHub.driver.submit")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Kinds whose destination pipeline does not exist, named honestly instead of offered as a tab. */
-const UNAVAILABLE_SOURCE_KEYS = ["drivers", "dimensions"] as const;
+const UNAVAILABLE_SOURCE_KEYS = ["dimensions"] as const;
 
 function AvailabilityRow({
   icon: Icon,
@@ -316,6 +395,7 @@ export function ImportHubPage() {
       return (
         <div className="p-4">
           <ParsedSummary data={parsed} />
+          {kind === "driver_data" && <DriverImportPanel />}
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button variant="secondary" onClick={reset}>
               <RotateCcw aria-hidden="true" className="h-4 w-4" />
@@ -326,7 +406,9 @@ export function ImportHubPage() {
             </Button>
           </div>
           <p className="mt-2 text-right text-xs text-[var(--color-onetextmuted)]">
-            {t("importHub.mappingHint")}
+            {kind === "driver_data"
+              ? t("importHub.driverMappingHint")
+              : t("importHub.mappingHint")}
           </p>
         </div>
       );

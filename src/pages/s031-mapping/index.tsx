@@ -19,6 +19,7 @@ import {
   type DimensionValueNormalization,
   type ImportMappingTarget,
   type ImportMappingTemplate,
+  type ImportKind,
   type ImportParseData,
   type ImportSignConvention,
   type PeriodNormalization,
@@ -117,12 +118,19 @@ function hasDuplicateSources(columns: ColumnDraft[]): boolean {
   return false;
 }
 
-function mappingTargetsReady(columns: ColumnDraft[]): boolean {
+function mappingTargetsReady(
+  columns: ColumnDraft[],
+  kind: ImportKind | null,
+): boolean {
   const targets = new Set(
     columns
       .map((column) => column.semanticTarget)
       .filter((target): target is ImportMappingTarget => target !== ""),
   );
+  if (kind === "driver_data") {
+    // Driver mappings map exactly the three driver targets (API-SPEC §2 driver.import).
+    return targets.has("period") && targets.has("driver") && targets.has("value");
+  }
   return (
     targets.has("period") &&
     targets.has("account_code") &&
@@ -246,7 +254,7 @@ function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readO
       normalized.startsWith("__onefpa_")
     );
   });
-  const targetsReady = mappingTargetsReady(columns);
+  const targetsReady = mappingTargetsReady(columns, kind);
   const allMapped = columns.length > 0 && mappedColumns.length === columns.length;
   const canonicalEligible =
     targetsReady &&
@@ -299,7 +307,7 @@ function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readO
         mappingVersion={mappingVersion}
         readOnly={readOnly}
         onEditMapping={clearMapping}
-        onContinue={() => navigate("/app/import/commit")}
+        onContinue={() => navigate(kind === "driver_data" ? "/app/import" : "/app/import/commit")}
       />
     );
   }
@@ -606,6 +614,7 @@ export function MappingWizardPage() {
   const companyId = useSessionStore((state) => state.companyId);
   const readOnly = useSessionStore((state) => state.readOnly);
   const parsed = useImportStore((state) => state.parsed);
+  const kind = useImportStore((state) => state.kind);
   const mappingStatus = useImportStore((state) => state.mappingStatus);
   const validationStatus = useImportStore((state) => state.validationStatus);
   const validationResult = useImportStore((state) => state.validationResult);

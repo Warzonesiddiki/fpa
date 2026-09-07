@@ -33,7 +33,7 @@ use commands::export::{audit_export_dataroom, export_excel, export_model_dump, e
 use commands::fva::fva_get;
 use commands::health::{health_run, health_waive};
 use commands::import::{
-    ParseRegistry, import_commit, import_history, import_map_save_v1, import_parse,
+    ParseRegistry, driver_import, import_commit, import_history, import_map_save_v1, import_parse,
     import_rollback, import_tieout, import_validate,
 };
 use commands::license::{license_apply_response, license_request_file, license_verify};
@@ -98,6 +98,7 @@ pub fn run() {
             import_validate,
             import_tieout,
             import_commit,
+            driver_import,
             import_rollback,
             import_history,
             license_verify,

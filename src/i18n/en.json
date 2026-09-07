@@ -172,7 +172,18 @@
         "files": "Delimited or workbook Actuals in any layout you map to the canonical GL targets.",
         "opening": "Prior-year closing balances committed as the first Actuals of a Period. One period per batch, one opening balance per account, and once per Company."
       },
-      "destinationGate": "Driver data and dimension master lists remain unavailable: they do not post to the general ledger, and the driver_values and dimension_values destination pipelines are not implemented. import.commit refuses those kinds rather than writing them as GL facts."
+      "destinationGate": "Dimension master lists remain unavailable: dimension_values has no destination pipeline and import.commit refuses the kind rather than writing it as a GL fact. Driver data commits through driver.import into driver_values."
+    },
+    "driverMappingHint": "Map the columns to period / driver / value (S-031), then import into the chosen scenario.",
+    "driver": {
+      "scenario": "Import into scenario",
+      "scenarioPlaceholder": "Choose a scenario",
+      "locked": "locked",
+      "mappingRequired": "Save a driver mapping first: map period, driver and value on the mapping screen.",
+      "submit": "Import driver data",
+      "success": "Imported {{rows}} driver values.",
+      "batch": "Import batch",
+      "successAria": "Driver data imported"
     },
     "workingSet": "Current import",
     "drop": {

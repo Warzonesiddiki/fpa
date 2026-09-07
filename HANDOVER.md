@@ -34,7 +34,48 @@
 
 ## 1. STATE OF THE WORK
 
-### Latest — M6-7 Model Health Check: engine + waiver + S-071 (2026-09-05, `arena/01a07141-fpa`)
+### 2026-09-07 (same day, follow-up) — dependency CVEs cleared + migration rollback verified
+
+- **cargo audit is now clean of vulnerabilities.** calamine upgraded `0.26.1 → 0.36.1`
+  (`src-tauri/Cargo.toml`), which pulls `quick-xml 0.41.0` and removes both RUSTSEC quick-xml
+  advisories. Full suite re-verified on the new API: `cargo test` **264/264 PASS** · clippy PASS ·
+  fmt clean · `cargo audit` reports only 17 allowed unmaintained warnings.
+- **M1-1 residual closed:** new `migration_forward_rollback_roundtrip` test in
+  `src-tauri/src/storage/db.rs` runs `002.down → to_version(1) → to_latest` and asserts the
+  `packs.description` drop/restore — the last untested item of M1-1.
+- §14 toolchain matrix rows (rustc / clippy / cargo audit / Playwright E2E) flipped to ✅ with
+  evidence; TASKBOARD M1-1 updated.
+
+### Latest — Native gates first-ever green + audit-key security fix + E2E suite resurrection (2026-09-07, `agent/pc-01`)
+
+Three units landed on the Windows dev machine (`agent/pc-01`), all evidence executed, not asserted:
+
+1. **Native gates ran for the first time (M0-2 G4).** cargo 1.98.1/rustc 1.98.1 are installed (rust-toolchain.toml
+   pins `stable` + clippy/rustfmt): `cargo fmt --check` clean · `cargo clippy --all-targets -- -D warnings` PASS ·
+   `cargo test` **263/263 PASS** (~9 s after warm build). Every taskboard row whose only gap was "no cargo in
+   sandbox" is now locally verified; 3-OS CI remains open (M7-1/M7-2).
+2. **Security: stray HMAC key artifact removed (B18-4/A02).** `packs/audit.key` (a live 32-byte audit chain key,
+   64-hex) was sitting untracked in the repo tree. Root cause: `install_tests` passed the real `../packs` dir as the
+   keystore `data_dir`, and `audit_hmac_key` writes its fallback file there in tests. Fixed: both pack install tests
+   use throwaway temp dirs (cleanup added); keystore test path switched from `#[cfg(test)]` arms to a `cfg!(test)`
+   runtime check (clippy dead-code under `--all-targets` caught the cfg-split); `.gitignore` now blocks `audit.key`
+   and `*.key`. The stray file was deleted (untracked, never committed — verified via `git log --all`).
+3. **E2E suite resurrected (M7-5, KI-010 unblocked).** Playwright Chromium binaries exist now; the suite executed for
+   the first time: 5 of 6 specs were authored blind while downloads were broken and all failed. Root cause #1:
+   `page.goto()` mid-test reloads the SPA and the dev-preview mock session (module state) resets to locked — specs now
+   navigate SPA-only. Root cause #2: guessed labels — all specs rewritten against real i18n/ARIA contracts (e.g.
+   "Parse locally", "Source parsed", "Commit Import Batch", "Model Compare", pack radio "Manufacturing v…").
+   **Product fixes along the way:** S-050 Compare/What-If buttons used `window.location.href` (full webview reload
+   that drops the session in dev preview) → `useNavigate`; the SearchPalette route catalog predated the governance
+   milestone (S-071…S-074 + help unreachable by SPA navigation) → added the six missing screen entries per the
+   palette's documented "grows with each milestone" contract; S-050 page tests wrapped in MemoryRouter.
+   **Result: 6/6 specs PASS** (unlock · company lifecycle · GL import end-to-end · model grid edit+audit ·
+   governance export+backup · nav smoke) on Chromium/Windows. Remaining: tauri-driver native runs, 3-OS, remaining flows.
+
+Full gate evidence this run: `npm run check` 104 files/1245 tests + all gates PASS · `npm run build` green ·
+`prettier --check` clean · cargo trio above · `npx playwright test` 6/6. TASKBOARD rows M0-2/M7-5/dashboard updated.
+
+### Previous — M6-7 Model Health Check: engine + waiver + S-071 (2026-09-05, `arena/01a07141-fpa`)
 
 - **Why this unit:** the next unblocked P0 row in dependency order. Both catalog rows (`health.run`,
   `health.waive`), both error codes (`HEALTH_CHECK_BLOCKED`, `HEALTH_WAIVER_REASON_REQUIRED`) and all three

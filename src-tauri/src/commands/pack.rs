@@ -1282,12 +1282,16 @@ mod install_tests {
 
     /// Happy path installs the REAL bundled saas pack: packs row (is_bundled=0),
     /// one pack_components row per referenced component file, one audit event.
+    /// `dir` is the keystore data dir — ALWAYS a throwaway temp dir, never a repo
+    /// directory: the audit keystore writes its key file there (keystore.rs).
     #[test]
     fn install_seeds_packs_row_components_and_audit_event() {
         let mut conn = seeded();
-        let dir = PathBuf::from("../packs").canonicalize().unwrap();
-        let out =
-            pack_install_internal(&mut conn, &dir, dir.join("saas").to_str().unwrap(), CO).unwrap();
+        let packs = PathBuf::from("../packs").canonicalize().unwrap();
+        let dir = std::env::temp_dir().join(format!("onefpa-install-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = pack_install_internal(&mut conn, &dir, packs.join("saas").to_str().unwrap(), CO)
+            .unwrap();
         let data = &out["data"];
 
         let pack_id = data["pack_id"].as_str().unwrap();
@@ -1304,7 +1308,7 @@ mod install_tests {
             .unwrap();
         assert_eq!(is_bundled, 0, "installed pack is never bundled (SPEC §9)");
         let expected = {
-            let bytes = std::fs::read(dir.join("saas").join("pack.json")).unwrap();
+            let bytes = std::fs::read(packs.join("saas").join("pack.json")).unwrap();
             hex_sha256(&bytes)
         };
         assert_eq!(stored_checksum, expected);
@@ -1359,14 +1363,18 @@ mod install_tests {
             )
             .unwrap();
         assert_eq!(audits, 1);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Same key + same-or-lower version → PACK_VERSION_EXISTS, nothing persisted.
     #[test]
     fn reinstalling_same_or_older_version_fails_closed() {
         let mut conn = seeded();
-        let dir = PathBuf::from("../packs").canonicalize().unwrap();
-        let saas = dir.join("saas").to_str().unwrap().to_string();
+        let packs = PathBuf::from("../packs").canonicalize().unwrap();
+        let dir = std::env::temp_dir().join(format!("onefpa-reinstall-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let saas = packs.join("saas").to_str().unwrap().to_string();
 
         pack_install_internal(&mut conn, &dir, &saas, CO).unwrap();
         let err = pack_install_internal(&mut conn, &dir, &saas, CO).unwrap_err();
@@ -1390,6 +1398,8 @@ mod install_tests {
             )
             .unwrap();
         assert_eq!(audits, 1, "failed install writes NO audit event");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// A directory that fails §17 validation never reaches the DB (§18 gate).

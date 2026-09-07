@@ -190,7 +190,7 @@ describe("headcount plan store (S-045)", () => {
     callMock.mockResolvedValue({ batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001" });
     const ok = await useHeadcountStore
       .getState()
-      .importDriverData("/tmp/headcount.csv", "canonical");
+      .importDriverData("/tmp/headcount.csv", "canonical", "sc-1");
     expect(ok).toBe(true);
     expect(useHeadcountStore.getState().importedBatchId).toBe(
       "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",

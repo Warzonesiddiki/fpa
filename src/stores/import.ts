@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { call, toBridgeError, type BridgeError } from "@/api/bridge";
+import { DriverImportData } from "@/api/schema";
 import {
   CANONICAL_MAPPING_ID,
   ImportCommitData,
@@ -41,6 +42,11 @@ interface ImportStoreState {
   commitStatus: ScreenState;
   commitError: BridgeError | null;
   commitResult: ImportCommitResult | null;
+  /** M2-5b: driver_data destination pipeline (`driver.import` → `driver_values`). */
+  driverImportStatus: ScreenState;
+  driverImportError: BridgeError | null;
+  driverImportResult: { batch_id: string; rows: number; audit_id: number; source_hash: string } | null;
+  driverImport: (scenarioId: string) => Promise<boolean>;
   /** Monotonic tokens invalidate every later stage when an earlier identity changes. */
   requestId: number;
   mappingRequestId: number;
@@ -89,6 +95,9 @@ function clearedFinalization(
     commitStatus: "empty" as const,
     commitError: null,
     commitResult: null,
+    driverImportStatus: "empty" as const,
+    driverImportError: null,
+    driverImportResult: null,
     tieOutRequestId: current.tieOutRequestId + 1,
     commitRequestId: current.commitRequestId + 1,
   };
@@ -122,6 +131,9 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
   commitStatus: "empty",
   commitError: null,
   commitResult: null,
+  driverImportStatus: "empty",
+  driverImportError: null,
+  driverImportResult: null,
   requestId: 0,
   mappingRequestId: 0,
   validationRequestId: 0,
@@ -607,6 +619,51 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
     }
   },
 
+  driverImport: async (scenarioId) => {
+    const current = get();
+    if (
+      !current.filePath.trim() ||
+      !current.mappingId ||
+      !scenarioId.trim() ||
+      current.driverImportStatus === "loading"
+    ) {
+      return false;
+    }
+    const sourceRequestId = current.requestId;
+    const mappingRequestId = current.mappingRequestId;
+    set({
+      driverImportStatus: "loading",
+      driverImportError: null,
+      driverImportResult: null,
+    });
+    try {
+      const response = await call("driver.import", {
+        file_path: current.filePath,
+        mapping_id: current.mappingId,
+        scenario_id: scenarioId,
+      });
+      const result = DriverImportData.parse(response);
+      const latest = get();
+      if (
+        latest.requestId !== sourceRequestId ||
+        latest.mappingRequestId !== mappingRequestId ||
+        latest.filePath !== current.filePath ||
+        latest.mappingId !== current.mappingId
+      ) {
+        return false;
+      }
+      set({ driverImportStatus: "success", driverImportError: null, driverImportResult: result });
+      return true;
+    } catch (cause) {
+      set({
+        driverImportStatus: "error",
+        driverImportError: toBridgeError(cause),
+        driverImportResult: null,
+      });
+      return false;
+    }
+  },
+
   clearFinalization: () => {
     const current = get();
     set(clearedFinalization(current));
@@ -628,6 +685,9 @@ export const useImportStore = create<ImportStoreState>((set, get) => ({
       validationError: null,
       validationResult: null,
       ...clearedFinalization(current),
+      driverImportStatus: "empty",
+      driverImportError: null,
+      driverImportResult: null,
       requestId: current.requestId + 1,
       mappingRequestId: current.mappingRequestId + 1,
       validationRequestId: current.validationRequestId + 1,

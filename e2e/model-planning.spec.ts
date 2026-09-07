@@ -1,81 +1,62 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
- * M7-5 / UF-004 & UF-007: Planning Journey
- * Flow:
- * 1. Unlock session & navigate to S-041 Model Grid
- * 2. Edit line item cell via formula bar
- * 3. Verify formula recalc / status / audit
- * 4. Navigate to S-051 Scenario Compare and compare scenarios
+ * M7-5 / UF-004 & UF-007: Planning Journey (E2E-TESTING §UF-004/§UF-007).
+ * The dev-preview core keeps the session in memory: any full page load (page.goto)
+ * resets it to locked. All in-app navigation therefore goes through SPA links,
+ * buttons, or the ⌘K Search Palette (react-router navigate() — no reload).
  */
-test.describe("Model Planning Journey (UF-004 & UF-007)", () => {
-  test("Open Model Grid -> Edit line item cell -> Verify formula recalc -> Compare scenarios", async ({
-    page,
-  }) => {
-    // Step 1: Unlock session to open company
-    await page.goto("/");
-    const pinInput = page.getByRole("textbox", { name: "PIN" });
-    await pinInput.fill("CorrectPin9!");
-    await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page).toHaveURL(/\/app\/dashboard/);
 
-    // Navigate to S-041 Model Grid
-    await page.goto("/app/model/grid");
-    await expect(page.getByRole("heading", { name: "Model Grid" })).toBeVisible();
+/** Unlock S-001 once; every later step must navigate SPA-style. */
+async function unlock(page: Page): Promise<void> {
+  await page.goto("/");
+  const pinInput = page.getByRole("textbox", { name: "PIN" });
+  await pinInput.fill("CorrectPin9!");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page).toHaveURL(/\/app\/dashboard/);
+}
 
-    // Verify grid region is loaded
-    const grid = page.getByTestId("model-grid");
-    await expect(grid).toBeVisible();
+test("Open Model Grid -> Edit line item cell -> Verify formula recalc -> Compare scenarios", async ({
+  page,
+}) => {
+  await unlock(page);
 
-    // Step 2: Edit cell through the formula bar
-    // Select a cell in the grid
-    const firstCell = page.locator('[col-id^="p-"]').first();
-    await expect(firstCell).toBeVisible();
-    await firstCell.click();
+  // Step 1: Model nav link → /app/model redirects to the Model Grid (router.tsx).
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Model" }).click();
+  await expect(page).toHaveURL(/\/app\/model\/grid/);
+  await expect(page.getByRole("heading", { name: "Model Grid" })).toBeVisible();
 
-    // Enter new value into formula bar
-    const formulaBar = page.getByLabel("Formula bar");
-    await expect(formulaBar).toBeVisible();
-    await formulaBar.fill("250000.00");
+  // The grid region carries data-testid="model-grid" (S-041).
+  const grid = page.getByTestId("model-grid");
+  await expect(grid).toBeVisible();
 
-    const applyBtn = page.getByRole("button", { name: "Apply" });
-    await expect(applyBtn).toBeEnabled();
-    await applyBtn.click();
+  // Step 2: Edit the first period cell of the first line through the formula bar.
+  const firstCell = page.locator('[role="gridcell"][col-id^="p-"]').first();
+  await expect(firstCell).toBeVisible();
+  await firstCell.click();
 
-    // Step 3: Verify recalc status or audit indicator
-    await expect(
-      page.locator("text=/recalculated/i").or(page.locator("text=/audit/i")),
-    ).toBeVisible();
+  const formulaBar = page.getByLabel("Formula bar");
+  await expect(formulaBar).toBeVisible();
+  await formulaBar.fill("250000.00");
+  await page.getByRole("button", { name: /Apply/ }).click();
 
-    // Step 4: Compare scenarios (S-051)
-    await page.goto("/app/plan/compare");
-    await expect(page.getByRole("heading", { name: "Scenario Compare" })).toBeVisible();
+  // Step 3: The audited write surfaces its audit event id (S-041 contract).
+  await expect(page.getByText(/audit #\d+/)).toBeVisible();
 
-    // Check Scenario selectors
-    const scenarioA = page.getByRole("combobox", { name: "Scenario A" });
-    const scenarioB = page.getByRole("combobox", { name: "Scenario B" });
-    await expect(scenarioA).toBeVisible();
-    await expect(scenarioB).toBeVisible();
+  // Step 4: Compare Scenarios (S-050 → S-051) — the S-050 button is SPA navigation
+  // (fixed from window.location.href, which reloaded the webview and dropped the session).
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Plan" }).click();
+  await expect(page).toHaveURL(/\/app\/plan\/scenarios/);
+  await expect(page.getByRole("heading", { name: "Scenario Manager" })).toBeVisible();
 
-    // Select distinct scenarios if multiple available, or verify Compare interaction
-    const optionsA = await scenarioA.locator("option").all();
-    const optionsB = await scenarioB.locator("option").all();
-    if (optionsA.length > 2 && optionsB.length > 2) {
-      await scenarioA.selectOption({ index: 1 });
-      await scenarioB.selectOption({ index: 2 });
+  await page.getByRole("button", { name: "Compare Scenarios" }).click();
+  await expect(page).toHaveURL(/\/app\/plan\/compare/);
+  await expect(page.getByRole("heading", { name: "Model Compare" })).toBeVisible();
 
-      const compareBtn = page.getByRole("button", { name: "Compare" });
-      await expect(compareBtn).toBeEnabled();
-      await compareBtn.click();
-
-      // Verify diff view or empty diff
-      await expect(
-        page.getByRole("button", { name: "Only changed" }).or(page.getByText("No differences")),
-      ).toBeVisible();
-    } else {
-      await expect(
-        page.getByText("Select two distinct Scenarios or Versions above to compare."),
-      ).toBeVisible();
-    }
-  });
+  // S-051 empty state: two scenario selectors + the "select two" guidance.
+  const scenarioA = page.getByRole("combobox", { name: "Scenario A" });
+  const scenarioB = page.getByRole("combobox", { name: "Scenario B" });
+  await expect(scenarioA).toBeVisible();
+  await expect(scenarioB).toBeVisible();
+  await expect(page.getByText("Select two Scenarios to compare their cell values.")).toBeVisible();
 });
