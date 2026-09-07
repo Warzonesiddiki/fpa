@@ -25,7 +25,9 @@
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
    Expect the current **85 files / 1056 tests** after the M6-7 slice. Counts drift as tests are added —
    the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
-   gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
+   gate sits at branches ~81.8 / statements ~87.5 against thresholds 80/85 (WS-11 wired both coverage
+   gates into `npm run check`; the dev-only `src/api/mock.ts` is excluded from the product gate — it
+   is browser-preview tooling, tree-shaken from prod). **New pages/stores need their own tests**,
    or it will dip red again.
 
 ---
@@ -581,5 +583,9 @@ unpushed commits do NOT survive the re-clone (objects are pruned with the old pa
 - Commit in logical units (Rust storage core → commands → api/mock → docs last).
 - Push **only** your session branch (Arena pins it; never switch branches).
 - `gh pr create --base main --head <your-session-branch> --title "…" --body "…"`, then
-  `gh pr merge <n> --merge` once green. Keep `infra/ci.yml` where it is — never push
-  `.github/workflows/` (the token lacks Workflows permission; do not retry).
+  `gh pr merge <n> --merge` once green. `.github/workflows/ci.yml` is written and
+  ready on disk (WS-01 un-ignored it narrowly: `.github/*` except `!.github/workflows/**`)
+  but the Arena App token **cannot push workflow files** (`workflows` permission missing;
+  git push and the Contents API were both refused 2026-09-06). Keep committing
+  everything else; the owner must add the workflow file once via github.com (or
+  reconnect Arena with Workflows permission). Never delete the ready file.

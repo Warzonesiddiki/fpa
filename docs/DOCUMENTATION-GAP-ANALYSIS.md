@@ -78,7 +78,7 @@ Each entry states what is missing, whether it blocks a build session, and the tr
 | 97 | Support model (channels, FAQ, SLA) | 🟡 | No | `ONBOARDING-USER-GUIDE.md` + `docs/S-076` help surfaces exist; support SLA is a business commitment → due with #92 |
 | 98 | Onboarding & email lifecycle | 🟡 | No | In-app onboarding fully spec'd (`S-002`, `ONBOARDING-USER-GUIDE.md`). No email exists (no accounts, B18-9); transactional notice inventory = `MONITORING.md` alerts |
 | 68 | E2E specs implemented | 🟡 | No (spec complete) | `USER-FLOWS.md` defines UF-001…UF-014; `e2e/` holds 1 spec file. **This is an implementation gap, not a documentation gap** — tracked in `TASKBOARD.md`, filled as milestones land |
-| 76 | CI actually executing | 🟡 | No | `CI-CD.md` + `infra/ci.yml` are complete; `.github/workflows` is unpushable here (token lacks Workflows permission), so gates currently bind locally only. Recorded in `HANDOVER.md` §3, `TASKBOARD.md` M7-1 |
+| 76 | CI actually executing | 🟡 | No (ready, blocked on perms) | `.github/workflows/ci.yml` written (WS-01) and mirrors `npm run check` + cargo fmt/clippy/test + coverage gates + tauri dry-run ×3 OS; `infra/ci.yml` is a pointer. **Cannot be pushed: Arena App token lacks `workflows` permission** (git + API both refused 2026-09-06). Gates bind locally until the owner reconnects GitHub with Workflows scope or commits the file via the web UI. `TASKBOARD.md` M7-1 |
 | 43 | Real-time design | ➖ | — | By design: single-user, one machine (A19, multi-user = V-015) |
 | 48 | Analytics/event tracking plan | ➖ | — | By design and enforced: ADR-008 / B18-9, `scripts/telemetry-scan.mjs` fails CI on a violation |
 | 75 | Infrastructure / IaC | ➖ | — | By design: no server (ADR-001); release artifacts live in `DEPLOYMENT.md` |

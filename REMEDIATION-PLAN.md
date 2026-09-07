@@ -6,6 +6,14 @@
 **Source of findings:** `AUDIT-2026-09-06-fresh.md` (hands-on audit, all gates executed).
 **Date:** 2026-09-06. **Branch (fixed):** `arena/01a0760c-fpa`.
 
+> **PROGRESS (2026-09-06, session 2 — branch `arena/01a078fe-fpa`):** WS-03 ✅ · WS-01/02
+> 🚧 ready-but-blocked (token lacks `workflows` permission; file staged at
+> `.github/workflows/ci.yml`) · WS-09 ✅ (ADR-028, updater removed) · WS-08 ✅ (mock out of
+> prod) · WS-04 ✅ (waivers persist + audited) · WS-11 ✅ (coverage in `check`; found real
+> regression 84.12/76.71 → 87.49/81.82) · WS-10 ✅ (12 packs re-issued, 132 → 0 warnings).
+> Remaining: WS-05/06/07 (Rust native commands) — **do after CI is live** (D5). Full
+> evidence: `AUDIT-2026-09-06-remediation-status.md`.
+
 ---
 
 ## 0. How to use this package

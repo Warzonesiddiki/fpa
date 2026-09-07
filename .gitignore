@@ -16,7 +16,10 @@ docs-index.json
 src-tauri/target/
 target/
 src-tauri/gen/
-.github/
+# GitHub dir is agent-noise EXCEPT the CI workflow, which must be tracked (WS-01)
+.github/*
+!.github/workflows/
+!.github/workflows/**
 
 
 # Agent skill installations (session tooling, not product source)

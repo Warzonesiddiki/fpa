@@ -85,41 +85,40 @@ In the browser dev preview they "work" (mock answers); in the real Tauri shell t
 would fail — `invoke()` has no target. Either implement the native handlers or mark
 them explicitly V2 in `docs/API-SPEC.md` and remove/guard the schema bindings.
 
-### P1 — Orphan native handler: `assumption_waive`
+### P1 — Orphan native handler: `assumption_waive` — ✅ RESOLVED (WS-04, 2026-09-06)
 
-`assumption_waive` is registered in `lib.rs` (line 122) but has **no schema binding,
-no bridge case, and no frontend caller**. The UI (`s044-assumptions.tsx` →
-`stores/assumptions.ts:346`) waives hardcoded literals **in memory only** (session
-Zustand state), never calling the native command. So assumption waivers are **not
-persisted and not audited (B7 concern)**, and the Rust handler is dead code. Wire the
-store to `assumption.waive`, or delete the handler if waiving is intentionally
-session-only (and then document that).
+~~`assumption_waive` is registered in `lib.rs` (line 122) but has **no schema binding,
+no bridge case, and no frontend caller**.~~ Wired end-to-end: `AssumptionWaiveArgs`
+schema binding + `assumption.waive` mock case (session/read-only/scope/blank-reason
+gates + hash-chained audit event mirror) + the store now awaits the audited native
+command (local map is a display cache). S-044 surfaces typed bridge errors inline with
+a pending state. Un-waive remains display-local (no native un-waive exists — recorded
+as a follow-up, not invented).
 
-### P2 — Mock core (~4,600 lines) ships in the production bundle
+### P2 — Mock core (~4,600 lines) ships in the production bundle — ✅ RESOLVED (WS-08, 2026-09-06)
 
 `src/api/mock.ts` is _statically_ imported by `src/api/bridge.ts` and only gated at
-_runtime_ by `isTauriRuntime()`. Grep confirms mock strings ("Demo Company",
-"Standard costing") are present in `dist/assets/bridge-*.js` and `index-*.js`. This
-violates the spirit of B18-7 ("no mock data in a production path") and bloats the
-bundle. Fix: gate the mock import behind `import.meta.env.DEV` / a dynamic import so
-it tree-shakes out of production builds.
+_runtime_ by `isTauriRuntime()`. ~~Grep confirms mock strings ("Demo Company",
+"Standard costing") are present in `dist/assets/bridge-*.js` and `index-*.js`.~~
+RESOLVED (WS-08): dev-only dynamic import behind a static `import.meta.env.DEV` guard;
+`dist/` verified free of `mockInvoke`/mock sample strings; E2E now runs against the
+dev server (where the mock legitimately answers).
 
-### P2 — Updater is configured but unusable (empty pubkey)
+### P2 — Updater is configured but unusable (empty pubkey) — ✅ RESOLVED (WS-09, 2026-09-06: removed, ADR-028)
 
 `src-tauri/tauri.conf.json`: updater `endpoints` points at
 `github.com/Warzonesiddiki/fpa/releases/...` but `"pubkey": ""`. A Tauri updater with
 an empty pubkey cannot verify signatures — either finish the signing setup or disable
 the updater until release (M7). CSP itself is sound (`default-src 'self'`).
 
-### P2 — Pack data is thin: 132 validator warnings
+### P2 — Pack data is thin: 132 validator warnings — ✅ RESOLVED (WS-10, 2026-09-06)
 
-`packs:validate` passes but emits 132 "legacy" warnings: SaaS KPIs (`nrr`, `burn`,
-`cac_payback`, `arr`) have **missing formulas and bands** (alerts fall back to
-target-only), and several drivers across retail/saas have **no links** (§4 —
-attribution/federation degraded). Packs are structurally valid but functionally
-incomplete; re-issue them with formulas/bands/links.
+~~`packs:validate` passes but emits 132 "legacy" warnings~~ → **0 warnings**. All 12
+packs re-issued at v2.1.1: every KPI carries an engine-line-key `formula` + numeric
+`bands {good, watch}` (alerts no longer target-only); every driver template declares
+non-empty `links` (Federation/attribution restored). Data-only change.
 
-### P2 — Repo hygiene: duplicate + contradictory lockfiles
+### P2 — Repo hygiene: duplicate + contradictory lockfiles — ✅ RESOLVED (WS-03, 2026-09-06)
 
 Both `package-lock.json` **and** `pnpm-lock.yaml` are tracked (154KB) despite
 `packageManager: npm@10.9.0`. Pick one package manager and delete the other lockfile
