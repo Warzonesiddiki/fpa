@@ -51,6 +51,27 @@ for (const f of tsFiles) {
     const { at, src } = locate(m.index);
     problems.push(`${rel(f)}:${at}: financial float op '${m[0]}' (B3)  [${src}]`);
   }
+  // Money floor/ceil (KI-017 class): Math.floor/ceil is exact for pure pixel/time
+  // geometry, but NEVER acceptable on a money value or a money×ratio product —
+  // those must run through Decimal (B3/B14). Two shapes, both banned:
+  //   A) `Math.floor(<…> * <…> / 100)` — percent-of-money computed in float
+  //   B) Math.floor/ceil on a line that also carries a money identifier
+  const floorCeil = [...text.matchAll(/Math\.(floor|ceil)\s*\(/g)];
+  for (const m of floorCeil) {
+    const lineStart = text.lastIndexOf("\n", m.index) + 1;
+    const line = text.slice(lineStart, text.indexOf("\n", m.index));
+    // Comments are prose, not code — a rule name inside a comment is not an op.
+    const commentStart = line.indexOf("//");
+    const matchInCode = commentStart < 0 || m.index - lineStart < commentStart;
+    if (!matchInCode) continue;
+    const isPercentOfMoney = /\*[^;\n]*\/\s*100\b/.test(line.slice(m.index - lineStart));
+    const lineHasMoneyToken = /(minor|money|cash)/i.test(line);
+    if (isPercentOfMoney || lineHasMoneyToken) {
+      const { at, src } = locate(m.index);
+      const why = isPercentOfMoney ? "money×ratio in float" : "floor/ceil on money value";
+      problems.push(`${rel(f)}:${at}: Math.${m[1]} — ${why}; use Decimal (B3)  [${src}]`);
+    }
+  }
   const toFixed = [...text.matchAll(/\.toFixed\s*\(/g)];
   if (toFixed.length && !f.replace(/\\/g, "/").includes("utils/money.ts"))
     for (const m of toFixed) {
