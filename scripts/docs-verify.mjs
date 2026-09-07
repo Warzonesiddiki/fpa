@@ -139,7 +139,21 @@ const citations = (text) => {
   }
   return out;
 };
-const knownCode = (c) => errDefs.has(c) || validatorPrefixes.has(c);
+/* §2C reserved names: cited by specs, produced nowhere. 7b accepts them as known
+   citations (specs may name them), but 7d proves §2 itself contains only codes real
+   code emits — a catalog row with no producer is a phantom (found 2026-09-07: 13). */
+const sec2c = all["ERROR-HANDLING.md"].split("## 2C.")[1]?.split(/\n## /)[0] ?? "";
+const reservedNames = new Set(
+  sec2c
+    .split("\n")
+    .filter((l) => /^- `/.test(l) && l.includes("→"))
+    .flatMap((l) =>
+      [...l.slice(0, l.indexOf("→")).matchAll(/`([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)`/g)].map(
+        (m) => m[1],
+      ),
+    ),
+);
+const knownCode = (c) => errDefs.has(c) || validatorPrefixes.has(c) || reservedNames.has(c);
 const citedCodes = citations(api);
 for (const c of [...citedCodes].sort())
   if (!knownCode(c)) err(`API references undefined code: ${c}`);
@@ -150,6 +164,41 @@ for (const c of [...citedCodes].sort())
   const caught = [...citations(probeRow)].some((c) => !knownCode(c));
   if (!caught)
     err("docs:verify self-test FAILED: the undefined-code guard is inert (KI-015 regression)");
+}
+
+/* 7d. Phantom guard — every §2 code must be emitted by real code (2026-09-07).
+   A §2 row that no non-test source under src/ or src-tauri/src/ quotes is a phantom:
+   documented-as-built but unimplemented. Quote-delimited (", ', `) in .ts/.tsx/.rs;
+   tests are excluded as evidence (a test asserting a code proves nothing produces it).
+   KI-015 lesson applied: a mutation self-test proves the guard fires. */
+{
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const blob = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${d}/${e.name}`);
+      else if (
+        (/\.(ts|tsx|rs)$/.test(e.name) && !/\.test\./.test(e.name) && !/_test\.rs$/.test(e.name)) ||
+        (e.name.endsWith(".json") && d.replaceAll("\\", "/").endsWith("src/i18n"))
+      )
+        blob.push(readFileSync(`${d}/${e.name}`, "utf8"));
+    }
+  };
+  walk("src");
+  walk("src-tauri/src");
+  const code = blob.join("\n");
+  const produced = (c) =>
+    code.includes(`\"${c}\"`) || code.includes(`'${c}'`) || code.includes(`\`${c}\``);
+  for (const c of errDefs)
+    if (!produced(c))
+      err(
+        `ERROR-HANDLING §2 phantom: ${c} is documented but produced nowhere under src/ or src-tauri/src/ (move it to §2C or implement it)`,
+      );
+  // self-test: a fake §2 row must be caught, or this guard is dead.
+  const fake = "ZZ_PHANTOM_GUARD_PROBE";
+  const fakeDefs = idDefs(`| ${fake} | x | "x" | 422 | false |`, /^\|\s*([A-Z][A-Z0-9_]+)\s*\|/gm);
+  if (!(!produced(fake) && fakeDefs.has(fake)))
+    err("docs:verify self-test FAILED: the phantom guard is inert");
 }
 
 /* 8. Banned-term scan (GLOSSARY synonyms used as domain terms — context-filtered) */
@@ -181,7 +230,7 @@ const claims = [
   ["42 screens", /42 screens/],
   ["102 commands", /102 typed commands/],
   ["56 tables", /56 \(49 original/],
-  ["99 errors", /99 \(ZC revision/],
+  ["86 errors", /86 \(2026-09-07 phantom sweep/],
   ["60 docs", /60 docs\/ specs/],
 ];
 for (const [label, re] of claims) {
@@ -195,5 +244,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `docs:verify PASS — ${files.length - 1} docs indexed, ${screenDefs.size} screens, ${cmdCount} command rows, ${errDefs.size} error codes`,
+  `docs:verify PASS — ${files.length - 1} docs indexed, ${screenDefs.size} screens, ${cmdCount} command rows, ${errDefs.size} error codes, ${reservedNames.size} reserved names`,
 );

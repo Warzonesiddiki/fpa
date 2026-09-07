@@ -40,6 +40,6 @@ both coverage gates + schema/docs/packs/money/security, `npm run build`).
 
 `npm run check`: lint · typecheck · fmt · vitest 101 files/1,223 tests · coverage main
 87.49/81.82 · critical 98.29/95.37 · schema-equality (56 tables) · docs-links (175 strict)
-· docs:verify (63 docs/42 screens/102 commands/99 errors) · packs:validate (12/12, **0
+· docs:verify (63 docs/42 screens/102 commands/86 errors + 21 reserved — truth-up 2026-09-07, see ERROR-HANDLING §2C) · packs:validate (12/12, **0
 warnings**) · money:ast · security:scan — **all PASS**. `npm run build`: PASS, production
 bundle contains no mock core. Rust: 🚧 UNVERIFIED locally (unchanged; CI will close this).
