@@ -194,6 +194,20 @@ for (const c of [...citedCodes].sort())
       err(
         `ERROR-HANDLING §2 phantom: ${c} is documented but produced nowhere under src/ or src-tauri/src/ (move it to §2C or implement it)`,
       );
+  // 7e. The compiled in-app Error reference (src/pages/s076-help/errorCatalog.ts,
+  // consumed by S-076) must be byte-identical to what §2 generates now.
+  {
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(process.execPath, ["scripts/gen-error-catalog.mjs", "--check"], {
+        stdio: "pipe",
+      });
+    } catch {
+      err(
+        "errorCatalog.ts is out of sync with ERROR-HANDLING.md §2 — run `npm run errors:catalog`",
+      );
+    }
+  }
   // self-test: a fake §2 row must be caught, or this guard is dead.
   const fake = "ZZ_PHANTOM_GUARD_PROBE";
   const fakeDefs = idDefs(`| ${fake} | x | "x" | 422 | false |`, /^\|\s*([A-Z][A-Z0-9_]+)\s*\|/gm);

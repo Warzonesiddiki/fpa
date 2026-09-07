@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { Button } from "./Button";
 import { Loader2, AlertTriangle, Inbox, CircleCheck, Layers } from "lucide-react";
 
@@ -83,9 +84,14 @@ export function StatePanel({
       />
       <p className="text-sm font-medium text-[var(--color-onetext)]">{message ?? labelText}</p>
       {errorCode && (
-        <p className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)]">
+        <Link
+          to={`/app/help/errors?q=${encodeURIComponent(errorCode)}`}
+          aria-label={t("errors.lookup")}
+          title={t("errors.lookup")}
+          className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)] underline-offset-2 hover:text-[var(--color-onetext)] hover:underline"
+        >
           {t("errors.code", { code: errorCode })}
-        </p>
+        </Link>
       )}
       {state === "error" && onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>

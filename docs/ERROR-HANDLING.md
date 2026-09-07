@@ -224,7 +224,7 @@ left in `CHANGELOG.md`/`DECISIONS.md` are dated history and must not be rewritte
 2. `retryable=true` → button + countdown (`retryAfterMs`); auto-retry only for idempotent reads (max 2).
 3. `422` → inline field-level or dialog-level errors with `details`; form stays open with user input intact.
 4. Toast only for transient (success/info); errors on destructive actions render in Modal/D-004 context.
-5. Every error code is documented in-app (Help → "Error reference") — users never see raw `message`.
+5. Every error code is documented in-app (Help → "Error reference") — users never see raw `message`. **Built (S-076):** the "Errors" tab at `/app/help/errors` renders all §2 codes (meaning/HTTP/retry) from the generated `errorCatalog.ts` (`npm run errors:catalog`; sync-enforced by docs:verify 7e), and every StatePanel code chip links straight to its entry via `?q=`.
 6. Errors are logged to Local Diagnostics with redaction (no money, no secrets, no paths with user names when removable).
 7. Aggregation: 5+ identical errors in 1 min → collapsed banner + link to error log.
 

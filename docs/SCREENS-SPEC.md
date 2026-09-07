@@ -416,7 +416,7 @@ cost rollup preview by fiscal period; driver-data import hand-off.
 
 ### S-076 Help & Explainers | `/help/:topic` (+ F1 overlays)
 **Purpose:** F-038 in-app help; KPI/driver explainers; keyboard shortcuts; glossary (mirror GLOSSARY.md).
-**Elements:** topic list, search, explainer cards (definition, formula, example), shortcuts table, keyboard-only navigation.
+**Elements:** topic list, search, explainer cards (definition, formula, example), shortcuts table, keyboard-only navigation, Error reference tab (`/app/help/errors` — every ERROR-HANDLING §2 code with meaning/HTTP/retry, generated; StatePanel code chips deep-link via `?q=`).
 - **Loading:** skeleton.
 - **Empty:** "No help topics yet".
 - **Error:** `HELP_TOPIC_MISSING` → search suggestion.

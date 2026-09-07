@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StatePanel } from "./StatePanel";
+
+/** StatePanel renders a router Link on its code chip (§3 rule 5) — always wrap. */
+const renderPanel = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 describe("StatePanel — the five screen states (Q1)", () => {
   it.each([
@@ -11,20 +15,20 @@ describe("StatePanel — the five screen states (Q1)", () => {
     ["success", "Done"],
     ["populated", "Populated"],
   ] as const)("renders %s state with role=status + aria-live", (state, label) => {
-    render(<StatePanel state={state} />);
+    renderPanel(<StatePanel state={state} />);
     const panel = screen.getByRole("status");
     expect(panel).toHaveAttribute("aria-live", "polite");
     expect(panel).toHaveTextContent(label);
   });
 
   it("shows the message instead of the generic label", () => {
-    render(<StatePanel state="empty" message="No companies yet" />);
+    renderPanel(<StatePanel state="empty" message="No companies yet" />);
     expect(screen.getByRole("status")).toHaveTextContent("No companies yet");
   });
 
   it("shows error code (B12) and a retry button", async () => {
     const onRetry = vi.fn();
-    render(
+    renderPanel(
       <StatePanel state="error" message="boom" errorCode="AUTH_PIN_INVALID" onRetry={onRetry} />,
     );
     expect(screen.getByText(/AUTH_PIN_INVALID/)).toBeInTheDocument();
@@ -32,14 +36,20 @@ describe("StatePanel — the five screen states (Q1)", () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
+  it("links the code chip to the in-app Error reference (§3 rule 5)", () => {
+    renderPanel(<StatePanel state="error" message="boom" errorCode="VALUE_INVALID" />);
+    const link = screen.getByRole("link", { name: /look up this code/i });
+    expect(link).toHaveAttribute("href", "/app/help/errors?q=VALUE_INVALID");
+  });
+
   it("omits a retry button when no handler is provided", () => {
-    render(<StatePanel state="error" message="no retry" />);
+    renderPanel(<StatePanel state="error" message="no retry" />);
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
   it("shows an empty-state action when label+handler are present", async () => {
     const onAction = vi.fn();
-    render(
+    renderPanel(
       <StatePanel state="empty" message="empty" actionLabel="Create company" onAction={onAction} />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Create company" }));

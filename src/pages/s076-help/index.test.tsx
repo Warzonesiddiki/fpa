@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import HelpPage from "./index";
+import { ERROR_CATALOG } from "./errorCatalog";
 
 function renderHelp(
   options: {
@@ -207,5 +208,36 @@ describe("S-076 Help & Explainers (F-038)", () => {
     await user.click(screen.getByRole("tab", { name: /Shortcuts/ }));
     const results = await axe(document.body);
     expect(results.violations).toEqual([]);
+  });
+});
+
+describe("S-076 Error reference (ERROR-HANDLING §3 rule 5)", () => {
+  it("renders every catalog code from the Errors tab", async () => {
+    const user = userEvent.setup();
+    renderHelp();
+    await user.click(screen.getByRole("tab", { name: "Errors" }));
+    expect(screen.getByTestId("error-reference")).toBeInTheDocument();
+    for (const e of ERROR_CATALOG) {
+      expect(screen.getByTestId(`error-row-${e.code}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("error-reference-count")).toHaveTextContent(
+      `${ERROR_CATALOG.length} codes`,
+    );
+  });
+
+  it("deep link /app/help/errors?q=CODE arrives filtered to that code (StatePanel chip target)", () => {
+    renderHelp({ initialEntries: ["/app/help/errors?q=VALUE_INVALID"] });
+    expect(screen.getByTestId("error-reference")).toBeInTheDocument();
+    expect(screen.getByTestId("error-row-VALUE_INVALID")).toBeInTheDocument();
+    expect(screen.queryByTestId("error-row-AUTH_PIN_INVALID")).not.toBeInTheDocument();
+  });
+
+  it("search narrows the reference and reports the match count", async () => {
+    const user = userEvent.setup();
+    renderHelp({ initialEntries: ["/app/help/errors"] });
+    await user.type(screen.getByPlaceholderText(/search/i), "PIN");
+    const rows = screen.getAllByTestId(/error-row-/);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThan(ERROR_CATALOG.length);
   });
 });
