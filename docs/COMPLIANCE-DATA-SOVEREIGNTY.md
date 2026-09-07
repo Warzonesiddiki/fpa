@@ -8,7 +8,7 @@
 
 | Guarantee | Binding rule |
 |---|---|
-| No data leaves the machine | No network calls except: (a) user-initiated Connector sync (actuals to/from their ERP), (b) user-initiated update check. No telemetry, no analytics, no phone-home, no license ping (B18-9) |
+| No data leaves the machine | No network calls except: (a) user-initiated Connector sync (actuals to/from their ERP). No update check ships today — the unsigned updater was removed (ADR-028); a signature-verified one may return with release signing. No telemetry, no analytics, no phone-home, no license ping (B18-9) |
 | No financial metadata in diagnostics | `Local Diagnostics` export redacts amounts (replaces with `0`/`***`), strips paths with usernames where removable, never exports tokens |
 | No secrets in DB/logs | OAuth tokens/HMAC key only in OS keychain; logs redact `token`, `secret`, `password`, `PIN` (regex redaction + unit tests) |
 | No PHI/PII assumption | Healthcare Pack is financial-metric-only (payer mix, volumes — no patient identifiers, no charts); if a customer maps patient data, that is their control deployment, and the doc states OneFP&A is not a HIPAA-certified BAA product — configure access controls accordingly |

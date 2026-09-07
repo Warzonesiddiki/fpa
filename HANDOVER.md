@@ -581,9 +581,5 @@ unpushed commits do NOT survive the re-clone (objects are pruned with the old pa
 - Commit in logical units (Rust storage core → commands → api/mock → docs last).
 - Push **only** your session branch (Arena pins it; never switch branches).
 - `gh pr create --base main --head <your-session-branch> --title "…" --body "…"`, then
-  `gh pr merge <n> --merge` once green. `.github/workflows/ci.yml` is written and
-  ready on disk (WS-01 un-ignored it narrowly: `.github/*` except `!.github/workflows/**`)
-  but the Arena App token **cannot push workflow files** (`workflows` permission missing;
-  git push and the Contents API were both refused 2026-09-06). Keep committing
-  everything else; the owner must add the workflow file once via github.com (or
-  reconnect Arena with Workflows permission). Never delete the ready file.
+  `gh pr merge <n> --merge` once green. Keep `infra/ci.yml` where it is — never push
+  `.github/workflows/` (the token lacks Workflows permission; do not retry).

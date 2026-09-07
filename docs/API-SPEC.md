@@ -114,7 +114,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `plan.whatif_overlay` | session | `{scenario_ids[], period_scope, kpis[]}` | `{series[], waterfall[]}` | COMPARE_INCOMPATIBLE |
 | `board_pack.generate` | session | `{template_id, period_scope, commentary_required}` | `{pack_id, preview_files[]}` | HEALTH_CHECK_BLOCKED, PACK_NO_COMMENTARY |
 | `reconcile.mark_authoritative` | session | `{batch_id, account_ids[], reason}` | `{updated}` | SRC_MISMATCH_UNRESOLVED, HEALTH_WAIVER_REASON_REQUIRED |
-| `update.check` | session | — | `{available, version, notes}` | UPDATE_FETCH_FAILED |
+| `update.check` | — | **Not implemented (ADR-028)** — updater removed until signature keys exist; updates are manual via Releases | — | — |
 | `settings.get` / `settings.set` | session | `{key}` / `{key, value_json}` | `{value}` / `{ok}` | SETTINGS_SAVE_FAILED |
 | `app.diagnostics.export` | session | `{path}` | `{file}` | — |
 

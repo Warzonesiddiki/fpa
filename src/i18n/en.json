@@ -801,11 +801,11 @@
       }
     },
     "updates": {
-      "title": "Auto-update",
+      "title": "Updates",
       "channel": "Update channel",
       "stable": "Stable",
       "beta": "Beta",
-      "nativeGate": "Native gate pending: signed desktop updater and handler"
+      "nativeGate": "Updates are manual (download from GitHub Releases) until the signed desktop updater ships (ADR-028). Your channel preference is saved for that release."
     },
     "diagnostics": {
       "title": "Local Diagnostics",
@@ -1094,6 +1094,7 @@
       "chooseAssumption": "Choose assumption…",
       "waive": "Waive",
       "waiveConfirm": "Confirm waiver",
+      "waiveSaving": "Recording…",
       "waiveReasonLabel": "Waiver reason",
       "waiveReasonRequired": "Enter a waiver reason.",
       "waivedBadge": "Waived: {{reason}}",

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Least-privilege capability set (SECURITY-CHECKLIST A05): dialog/save pickers, notifications, clipboard read/write for grid copy-paste, OS info, window-state, updater. No shell, no FS scope, no HTTP.",
+  "description": "Least-privilege capability set (SECURITY-CHECKLIST A05): dialog/save pickers, notifications, clipboard read/write for grid copy-paste, OS info, window-state. No shell, no FS scope, no HTTP, no updater (removed unsigned — ADR-028).",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -20,7 +20,6 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "os:default",
-    "window-state:default",
-    "updater:default"
+    "window-state:default"
   ]
 }

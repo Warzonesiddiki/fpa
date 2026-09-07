@@ -64,7 +64,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(SessionState::default())
         // In-memory unlocked vault key (A02): never persisted, zeroised by `session.lock`.
         .manage(KeyVault::default())

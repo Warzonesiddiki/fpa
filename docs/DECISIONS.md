@@ -185,6 +185,22 @@ reserved names must be admitted with `userMessage`/`httpStatus`/`Retry` **as par
 Done** — they cannot ship as a bare `Error:` line on a screen. The `ACCOUNT_MISSING` branch's copy defect is a real
 user-facing bug and moves to KI-018; it needs Rust + mock + test in one PR, so it is not folded into a docs revision.
 
+### ADR-028 · Remove the unsigned auto-updater — no update path ships without signature verification (WS-09)
+**Why:** `tauri.conf.json` configured the updater plugin with a GitHub releases endpoint but an **empty `pubkey`**.
+A Tauri updater without a public key cannot verify update signatures: any file served at the endpoint (or pushed to it)
+would be accepted and installed. For a local-first, "data never leaves your machine" financial app this is an
+unacceptable hole (B1, SECURITY-CHECKLIST). The UI never invoked the updater (`update.check` has no handler; S-075
+shows a "native gate pending" note), so the plugin compiled in was pure attack surface with zero user value.
+**Decision:** remove the updater entirely rather than ship it unverifiable — delete the `plugins.updater` block,
+the `tauri-plugin-updater` crate + registration, the `updater:default` capability, and its lockfile entries. Updates
+are manual (download installer from Releases) until a signed updater ships. Re-enabling requires: a real Ed25519
+keypair (`tauri signer generate`), `pubkey` in config, the private key in release CI secrets only, and a
+signature-verified manifest — as one change, never an intermediate empty-pubkey state.
+**Consequences:** S-075's update-channel preference remains stored but inert (honest copy says so). F-036 (update
+UX) stays TODO with M7-2 signing. `cargo` dependency tree shrinks (reqwest/rustls/tar etc. leave the updater's
+subtree). The B18-9 offline promise is unaffected — no telemetry, no phone-home; there never was an update check
+call. Security posture: no unsigned update path can ship by default again.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

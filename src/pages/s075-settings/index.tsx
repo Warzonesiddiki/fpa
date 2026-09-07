@@ -341,7 +341,7 @@ function SettingsForm({ status, persisted, restoreIssue, error, onSave }: Settin
               </select>
             </label>
             <p className="mt-3 text-xs text-[var(--color-onetextmuted)]">
-              {t("settings.updates.nativeGate")} <code>update.check</code>
+              {t("settings.updates.nativeGate")}
             </p>
           </Card>
 
