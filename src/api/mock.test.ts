@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ImportHistoryData, ImportValidateData, SettingsDocumentKey } from "./schema";
 import {
   isTauriRuntime,
+  mockHardcodeWaiver,
   mockInvoke,
+  resetMockAssumptionWaiverState,
   resetMockHeadcountState,
   resetMockScenarioState,
   resetMockSettingsState,
@@ -61,6 +63,62 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
       confirm: "Meridian#2026",
     })) as { data: { ok: boolean } };
     expect(out.data.ok).toBe(true);
+  });
+
+  describe("assumption.waive mirror (B7 — WS-04)", () => {
+    const MODEL = "3f9f2c9e-9f8b-4e2d-9a1c-100000000001"; // demo company model (mockCompanyModels)
+    const CELL = "line-salary:fp-2026-p01:13:17";
+
+    beforeEach(async () => {
+      await mockInvoke("session.lock", {});
+      resetMockAssumptionWaiverState();
+      await mockInvoke("session.unlock", {
+        pin: "Meridian2026",
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+      });
+    });
+
+    it("rejects a blank reason with VALUE_INVALID (native parity)", async () => {
+      const out = (await mockInvoke("assumption.waive", {
+        model_id: MODEL,
+        cell_ref: CELL,
+        reason: "   ",
+      })) as { error: { code: string; httpStatus: number } };
+      expect(out.error.code).toBe("VALUE_INVALID");
+      expect(out.error.httpStatus).toBe(422);
+      expect(mockHardcodeWaiver(CELL)).toBeUndefined();
+    });
+
+    it("waives, records the waiver and appends a hash-chained audit event", async () => {
+      const out = (await mockInvoke("assumption.waive", {
+        model_id: MODEL,
+        cell_ref: CELL,
+        reason: "fixed cost baseline",
+      })) as { data: { waived: boolean; cell_ref: string } };
+      expect(out.data).toEqual({ waived: true, cell_ref: CELL });
+      expect(mockHardcodeWaiver(CELL)?.reason).toBe("fixed cost baseline");
+
+      const audit = (await mockInvoke("audit.list", {
+        company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000001",
+        page: 1,
+      })) as {
+        data: { events: { action: string; object_type: string; object_id: string }[] };
+      };
+      const waiverEvent = audit.data.events.find((e) => e.action === "assumption.waive");
+      expect(waiverEvent?.object_type).toBe("assumption_waiver");
+      expect(waiverEvent?.object_id).toBe(CELL);
+    });
+
+    it("refuses when the session is locked (SESSION_LOCKED)", async () => {
+      await mockInvoke("session.lock", {});
+      const out = (await mockInvoke("assumption.waive", {
+        model_id: MODEL,
+        cell_ref: CELL,
+        reason: "why",
+      })) as { error: { code: string; httpStatus: number } };
+      expect(out.error.code).toBe("SESSION_LOCKED");
+      expect(out.error.httpStatus).toBe(401);
+    });
   });
 
   it("returns the Meridian demo company and NRF oracle sample", async () => {

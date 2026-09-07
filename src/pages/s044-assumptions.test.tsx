@@ -45,7 +45,9 @@ type TestStoreState = {
   convertHardcoded: Mock<
     (finding: TestFinding, literal: TestLiteral, name: string) => Promise<boolean>
   >;
-  waiveHardcoded: Mock<(finding: TestFinding, literal: TestLiteral, reason: string) => boolean>;
+  waiveHardcoded: Mock<
+    (finding: TestFinding, literal: TestLiteral, reason: string) => Promise<boolean>
+  >;
   unwaiveHardcoded: Mock<(key: string) => void>;
 };
 
@@ -97,7 +99,7 @@ const {
     }),
     scanHardcoded: vi.fn(async () => current.findings),
     convertHardcoded: vi.fn(async () => true),
-    waiveHardcoded: vi.fn(() => true),
+    waiveHardcoded: vi.fn(async () => true),
     unwaiveHardcoded: vi.fn(),
   };
   return {
@@ -114,9 +116,12 @@ const {
 
 vi.mock("@/stores/assumptions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/stores/assumptions")>();
+  const useAssumptionStoreMock = (selector: (state: unknown) => unknown) => selector(current);
+  // Zustand stores expose getState(); the page reads it after an awaited mutation.
+  useAssumptionStoreMock.getState = () => current;
   return {
     ...actual,
-    useAssumptionStore: (selector: (state: unknown) => unknown) => selector(current),
+    useAssumptionStore: useAssumptionStoreMock,
   };
 });
 
@@ -381,6 +386,40 @@ describe("S-044 Assumption Register (F-014)", () => {
       { literal: "1.04", start: 13, end: 17 },
       "fixed cost baseline",
     );
+  });
+
+  it("surfaces the typed bridge error inline when the audited waiver is rejected", async () => {
+    setStoreState({
+      hardcodeStatus: "populated",
+      findings: [
+        {
+          line_id: "line-salary",
+          period_id: "fp-2026-p01",
+          formula: "=base_salary*1.04",
+          literals: [{ literal: "1.04", start: 13, end: 17 }],
+        },
+      ],
+    });
+    waiveHardcodedMock.mockImplementation(async () => {
+      setStoreState({
+        hardcodeError: {
+          code: "SESSION_LOCKED",
+          userMessage: "Session locked. Unlock to continue.",
+          httpStatus: 401,
+          retryable: false,
+          retryAfterMs: null,
+          details: {},
+        },
+      });
+      return false;
+    });
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Waive" }));
+    await userEvent.type(screen.getByLabelText("Waiver reason"), "why");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm waiver" }));
+    expect(await screen.findByText("Session locked. Unlock to continue.")).toBeInTheDocument();
+    // The waiver form stays open so the reason is not lost on a rejected waiver.
+    expect(screen.getByLabelText("Waiver reason")).toBeInTheDocument();
   });
 
   it("renders a waiver and allows undoing it", async () => {

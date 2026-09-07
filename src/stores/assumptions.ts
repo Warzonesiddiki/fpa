@@ -38,7 +38,7 @@ export interface AssumptionHistoryEntry {
 
 export type AssumptionRecord = AssumptionListRow;
 
-/** A recorded waiver for one hardcoded literal (session-scoped; the audited event is Rust-owned). */
+/** A recorded waiver for one hardcoded literal (persisted + audited natively via `assumption.waive`, B7). */
 export interface HardcodeWaiver {
   reason: string;
   waived_at: string;
@@ -67,7 +67,11 @@ interface AssumptionStoreState {
     literal: HardcodedLiteral,
     assumptionName: string,
   ) => Promise<boolean>;
-  waiveHardcoded: (finding: HardcodedFinding, literal: HardcodedLiteral, reason: string) => boolean;
+  waiveHardcoded: (
+    finding: HardcodedFinding,
+    literal: HardcodedLiteral,
+    reason: string,
+  ) => Promise<boolean>;
   unwaiveHardcoded: (key: string) => void;
   retry: () => Promise<void>;
   reset: () => void;
@@ -339,11 +343,12 @@ export const useAssumptionStore = create<AssumptionStoreState>((set, get) => ({
   },
 
   /**
-   * Waive one hardcoded literal with a required reason. Session-scoped: the audited waiver event
-   * is owned by the Rust audit chain and is a follow-on under the native-toolchain policy
-   * (never fabricated here — the reason is required and retained verbatim for that hand-off).
+   * Waive one hardcoded literal with a required reason. Persists through the audited
+   * `assumption.waive` native command (B7): the Rust core appends a hash-chained
+   * `assumption.waive` audit event whose `after_json` retains the reason verbatim.
+   * The local map is a display cache of the persisted waiver, not the record itself.
    */
-  waiveHardcoded: (finding, literal, reason) => {
+  waiveHardcoded: async (finding, literal, reason) => {
     const trimmed = reason.trim();
     if (!trimmed) {
       set({
@@ -358,17 +363,27 @@ export const useAssumptionStore = create<AssumptionStoreState>((set, get) => ({
       });
       return false;
     }
-    set({
-      hardcodeError: null,
-      waived: {
-        ...get().waived,
-        [hardcodeFindingKey(finding, literal)]: {
-          reason: trimmed,
-          waived_at: new Date().toISOString(),
+    try {
+      await call("assumption.waive", {
+        model_id: activeModelId(),
+        cell_ref: hardcodeFindingKey(finding, literal),
+        reason: trimmed,
+      });
+      set({
+        hardcodeError: null,
+        waived: {
+          ...get().waived,
+          [hardcodeFindingKey(finding, literal)]: {
+            reason: trimmed,
+            waived_at: new Date().toISOString(),
+          },
         },
-      },
-    });
-    return true;
+      });
+      return true;
+    } catch (err) {
+      set({ hardcodeError: err as BridgeError });
+      return false;
+    }
   },
 
   /** Remove a session waiver for a hardcoded literal (the finding reappears in the scan list). */

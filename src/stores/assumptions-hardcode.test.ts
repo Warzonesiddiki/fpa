@@ -155,20 +155,43 @@ describe("M3-4 hardcoded-assumption detection (store)", () => {
     expect(useAssumptionStore.getState().hardcodeStatus).toBe("empty");
   });
 
-  it("waives a literal only with a non-empty reason and supports undo", () => {
-    const rejected = useAssumptionStore.getState().waiveHardcoded(FINDING, LITERAL, "   ");
+  it("waives via the audited native command, rejects a blank reason, surfaces bridge errors, supports undo", async () => {
+    const rejected = await useAssumptionStore.getState().waiveHardcoded(FINDING, LITERAL, "   ");
     expect(rejected).toBe(false);
     expect(useAssumptionStore.getState().hardcodeError?.code).toBe("VALUE_INVALID");
     expect(useAssumptionStore.getState().waived).toEqual({});
+    expect(callMock).not.toHaveBeenCalled();
 
-    const ok = useAssumptionStore
+    callMock.mockResolvedValue({ waived: true, cell_ref: hardcodeFindingKey(FINDING, LITERAL) });
+    const ok = await useAssumptionStore
       .getState()
       .waiveHardcoded(FINDING, LITERAL, "fixed cost baseline");
     expect(ok).toBe(true);
+    // B7: the waiver must go through the audited native command (model + cell_ref + reason).
+    expect(callMock).toHaveBeenCalledWith("assumption.waive", {
+      model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+      cell_ref: hardcodeFindingKey(FINDING, LITERAL),
+      reason: "fixed cost baseline",
+    });
     const key = hardcodeFindingKey(FINDING, LITERAL);
     expect(useAssumptionStore.getState().waived[key]?.reason).toBe("fixed cost baseline");
+    expect(useAssumptionStore.getState().hardcodeError).toBeNull();
 
     useAssumptionStore.getState().unwaiveHardcoded(key);
+    expect(useAssumptionStore.getState().waived).toEqual({});
+
+    // Bridge failure (e.g. locked session) must surface as the typed hardcode error.
+    callMock.mockRejectedValue({
+      code: "SESSION_LOCKED",
+      userMessage: "Session locked. Unlock to continue.",
+      httpStatus: 401,
+      retryable: false,
+      retryAfterMs: null,
+      details: {},
+    });
+    const failed = await useAssumptionStore.getState().waiveHardcoded(FINDING, LITERAL, "why");
+    expect(failed).toBe(false);
+    expect(useAssumptionStore.getState().hardcodeError?.code).toBe("SESSION_LOCKED");
     expect(useAssumptionStore.getState().waived).toEqual({});
   });
 
