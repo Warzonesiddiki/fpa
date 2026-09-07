@@ -294,17 +294,20 @@ describe("S-030 Import Hub (M2-1)", () => {
     expect(await screen.findByText("Source parsed")).toBeInTheDocument();
   });
 
-  it("names driver and dimension sources as unavailable instead of offering a fabricated tab", () => {
+  it("offers the real driver-data destination tab; names only dimension sources as unavailable", () => {
     renderPage();
-    for (const label of ["Driver data", "Dimension master"]) {
-      const tab = screen.getByRole("tab", { name: label });
-      expect(tab).toBeDisabled();
-      expect(tab).toHaveAttribute("aria-selected", "false");
-      expect(tab).toHaveAttribute("aria-describedby", "destination-gate");
-    }
+    // driver_data posts through driver.import into driver_values (M2-5b) — a real tab.
+    const driverTab = screen.getByRole("tab", { name: "Driver data" });
+    expect(driverTab).toBeEnabled();
+    expect(driverTab).not.toHaveAttribute("aria-describedby", "destination-gate");
+    // Dimension master has no destination pipeline — still named honestly, not offered.
+    const dimensionTab = screen.getByRole("tab", { name: "Dimension master" });
+    expect(dimensionTab).toBeDisabled();
+    expect(dimensionTab).toHaveAttribute("aria-selected", "false");
+    expect(dimensionTab).toHaveAttribute("aria-describedby", "destination-gate");
     expect(
       screen.getByText(
-        "Driver data and dimension master lists remain unavailable: they do not post to the general ledger, and the driver_values and dimension_values destination pipelines are not implemented. import.commit refuses those kinds rather than writing them as GL facts.",
+        "Dimension master lists remain unavailable: dimension_values has no destination pipeline and import.commit refuses the kind rather than writing it as a GL fact. Driver data commits through driver.import into driver_values.",
       ),
     ).toBeInTheDocument();
   });

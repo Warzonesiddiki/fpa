@@ -11,7 +11,9 @@ import { useTranslation } from "react-i18next";
 import { Button, Input, StatePanel } from "@/components/ui";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
 import { useHeadcountStore } from "@/stores/headcount";
+import { useScenarioStore } from "@/stores/scenarios";
 import type { HeadcountScheduleRow } from "@/model/headcount";
+import type { ScenarioRow } from "@/api/schema";
 
 const EMPTY_FORM: HeadcountScheduleRow = {
   role: "",
@@ -43,6 +45,7 @@ export function HeadcountPage() {
   const saveRow = useHeadcountStore((s) => s.saveRow);
   const removeRow = useHeadcountStore((s) => s.removeRow);
   const importDriverData = useHeadcountStore((s) => s.importDriverData);
+  const scenarios = useScenarioStore((s) => s.scenarios);
   const retry = useHeadcountStore((s) => s.retry);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -51,6 +54,7 @@ export function HeadcountPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [importPath, setImportPath] = useState("");
   const [importMapping, setImportMapping] = useState("canonical");
+  const [importScenarioId, setImportScenarioId] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,9 +101,12 @@ export function HeadcountPage() {
 
   const submitImport = useCallback(async () => {
     setImportError(null);
-    const ok = await importDriverData(importPath, importMapping, "");
+    // driver.import requires a concrete scenario (API-SPEC §2): an empty id is rejected
+    // by the Uuid schema and the core's scenario-unlocked check, so the Import button
+    // stays disabled until one is chosen (same gate as S-030's driver panel).
+    const ok = await importDriverData(importPath, importMapping, importScenarioId);
     if (!ok) setImportError(t("headcountPage.import.failed"));
-  }, [importDriverData, importMapping, importPath, t]);
+  }, [importDriverData, importMapping, importPath, importScenarioId, t]);
 
   const orgTree = useMemo(() => {
     const groups = new Map<string, HeadcountScheduleRow[]>();
@@ -337,8 +344,11 @@ export function HeadcountPage() {
         <ImportPanel
           path={importPath}
           mapping={importMapping}
+          scenarioId={importScenarioId}
+          scenarios={scenarios}
           setPath={setImportPath}
           setMapping={setImportMapping}
+          setScenarioId={setImportScenarioId}
           onImport={() => void submitImport()}
           error={importError}
           t={t}
@@ -423,8 +433,11 @@ export function HeadcountPage() {
             <ImportPanel
               path={importPath}
               mapping={importMapping}
+              scenarioId={importScenarioId}
+              scenarios={scenarios}
               setPath={setImportPath}
               setMapping={setImportMapping}
+              setScenarioId={setImportScenarioId}
               onImport={() => void submitImport()}
               error={importError}
               t={t}
@@ -445,16 +458,22 @@ export function HeadcountPage() {
 function ImportPanel({
   path,
   mapping,
+  scenarioId,
+  scenarios,
   setPath,
   setMapping,
+  setScenarioId,
   onImport,
   error,
   t,
 }: {
   path: string;
   mapping: string;
+  scenarioId: string;
+  scenarios: ScenarioRow[];
   setPath: (value: string) => void;
   setMapping: (value: string) => void;
+  setScenarioId: (value: string) => void;
   onImport: () => void;
   error: string | null;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -480,12 +499,32 @@ function ImportPanel({
         onChange={(event) => setMapping(event.target.value)}
         placeholder="canonical"
       />
+      <label
+        htmlFor="headcount-import-scenario"
+        className="text-sm font-medium text-[var(--color-onetext)]"
+      >
+        {t("headcountPage.import.scenario")}
+      </label>
+      <select
+        id="headcount-import-scenario"
+        value={scenarioId}
+        onChange={(event) => setScenarioId(event.target.value)}
+        className="w-full rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-3 py-2 text-sm text-[var(--color-onetext)]"
+      >
+        <option value="">{t("headcountPage.import.scenarioPlaceholder")}</option>
+        {scenarios.map((scenario) => (
+          <option key={scenario.id} value={scenario.id}>
+            {scenario.name}
+            {scenario.state === "locked" ? ` (${t("headcountPage.import.scenarioLocked")})` : ""}
+          </option>
+        ))}
+      </select>
       {error && (
         <p role="alert" className="text-sm text-[var(--color-onerror)]">
           {error}
         </p>
       )}
-      <Button variant="secondary" onClick={onImport}>
+      <Button variant="secondary" disabled={!scenarioId} onClick={onImport}>
         {t("headcountPage.import.button")}
       </Button>
     </section>

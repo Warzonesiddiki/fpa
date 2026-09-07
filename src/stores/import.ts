@@ -45,7 +45,12 @@ interface ImportStoreState {
   /** M2-5b: driver_data destination pipeline (`driver.import` → `driver_values`). */
   driverImportStatus: ScreenState;
   driverImportError: BridgeError | null;
-  driverImportResult: { batch_id: string; rows: number; audit_id: number; source_hash: string } | null;
+  driverImportResult: {
+    batch_id: string;
+    rows: number;
+    audit_id: number;
+    source_hash: string;
+  } | null;
   driverImport: (scenarioId: string) => Promise<boolean>;
   /** Monotonic tokens invalidate every later stage when an earlier identity changes. */
   requestId: number;

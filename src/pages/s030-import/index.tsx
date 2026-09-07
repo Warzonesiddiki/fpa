@@ -406,9 +406,7 @@ export function ImportHubPage() {
             </Button>
           </div>
           <p className="mt-2 text-right text-xs text-[var(--color-onetextmuted)]">
-            {kind === "driver_data"
-              ? t("importHub.driverMappingHint")
-              : t("importHub.mappingHint")}
+            {kind === "driver_data" ? t("importHub.driverMappingHint") : t("importHub.mappingHint")}
           </p>
         </div>
       );

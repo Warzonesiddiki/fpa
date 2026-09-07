@@ -204,11 +204,14 @@ describe("driver tables store (S-043)", () => {
     mockCalendar();
     await useDriverStore.getState().load();
     callMock.mockResolvedValue({ batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001" });
-    const ok = await useDriverStore.getState().importDrivers("/tmp/drivers.xlsx", "canonical", "sc-1");
+    const ok = await useDriverStore
+      .getState()
+      .importDrivers("/tmp/drivers.xlsx", "canonical", "sc-1");
     expect(ok).toBe(true);
     expect(callMock).toHaveBeenCalledWith("driver.import", {
       file_path: "/tmp/drivers.xlsx",
       mapping_id: "canonical",
+      scenario_id: "sc-1",
     });
   });
 

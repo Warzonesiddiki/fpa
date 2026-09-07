@@ -118,10 +118,7 @@ function hasDuplicateSources(columns: ColumnDraft[]): boolean {
   return false;
 }
 
-function mappingTargetsReady(
-  columns: ColumnDraft[],
-  kind: ImportKind | null,
-): boolean {
+function mappingTargetsReady(columns: ColumnDraft[], kind: ImportKind | null): boolean {
   const targets = new Set(
     columns
       .map((column) => column.semanticTarget)
@@ -222,6 +219,7 @@ function SourceFacts({ parsed }: { parsed: ImportParseData }) {
 function MappingWorkspace({ parsed, readOnly }: { parsed: ImportParseData; readOnly: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const kind = useImportStore((state) => state.kind);
   const mappingStatus = useImportStore((state) => state.mappingStatus);
   const mappingError = useImportStore((state) => state.mappingError);
   const mappingId = useImportStore((state) => state.mappingId);
@@ -614,7 +612,6 @@ export function MappingWizardPage() {
   const companyId = useSessionStore((state) => state.companyId);
   const readOnly = useSessionStore((state) => state.readOnly);
   const parsed = useImportStore((state) => state.parsed);
-  const kind = useImportStore((state) => state.kind);
   const mappingStatus = useImportStore((state) => state.mappingStatus);
   const validationStatus = useImportStore((state) => state.validationStatus);
   const validationResult = useImportStore((state) => state.validationResult);

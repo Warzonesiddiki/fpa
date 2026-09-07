@@ -198,6 +198,7 @@ describe("headcount plan store (S-045)", () => {
     expect(callMock).toHaveBeenCalledWith("driver.import", {
       file_path: "/tmp/headcount.csv",
       mapping_id: "canonical",
+      scenario_id: "sc-1",
     });
   });
 });
