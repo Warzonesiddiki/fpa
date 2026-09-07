@@ -361,6 +361,8 @@ export function CustomPackWizardModal({ isOpen, onClose }: CustomPackWizardModal
   // Step 1: Metadata
   const [packName, setPackName] = useState("");
   const [packKey, setPackKey] = useState("");
+  /** True once the user edits the key directly — stops name→key auto-derivation (was: emptiness check, which froze the key at the first typed character). */
+  const [keyManuallyEdited, setKeyManuallyEdited] = useState(false);
   const [industry, setIndustry] = useState("Technology");
   const [version, setVersion] = useState("1.0.0");
   const [description, setDescription] = useState("");
@@ -576,7 +578,7 @@ export function CustomPackWizardModal({ isOpen, onClose }: CustomPackWizardModal
                   value={packName}
                   onChange={(e) => {
                     setPackName(e.target.value);
-                    if (!packKey) {
+                    if (!keyManuallyEdited) {
                       setPackKey(sanitizeKey(e.target.value));
                     }
                   }}
@@ -586,7 +588,10 @@ export function CustomPackWizardModal({ isOpen, onClose }: CustomPackWizardModal
                 <Input
                   label={t("packs.builder.key")}
                   value={packKey}
-                  onChange={(e) => setPackKey(sanitizeKey(e.target.value))}
+                  onChange={(e) => {
+                    setKeyManuallyEdited(true);
+                    setPackKey(sanitizeKey(e.target.value));
+                  }}
                   placeholder={t("packs.builder.keyPlaceholder")}
                   required
                 />

@@ -5,7 +5,8 @@ import {
   type CommandInput,
   type CommandName,
 } from "./schema";
-import { mockInvoke, isTauriRuntime } from "./mock";
+import { isTauriRuntime } from "./runtime";
+import { useErrorLogStore } from "@/stores/errorLog";
 
 export interface BridgeError {
   code: string;
@@ -49,6 +50,16 @@ function toBridgeError(raw: unknown): BridgeError {
  * Typed command invocation (tauri-specta generated client later; hand-typed bridge now).
  * Flow: Zod validates args → invoke → Zod validates data envelope (ARCHITECTURE §1).
  */
+/**
+ * Every typed error the bridge throws passes through here first, feeding the
+ * in-session aggregation log (ERROR-HANDLING §3 rule 7 — 5+ identical in 1 min
+ * → shell banner). The throw itself is unchanged.
+ */
+function failWithLog(err: BridgeError): never {
+  useErrorLogStore.getState().record(err);
+  throw err;
+}
+
 export async function call<C extends CommandName>(
   command: C,
   args: CommandInput<C>,
@@ -57,27 +68,58 @@ export async function call<C extends CommandName>(
   const parsed = schema.safeParse(args);
   if (!parsed.success) {
     const mappingInvalid = command === "import.map.save_v1";
-    throw toBridgeError({
-      code: mappingInvalid ? "MAP_TARGET_INVALID" : "VALUE_INVALID",
-      userMessage: mappingInvalid
-        ? MAP_TARGET_INVALID_MESSAGE
-        : "Value is not valid for this cell ({type}).",
-      httpStatus: 422,
-      retryable: false,
-      retryAfterMs: null,
-      details: { issues: parsed.error.issues },
-    });
+    throw failWithLog(
+      toBridgeError({
+        code: mappingInvalid ? "MAP_TARGET_INVALID" : "VALUE_INVALID",
+        userMessage: mappingInvalid
+          ? MAP_TARGET_INVALID_MESSAGE
+          : "Value is not valid for this cell ({type}).",
+        httpStatus: 422,
+        retryable: false,
+        retryAfterMs: null,
+        details: { issues: parsed.error.issues },
+      }),
+    );
   }
 
-  /** Works in the Tauri shell; in the browser dev preview (`npm run dev`) the mock core answers (B18-3: dev-only). */
+  /**
+   * Dev-only mock core (B18-3/B18-7): answers ONLY in the browser dev preview.
+   * Static `import.meta.env.DEV` guard lets Rollup dead-code-eliminate the dynamic
+   * `import("./mock")` in production builds — the ~4,600-line mock (sample data,
+   * fake handlers) is fully tree-shaken out of every shipped bundle (WS-08).
+   * The real app always runs inside Tauri, where `invoke` answers.
+   */
   const data = isTauriRuntime()
     ? await invoke(command, parsed.data as never)
-    : await mockInvoke(command, parsed.data as CommandInput<C>);
+    : await invokeMock(command, parsed.data as CommandInput<C>);
 
   if (typeof data === "object" && data !== null && "error" in data) {
-    throw toBridgeError((data as { error: unknown }).error);
+    throw failWithLog(toBridgeError((data as { error: unknown }).error));
   }
   return (data as { data?: unknown }).data ?? data;
 }
 
 export { toBridgeError };
+
+async function invokeMock<C extends CommandName>(
+  command: C,
+  args: CommandInput<C>,
+): Promise<unknown> {
+  if (!import.meta.env.DEV) {
+    // Should never happen: the mock is dev-only (B18-3/B18-7) and the built app
+    // runs inside Tauri where `invoke` answers. Refuse rather than fall back.
+    throw failWithLog(
+      toBridgeError({
+        code: "INTERNAL",
+        userMessage:
+          "This build must run inside the OneFP&A desktop app. Start it with the desktop launcher, not a browser.",
+        httpStatus: 500,
+        retryable: false,
+        retryAfterMs: null,
+        details: { command, attempted: "mock-core-in-production" },
+      }),
+    );
+  }
+  const { mockInvoke } = await import("./mock");
+  return mockInvoke(command, args);
+}

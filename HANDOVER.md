@@ -25,7 +25,9 @@
    `npm run check && npx vitest run --coverage && npm run build && npx prettier --check .`
    Expect the current **85 files / 1056 tests** after the M6-7 slice. Counts drift as tests are added —
    the invariant is that every gate PASSES on a clean tree, not the exact number. The global coverage
-   gate sits at branches 80.07% against a threshold of 80 — **new pages/stores need their own tests**,
+   gate sits at branches ~81.8 / statements ~87.5 against thresholds 80/85 (WS-11 wired both coverage
+   gates into `npm run check`; the dev-only `src/api/mock.ts` is excluded from the product gate — it
+   is browser-preview tooling, tree-shaken from prod). **New pages/stores need their own tests**,
    or it will dip red again.
 
 ---
@@ -450,7 +452,7 @@ npm run lint                                       # eslint --max-warnings 0
 npx tsc --noEmit
 npm run build
 npx prettier --check .
-node scripts/docs-verify.mjs                        # 60 docs / 42 screens / 97 commands / 99 codes
+node scripts/docs-verify.mjs                        # 63 docs / 42 screens / 102 commands / 86 codes (+21 reserved)
 node scripts/money-ast.mjs
 node scripts/secret-scan.mjs
 node scripts/pack-validate.mjs                      # 12/12
@@ -513,7 +515,7 @@ EOF
     auto-selects in S-023 (scope by role+regex); multiple companies → `getAllByRole(...)[0]`;
     debounced/async flows need `findBy*`/`waitFor`. **The zustand session store persists across
     tests in a file — `setState` shallow-merges, so reset new state fields in `beforeEach`.**
-11. **API contracts extend ADDITIVELY only** (docs locked at 97 commands / 99 codes): new
+11. **API contracts extend ADDITIVELY only** (docs locked at 102 commands / 86 produced codes + 21 reserved): new
     response fields are fine (subset tables in API-SPEC are not exhaustive; zod response
     schemas are mirrors, not runtime gates — the bridge validates ARGS only); new commands,
     new error codes, or changed documented shapes are docs changes — forbidden (B20).
@@ -540,7 +542,7 @@ EOF
 Zero-compromise, specs-first: the 60 docs in `docs/` are locked (start DOCS-INDEX →
 ARCHITECTURE → API-SPEC → ROADMAP → ZERO-COMPROMISE-RULES). Never re-open closed doc issues
 (B20). Money/calendar logic has exactly one owner: the Rust core; the UI formats only. Every
-screen needs 5 states (loading/empty/error/success/populated). All 99 error codes are defined —
+screen needs 5 states (loading/empty/error/success/populated). All 86 produced error codes are defined (21 more reserved in §2C) —
 reuse them, never invent. Money = exact integers/Decimal strings via `rust_decimal` (never
 REAL/float — B3/I1). PIN policy = ≥8 chars, ≥2 classes, no sequential run ≥4, enforced in Rust
 AND the zod gate. 15 technologies locked (B13/B14) — **do not add a dependency that is not in
@@ -581,5 +583,9 @@ unpushed commits do NOT survive the re-clone (objects are pruned with the old pa
 - Commit in logical units (Rust storage core → commands → api/mock → docs last).
 - Push **only** your session branch (Arena pins it; never switch branches).
 - `gh pr create --base main --head <your-session-branch> --title "…" --body "…"`, then
-  `gh pr merge <n> --merge` once green. Keep `infra/ci.yml` where it is — never push
-  `.github/workflows/` (the token lacks Workflows permission; do not retry).
+  `gh pr merge <n> --merge` once green. `.github/workflows/ci.yml` is written and
+  ready on disk (WS-01 un-ignored it narrowly: `.github/*` except `!.github/workflows/**`)
+  but the Arena App token **cannot push workflow files** (`workflows` permission missing;
+  git push and the Contents API were both refused 2026-09-06). Keep committing
+  everything else; the owner must add the workflow file once via github.com (or
+  reconnect Arena with Workflows permission). Never delete the ready file.

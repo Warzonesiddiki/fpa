@@ -2,7 +2,7 @@
 
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
-> **Code count: 99 (ZC revision — the original 97-code catalog plus the two M3-6 headcount domain codes `HC_DATE_INVALID` and `HC_OVERLAP`, admitted by DECISIONS ADR-026).**
+> **Code count: 86 (2026-09-07 phantom sweep — was 99: 13 catalog rows had zero producers under `src/`/`src-tauri/` and moved to §2C as reserved names; `UPDATE_FETCH_FAILED` was deleted with the updater, ADR-028; the never-counted `MODEL/RECALC_IN_FLIGHT` row was merged into §2C's `RECALC_IN_FLIGHT`. Every §2 code is now gate-proven to be emitted by real code — docs:verify 7d. History: 97-code catalog + `HC_DATE_INVALID`/`HC_OVERLAP` by ADR-26.)**
 > **§2B and §2C are deliberately NOT part of the 99:** §2B lists the message *prefixes* the row validators emit under an existing code, §2C lists names reserved by specs for capability that is not built. Adding a name to either is never a way to raise the count (ADR-027).
 
 ---
@@ -41,9 +41,7 @@
 | AUTH_PIN_INVALID | pin verification failed | "Incorrect PIN." | 401 | false |
 | AUTH_LOCKED | too many failed attempts | "Too many attempts. Try again in {countdown}s." | 423 | true (after countdown) |
 | SESSION_LOCKED | session expired | "Session locked. Unlock to continue." | 401 | false |
-| RECOVERY_PHRASE_INVALID | phrase mismatch | "Recovery phrase does not match. {attempts} left." | 401 | false |
 | PIN_POLICY_WEAK | policy not met | "PIN must be ≥8 characters with letters and digits." | 422 | false |
-| KEYCHAIN_UNAVAILABLE | os keychain missing | "OS keychain unavailable on this system. Use the local encrypted credential store (recommended warning)." | 503 | false |
 | LICENSE_INVALID_SIGNATURE | ed25519 verify failed | "This license key is invalid. Contact your vendor." | 403 | false |
 | LICENSE_EXPIRED | license past expiry | "License expired. The Company is read-only. Activate to continue." | 403 | false |
 
@@ -51,10 +49,8 @@
 | Code | Message | userMessage | httpStatus | Retry |
 |---|---|---|---|---|
 | STORAGE_FILE_EXISTS | path exists | "A file already exists at that location. Choose another name." | 409 | false |
-| STORAGE_INSUFFICIENT | no space | "Not enough disk space for this operation. Free up space or choose another location." | 507 | false |
 | STORAGE_FILE_CORRUPT | integrity check failed | "This Company file could not be verified. Restore from Backup? (pre-restore snapshot will be taken)" | 422 | false |
 | STORAGE_DECRYPT_FAILED | key mismatch | "The Company file cannot be decrypted with this PIN." | 401 | false |
-| FILE_IN_USE | second instance | "This file is open in another window — opened read-only." | 409 | false |
 | IMPORT_FILE_UNREADABLE | parse failed | "This file could not be read. Export it again as .xlsx or .csv without a password." | 422 | false |
 | IMPORT_FILE_LOCKED | encrypted workbook | "This file is password-protected. Remove protection and export again." | 422 | false |
 | ENCODING_UNSUPPORTED | unknown charset | "Encoding not detected. Choose UTF-8 or Latin-1 (preview) and continue." | 422 | true |
@@ -82,7 +78,6 @@
 | COA_DUPLICATE_CODE | code exists | "Account code {code} already exists in this scope." | 409 | false |
 | COA_REFERENCED | in use | "Account is used by {n} lines/batches. Merge or remap instead of deleting." | 409 | false |
 | COA_TYPE_MISMATCH | type differs | "Cannot merge: account types differ (Revenue vs COGS)." | 422 | false |
-| ARCHIVE_IN_USE | refs exist | "This Fiscal Year is referenced by {n} models/layouts. Remove references before archiving." | 409 | false |
 | ARCHIVE_IN_USE_REF | reference | "Sandbox references the archived year. Use a Year copy before cloning." | 409 | false |
 
 ### E. Model & Formulas
@@ -118,7 +113,6 @@
 | CAPEX_IN_SERVICE_INVALID | date order | "Depreciation cannot start before the capital project's in-service date." | 422 | false |
 | PRODUCTION_CAPACITY | over capacity | "Production exceeds available capacity ({units} > {capacity}). Raise capacity (audited) or reduce the plan." | 422 | false |
 | REVREC_COST_ESTIMATE_INVALID | zero estimate | "Revenue recognition needs a non-zero total cost estimate (over-time method)." | 422 | false |
-| MODEL/RECALC_IN_FLIGHT | busy | "Recalculation is in progress — try again in a moment." | 409 | true |
 | COMPANY_IN_USE_RECENT | retention | "This Company was used less than {days} days ago. Delete it or wait — recent Companies can't be deleted." | 409 | false |
 | BASELINE_REPLACE_REASON_REQUIRED | governance | "Replacing the baseline requires a written reason." | 422 | false |
 | MODEL_YEAR_EXISTS | duplicate | "A Model already exists for this fiscal year." | 409 | false |
@@ -128,11 +122,6 @@
 ### F. Connectors & Reconciliation
 | Code | Message | userMessage | httpStatus | Retry |
 |---|---|---|---|---|
-| CONNECTOR_AUTH_EXPIRED | token expired | "Connection expired. Re-authorize {provider} (previous data is intact)." | 401 | false |
-| CONNECTOR_RATE_LIMITED | 429 | "{provider} is rate-limiting. Sync paused — retry in ~{minutes} or use Manual Import." | 429 | true |
-| CONNECTOR_NETWORK | unreachable | "Could not reach {provider}. Check your connection. Manual Import is available." | 503 | true |
-| CONNECTOR_ALREADY_CONNECTED | dup connect | "This provider is already connected." | 409 | false |
-| CONNECTOR_AUTH_STATE_MISMATCH | csrf | "Authorization state mismatch. Re-try the connection." | 400 | false |
 | SRC_MISMATCH_UNRESOLVED | diff open | "Sources differ on {n} accounts. Resolve or mark authoritative before closing." | 409 | false |
 
 ### G. Analysis & Reports
@@ -158,11 +147,8 @@
 | AUDIT_CHAIN_BREAK | hash mismatch | "Audit integrity check failed. Restore from the last verified Snapshot?" | 409 | false |
 | BATCH_ALREADY_ROLLED_BACK | state | "This batch was already rolled back." | 409 | false |
 | IC_UNMATCHED | no counterpart | "Intercompany line {id} has no matching counterpart. Pair or classify as external." | 422 | false |
-| GROUP_ROLLUP_INCOMPLETE | map missing | "Group Rollup Map incomplete for {n} Accounts. Complete mapping to consolidate." | 422 | false |
 | SEGMENT_TRANSLATION_PENDING | rates missing | "FX rates missing for {periods}. Add rates or set policy." | 409 | true |
-| CONSOLIDATION_RUNNING | busy | "A consolidation is already running for this Company." | 409 | true |
 | STORAGE_FILE_CORRUPT → (B) | | | |
-| UPDATE_FETCH_FAILED | updater network | "Could not check for updates (offline?). You can install manually." | 503 | true |
 | SETTINGS_SAVE_FAILED | write failed | "Settings could not be saved. Retry." | 500 | true |
 | HELP_TOPIC_MISSING | no topic | "No help topic for '{x}' — try search." | 404 | false |
 | EXPORT_FORMULA_INJECTION_GUARD | guard | "Text cells starting with '=' were quoted (formula-injection protection) — review before export." | 200 | false |
@@ -176,7 +162,7 @@
 
 Row-level findings in `src-tauri/src/commands/import.rs` carry a **typed catalog code** in `RowIssue.code` and a
 machine-readable **sub-reason prefix** at the head of `message`, as `PREFIX: detail`. The prefix is not a code: it has
-no `httpStatus`, no `userMessage`, no `Retry`, and nothing maps it — the UI renders the governing code's copy. The
+no `httpStatus`, no `userMessage`, no `Retry`, and nothing maps it — the UI renders the governing code's copy. The TS-side argument validators in `src/api/schema.ts` (`MAPPING_*_REQUIRED`/`_TOO_LONG`/`_DUPLICATE`, `COMPANY_PATH_REQUIRED`, `SANDBOX_NAME_REQUIRED`, `LICENSE_PAYLOAD_REQUIRED`, `FILE_PATH_REQUIRED`, `FY_LABEL_REQUIRED`, `TIE_OUT_RESIDUAL_REQUIRED`, `EXCLUSION_*`) are the same class: field-level messages inside the `VALUE_INVALID` details envelope (zod `message`s), never codes. The
 prefixes are asserted verbatim by the Rust tests (`message.starts_with("OPENING_PERIOD_MIXED:")`), so renaming one is
 a breaking change to the test suite, not a free edit. `docs:verify` 7b accepts a name here only in this form, and only
 when its governing code exists in §2.
@@ -188,6 +174,11 @@ when its governing code exists in §2.
 - `OPENING_PERIOD_MIXED` → **OPENING_ALREADY_SET** · `import.rs:1754` (hard) · one period per opening batch
 - `OPENING_ACCOUNT_DUPLICATE` → **OPENING_ALREADY_SET** · `import.rs:1773` (hard) · account/period pair repeats
 - `IMPORT_KIND_DESTINATION_UNAVAILABLE` → **VALUE_INVALID** · `import.rs:2372` (command error) · Import kind that does not post to the GL and has no destination pipeline
+- `BATCH_NAME_REQUIRED` → **VALUE_INVALID** · `import.rs:2378` (command error) · `import.commit_batch` name blank after trim (mock mirrors at `mock.ts` `importCommitBatch`)
+- `BATCH_NAME_TOO_LONG` → **VALUE_INVALID** · `import.rs:2382` (command error) · name over 120 characters
+- `ROLLBACK_REASON_REQUIRED` → **VALUE_INVALID** · `import.rs:2718` (command error) · `import.rollback` reason blank — the audit trail needs a reason
+- `ROLLBACK_REASON_TOO_LONG` → **VALUE_INVALID** · `import.rs:2723` (command error) · reason over 500 characters
+- `COMPANY_DELETE_REASON_REQUIRED` → **VALUE_INVALID** · `company.rs:903` (command error) · `company.delete` reason blank — deletion audit event needs a reason
 
 `INVALID_ARGUMENT` is **not** a prefix and not a code: it is the Rust variant `AppError::InvalidArgument`, which
 `core/error.rs:168` serializes as **`VALUE_INVALID` (422, not retryable)**.
@@ -201,16 +192,27 @@ when its governing code exists in §2.
 
 ## 2C. RESERVED NAMES — cited by specs, not built (no copy until the feature lands)
 
-Nine names appear in an `Error:` line of a spec but are implemented nowhere (zero occurrences under `src/` and
+Twenty-one names appear in an `Error:` line of a spec but are implemented nowhere (zero occurrences under `src/` and
 `src-tauri/`) and are absent from §2. They are kept visible so a build session promotes one deliberately instead of
-inventing a tenth. A reserved name has **no `userMessage`**: adding the row to §2 with copy, `httpStatus` and `Retry`
-is part of the feature's Definition of Done, alongside its `API-SPEC.md` command row and its screen state.
+inventing a twenty-second. A reserved name has **no `userMessage`**: adding the row to §2 with copy, `httpStatus` and
+`Retry` is part of the feature's Definition of Done, alongside its `API-SPEC.md` command row and its screen state.
 
 - `DASHBOARD_QUERY_FAILED`, `FORMULA_OUT_OF_SCOPE` → `SCREENS-SPEC.md` S-050/S-052 states
 - `COVENANT_BREACH`, `DEBT_SCHEDULE_OVERDRAWN`, `POC_ESTIMATE_INVALID`, `REVREC_POLICY_MIX` → `SCREENS-SPEC.md` plan-screen states
 - `LINE_MAPPING_INCOMPLETE` → `MODELING-METHODS-SPEC.md`
-- `RECALC_IN_FLIGHT` → `STATE-MANAGEMENT.md` (recalc queue guard)
+- `RECALC_IN_FLIGHT` → `STATE-MANAGEMENT.md` (recalc queue guard; a `MODEL/`-prefixed §2 row for it was removed by the 2026-09-07 phantom sweep — no wire producer ever existed)
 - `CONNECTOR_SCOPE_UNAVAILABLE` → `CONNECTOR-DATA-DICTIONARY.md` (provider field out of scope)
+- `RECOVERY_PHRASE_INVALID` → `AUTH-SPEC.md`/`API-SPEC.md` (recovery-phrase unlock path not built)
+- `KEYCHAIN_UNAVAILABLE` → `SCREENS-SPEC.md` S-072 / `WIREFRAMES-ANALYTICS.md` (S-072 renders its amber banner; the OS-keychain error producer lands with the native keychain work)
+- `STORAGE_INSUFFICIENT`, `FILE_IN_USE` → `API-SPEC.md`/`AUTH-SPEC.md` (storage/single-instance guards not built)
+- `ARCHIVE_IN_USE` → `API-SPEC.md`/`USER-STORIES.md` (archive-reference guard not built)
+- `CONNECTOR_AUTH_EXPIRED`, `CONNECTOR_RATE_LIMITED`, `CONNECTOR_NETWORK`, `CONNECTOR_ALREADY_CONNECTED`, `CONNECTOR_AUTH_STATE_MISMATCH` → `API-SPEC.md`/`INTEGRATIONS.md` (connector sync error paths not built)
+- `GROUP_ROLLUP_INCOMPLETE` → `API-SPEC.md`/`INDUSTRY-PACK-SPEC.md` (consolidation rollup guard not built)
+- `CONSOLIDATION_RUNNING` → `API-SPEC.md` (consolidation single-flight guard not built)
+- `READ_ONLY_MODE` → `src-tauri/src/commands/report.rs` module docs (403 write-guard for read-only sessions) · emitted today only by the dev mock (`mock.ts`) — the native guard lands with the read-only write-protection work
+
+`UPDATE_FETCH_FAILED` was **deleted**, not reserved: the updater was removed outright (ADR-028) and no spec cites it
+any more. It must not be re-added unless the updater returns.
 
 `SCENARIO_LOCKED` is **not** reserved: it was renamed to `MODEL_CELL_LOCKED` (DECISIONS ADR-025); the two occurrences
 left in `CHANGELOG.md`/`DECISIONS.md` are dated history and must not be rewritten.
@@ -220,11 +222,11 @@ left in `CHANGELOG.md`/`DECISIONS.md` are dated history and must not be rewritte
 ## 3. UI RENDERING RULES
 
 1. `httpStatus 401/403` → lock/license UX (never a generic toast).
-2. `retryable=true` → button + countdown (`retryAfterMs`); auto-retry only for idempotent reads (max 2).
+2. `retryable=true` → button + countdown (`retryAfterMs`); auto-retry only for idempotent reads (max 2). **Countdown note (2026-09-07):** the only envelope that ever carries a non-null `retryAfterMs` today is `AUTH_LOCKED` (Rust `session.rs` lockout) and S-001 renders its live countdown there (KI-013); StatePanel shows the plain Retry button when `retryAfterMs` is null — a generic countdown with no producer would be unreachable UI, so it is deliberately not built.
 3. `422` → inline field-level or dialog-level errors with `details`; form stays open with user input intact.
 4. Toast only for transient (success/info); errors on destructive actions render in Modal/D-004 context.
-5. Every error code is documented in-app (Help → "Error reference") — users never see raw `message`.
+5. Every error code is documented in-app (Help → "Error reference") — users never see raw `message`. **Built (S-076):** the "Errors" tab at `/app/help/errors` renders all §2 codes (meaning/HTTP/retry) from the generated `errorCatalog.ts` (`npm run errors:catalog`; sync-enforced by docs:verify 7e), and every StatePanel code chip links straight to its entry via `?q=`.
 6. Errors are logged to Local Diagnostics with redaction (no money, no secrets, no paths with user names when removable).
-7. Aggregation: 5+ identical errors in 1 min → collapsed banner + link to error log.
+7. Aggregation: 5+ identical errors in 1 min → collapsed banner + link to error log. **Built (S-004 shell):** the API bridge feeds an in-session log (`stores/errorLog.ts` — code + catalog `userMessage` only, B18-redaction-safe) and the shell's `ErrorAggregationBanner` collapses at the threshold with an expandable log view; the persistent redacted log remains the native `app.diagnostics.export` (S-075 native gate).
 
 *Referenced by: API-SPEC.md, QA-CHECKLIST.md, SECURITY-CHECKLIST.md, CLAUDE.md.*

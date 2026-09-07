@@ -17,7 +17,7 @@ import {
   ShieldCheck,
   Upload,
 } from "lucide-react";
-import { isTauriRuntime } from "@/api/mock";
+import { isTauriRuntime } from "@/api/runtime";
 import type { ImportKind, ImportParseData } from "@/api/schema";
 import { Button, Card, StatePanel } from "@/components/ui";
 import { useImportStore } from "@/stores/import";

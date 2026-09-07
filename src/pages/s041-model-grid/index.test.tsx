@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, RouterProvider, createBrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { ModelGridPage } from "./index";
@@ -281,6 +281,106 @@ describe("S-041 Model Grid (F-012)", () => {
     // a11y gate (ACCESSIBILITY.md §3): zero violations of WCAG 2.2 AA rules.
     expect(results.violations).toEqual([]);
   });
+});
+
+describe("S-041 Model Grid - S-071 health drill deep link", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    useModelGridStore.getState().reset();
+    useSettingsStore.setState({
+      preferences: {
+        ...createDefaultSettings("en-US"),
+        displayThousands: false,
+        displayDecimals: "2",
+      },
+    });
+  });
+
+  function renderWithSearchParams(query: string) {
+    return render(
+      <main>
+        <MemoryRouter initialEntries={[`/app/model/grid?${query}`]}>
+          <Routes>
+            <Route path="/app/model/grid" element={<ModelGridPage />} />
+          </Routes>
+        </MemoryRouter>
+      </main>,
+    );
+  }
+
+  /**
+   * Consumption (URL strip) is only observable against a REAL browser history —
+   * MemoryRouter never touches window.location, and consumeDrillParams is a
+   * history.replaceState by design (no router-state cascade). This harness mirrors
+   * production: createBrowserRouter over the jsdom URL.
+   */
+  function renderWithBrowserRouter(query: string) {
+    window.history.pushState({}, "", `/app/model/grid?${query}`);
+    const router = createBrowserRouter([{ path: "/app/model/grid", element: <ModelGridPage /> }]);
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("focuses the named cell and consumes the params once the grid has data", async () => {
+    mockLoad();
+    const { container } = renderWithSearchParams(
+      `line=${LINE}&scenario=3f9f2c9e-9f8b-4e2d-9a1c-400000000003&period=fp-2026-p02`,
+    );
+    await waitForGridCell(container);
+    // AG Grid + the in-process HyperFormula graph settle asynchronously (~1.5s in
+    // jsdom) — same budget as the rest of this suite.
+    await waitFor(
+      () => {
+        // The active cell (drives the formula bar) is the finding's line × period.
+        expect(useModelGridStore.getState().active).toEqual({
+          lineId: LINE,
+          periodId: "fp-2026-p02",
+        });
+      },
+      { timeout: 8000 },
+    );
+    // The drill disarms once its target takes focus (AG Grid focus event) — the
+    // whole lifecycle is observable in the store, independent of the router.
+    await waitFor(() => {
+      expect(useModelGridStore.getState().drillTarget).toBeNull();
+    });
+  }, 20000);
+
+  it("strips the drill params from the real URL after landing (browser history)", async () => {
+    mockLoad();
+    const { container } = renderWithBrowserRouter(
+      `line=${LINE}&scenario=3f9f2c9e-9f8b-4e2d-9a1c-400000000003&period=fp-2026-p02`,
+    );
+    await waitForGridCell(container);
+    await waitFor(
+      () => {
+        expect(useModelGridStore.getState().active).toEqual({
+          lineId: LINE,
+          periodId: "fp-2026-p02",
+        });
+      },
+      { timeout: 8000 },
+    );
+    // Non-vacuous here: createBrowserRouter drives the real jsdom history, so the
+    // replaceState consumeDrillParams performs is observable in the URL.
+    await waitFor(() => {
+      expect(window.location.search).toBe("");
+    });
+    // Reset jsdom history for the tests that follow.
+    window.history.pushState({}, "", "/");
+  }, 20000);
+
+  it("drops a stale link whose line no longer exists instead of landing on fabricated data", async () => {
+    mockLoad();
+    renderWithSearchParams(`line=deleted-line&period=fp-2026-p02`);
+    await waitFor(() => {
+      // Stale link → drill dropped without landing (store disarms).
+      expect(useModelGridStore.getState().drillTarget).toBeNull();
+    });
+    // The stale target never becomes the active cell (AG Grid keeps its own default focus).
+    const active = useModelGridStore.getState().active;
+    expect(active?.lineId ?? "").not.toBe("deleted-line");
+  }, 20000);
 });
 
 describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {

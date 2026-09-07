@@ -135,7 +135,21 @@
     "alerts": "Alerts",
     "backup": "Backup",
     "license": "License",
-    "version": "v"
+    "version": "v",
+    "errorLog": {
+      "bannerTitle": "Repeated errors",
+      "moreGroups": "+{{count}} more",
+      "viewLog": "View error log",
+      "hideLog": "Hide error log",
+      "logCaption": "In-session error log: repeated typed errors in the last minute with meaning, count, and last-seen time.",
+      "colCode": "Code",
+      "colMeaning": "What it means",
+      "colCount": "Count",
+      "colLastSeen": "Last seen",
+      "timesInLastMinute": "{{count}}× in the last minute",
+      "dismiss": "Dismiss",
+      "dismissGroup": "Dismiss {{code}}"
+    }
   },
   "importHub": {
     "title": "Import Hub",
@@ -801,11 +815,11 @@
       }
     },
     "updates": {
-      "title": "Auto-update",
+      "title": "Updates",
       "channel": "Update channel",
       "stable": "Stable",
       "beta": "Beta",
-      "nativeGate": "Native gate pending: signed desktop updater and handler"
+      "nativeGate": "Updates are manual (download from GitHub Releases) until the signed desktop updater ships (ADR-028). Your channel preference is saved for that release."
     },
     "diagnostics": {
       "title": "Local Diagnostics",
@@ -984,7 +998,12 @@
   },
   "errors": {
     "code": "{{code}}",
-    "unknown": "An unexpected error occurred. Please try again."
+    "unknown": "An unexpected error occurred. Please try again.",
+    "lookup": "Look up this code in Help",
+    "boundaryMessage": "This screen failed to render. Your data is safe — reload, or recover to the Dashboard.",
+    "boundaryReload": "Reload",
+    "boundaryRecover": "Recover to Dashboard",
+    "boundaryHelp": "Error reference"
   },
   "driversPage": {
     "title": "Driver Tables",
@@ -1094,6 +1113,7 @@
       "chooseAssumption": "Choose assumption…",
       "waive": "Waive",
       "waiveConfirm": "Confirm waiver",
+      "waiveSaving": "Recording…",
       "waiveReasonLabel": "Waiver reason",
       "waiveReasonRequired": "Enter a waiver reason.",
       "waivedBadge": "Waived: {{reason}}",
@@ -1585,7 +1605,8 @@
       "glossary": "Glossary",
       "shortcuts": "Shortcuts",
       "formulas": "Financial Formulas",
-      "architecture": "Architecture"
+      "architecture": "Architecture",
+      "errors": "Errors"
     },
     "empty": "No topics found",
     "emptyHint": "Try searching for a different term or clearing your active filters.",
@@ -1606,7 +1627,19 @@
       "mac": "macOS",
       "context": "Context"
     },
-    "viewShortcuts": "View Shortcuts Cheatsheet"
+    "viewShortcuts": "View Shortcuts Cheatsheet",
+    "errors": {
+      "title": "Error reference",
+      "subtitle": "Every typed error code this app can show, what it means, and whether to retry. Generated from the error catalog (ERROR-HANDLING §2) — never edited by hand.",
+      "colCode": "Code",
+      "colMeaning": "What it means",
+      "colHttp": "HTTP",
+      "colRetry": "Retry",
+      "retryableYes": "Retry",
+      "retryableNo": "No retry",
+      "count": "{{count}} codes",
+      "noMatches": "No error codes match your search."
+    }
   },
   "security": {
     "title": "Security & Credentials",

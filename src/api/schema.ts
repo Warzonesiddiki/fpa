@@ -1396,6 +1396,18 @@ export const AssumptionFindUsagesArgs = z
 export const AssumptionFindUsagesData = z.object({
   cells: z.array(z.object({ line_id: z.string(), period_id: z.string(), formula: z.string() })),
 });
+/**
+ * `assumption.waive` — waive a hardcoded-literal finding with a required audit reason
+ * (B7: the waiver is persisted as a hash-chained `assumption.waive` audit event by the
+ * Rust core; `cell_ref` is the stable `line:period:start:end` finding key).
+ */
+export const AssumptionWaiveArgs = z
+  .object({ model_id: Uuid, cell_ref: z.string().min(1), reason: z.string().min(1) })
+  .strict();
+export const AssumptionWaiveData = z.object({
+  waived: z.boolean(),
+  cell_ref: z.string(),
+});
 
 /* ── License (F-035, LICENSE-SPEC) ────────────────────────────────────────────
  * Offline Ed25519 activation (PRD F-035; DECISIONS.md: grace 60d, activation file
@@ -2667,6 +2679,7 @@ export const CommandArgs = {
   "assumption.upsert": AssumptionUpsertArgs,
   "assumption.list": AssumptionListArgs,
   "assumption.find_usages": AssumptionFindUsagesArgs,
+  "assumption.waive": AssumptionWaiveArgs,
   "model.list": ModelListArgs,
   "scenario.create": ScenarioCreateArgs,
   "scenario.duplicate": ScenarioCreateArgs,

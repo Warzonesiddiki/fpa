@@ -33,8 +33,9 @@
     "tauri": "tauri",
     "desktop:preflight": "node scripts/build-desktop.mjs --preflight-only",
     "desktop:build": "node scripts/build-desktop.mjs",
-    "check": "npm run lint && npm run typecheck && npm run fmt:check && npm run test && node scripts/schema-equality-check.mjs && node scripts/docs-link-check.mjs --strict && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run security:scan",
-    "fixtures:gen:license": "node scripts/gen-license-fixtures.mjs"
+    "check": "npm run lint && npm run typecheck && npm run fmt:check && npm run test:coverage && npm run test:coverage:critical && node scripts/schema-equality-check.mjs && node scripts/docs-link-check.mjs --strict && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run security:scan",
+    "fixtures:gen:license": "node scripts/gen-license-fixtures.mjs",
+    "errors:catalog": "node scripts/gen-error-catalog.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "3.14.10",

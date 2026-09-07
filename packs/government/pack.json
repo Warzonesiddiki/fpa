@@ -3,8 +3,8 @@
   "pack": {
     "key": "government",
     "name": "Government",
-    "version": "2.1.0",
-    "description": "Budget execution, encumbrance, program spend, timely close — appropriations and fund control.",
+    "version": "2.1.1",
+    "description": "Budget execution, encumbrance, program spend, timely close \u2014 appropriations and fund control.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

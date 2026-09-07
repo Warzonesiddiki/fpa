@@ -217,17 +217,27 @@ export function AssumptionsPage() {
     setWaiveError(null);
   }, []);
 
+  const [waivePending, setWaivePending] = useState(false);
   const confirmWaive = useCallback(
-    (finding: HardcodedFinding, literal: HardcodedLiteral) => {
+    async (finding: HardcodedFinding, literal: HardcodedLiteral) => {
       if (!waiveReason.trim()) {
         setWaiveError(t("assumptionsPage.hardcode.waiveReasonRequired"));
         return;
       }
-      const ok = waiveHardcoded(finding, literal, waiveReason);
-      if (ok) {
-        setWaivingKey(null);
-        setWaiveReason("");
-        setWaiveError(null);
+      setWaivePending(true);
+      try {
+        const ok = await waiveHardcoded(finding, literal, waiveReason);
+        if (ok) {
+          setWaivingKey(null);
+          setWaiveReason("");
+          setWaiveError(null);
+        } else {
+          // Store rejection (VALUE_INVALID or the bridge error) — surface inline.
+          const err = useAssumptionStore.getState().hardcodeError;
+          setWaiveError(err?.userMessage ?? t("assumptionsPage.hardcode.waiveReasonRequired"));
+        }
+      } finally {
+        setWaivePending(false);
       }
     },
     [t, waiveHardcoded, waiveReason],
@@ -630,9 +640,12 @@ export function AssumptionsPage() {
                             <Button
                               variant="secondary"
                               size="sm"
+                              disabled={waivePending}
                               onClick={() => confirmWaive(finding, literal)}
                             >
-                              {t("assumptionsPage.hardcode.waiveConfirm")}
+                              {waivePending
+                                ? t("assumptionsPage.hardcode.waiveSaving")
+                                : t("assumptionsPage.hardcode.waiveConfirm")}
                             </Button>
                             <Button
                               variant="ghost"

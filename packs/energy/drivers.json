@@ -10,7 +10,10 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue",
+        "cogs"
+      ]
     },
     {
       "key": "tariff",
@@ -22,7 +25,9 @@
         "high": "1000000000"
       },
       "default_method": "manual",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     },
     {
       "key": "weather",
@@ -34,7 +39,9 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "cogs"
+      ]
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button, Input, type ScreenState } from "@/components/ui";
 import { HELP_TOPICS, SHORTCUTS_DATA, type HelpCategory } from "./helpData";
+import { ERROR_CATALOG } from "./errorCatalog";
 
 interface HelpPageProps {
   initialState?: ScreenState;
@@ -26,7 +27,12 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
   const { topic: routeTopic } = useParams<{ topic?: string }>();
   const navigate = useNavigate();
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchParams] = useSearchParams();
+  // Deep-link seed (?q=CODE from a StatePanel chip): applies until the user types.
+  const qSeed = searchParams.get("q") ?? "";
+  const [userQuery, setUserQuery] = useState<string | null>(null);
+  const searchQuery = userQuery ?? qSeed;
+  const setSearchQuery = setUserQuery;
   const [selectedCategory, setSelectedCategory] = useState<HelpCategory | "all">("all");
   const [userActiveTopicId, setUserActiveTopicId] = useState<string | null>(null);
   const [userPageState, setUserPageState] = useState<ScreenState | null>(null);
@@ -80,6 +86,20 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
   }, [activeTopicId]);
 
   const isShortcutsActive = selectedCategory === "shortcuts" || activeTopicId === "shortcuts";
+  // Errors category + /app/help/errors deep link both activate the Error reference
+  // (ERROR-HANDLING §3 rule 5). Derived, never an effect-set state (React Compiler).
+  const isErrorsActive = selectedCategory === "errors" || routeTopic === "errors";
+
+  const filteredErrors = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return ERROR_CATALOG;
+    return ERROR_CATALOG.filter(
+      (e) =>
+        e.code.toLowerCase().includes(query) ||
+        e.userMessage.toLowerCase().includes(query) ||
+        e.cause.toLowerCase().includes(query),
+    );
+  }, [searchQuery]);
 
   const handleSelectTopic = (id: string) => {
     setActiveTopicId(id);
@@ -94,7 +114,7 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
 
   const topicExists = useMemo(() => {
     if (!routeTopic) return true;
-    if (routeTopic === "shortcuts") return true;
+    if (routeTopic === "shortcuts" || routeTopic === "errors") return true;
     return HELP_TOPICS.some((t) => t.id === routeTopic);
   }, [routeTopic]);
 
@@ -322,6 +342,27 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
                 {SHORTCUTS_DATA.length}
               </span>
             </button>
+
+            <button
+              role="tab"
+              aria-label={t("help.categories.errors")}
+              aria-selected={isErrorsActive}
+              onClick={() => {
+                setSelectedCategory("errors");
+                navigate("/app/help/errors");
+              }}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                isErrorsActive
+                  ? "bg-[var(--color-oneprimary)] text-white"
+                  : "text-[var(--color-onetextsecondary)] hover:bg-[var(--color-onesurfacealt)] hover:text-[var(--color-onetext)]"
+              }`}
+            >
+              <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+              <span>{t("help.categories.errors")}</span>
+              <span aria-hidden="true" className="ml-auto text-[10px] opacity-80">
+                {ERROR_CATALOG.length}
+              </span>
+            </button>
           </div>
 
           {/* Topic List */}
@@ -336,7 +377,7 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
                 type="button"
                 onClick={() => handleSelectTopic(topic.id)}
                 className={`flex flex-col gap-0.5 rounded-lg border p-2.5 text-left transition-colors ${
-                  activeTopicId === topic.id && selectedCategory !== "shortcuts"
+                  activeTopicId === topic.id && selectedCategory !== "shortcuts" && !isErrorsActive
                     ? "border-[var(--color-oneprimary)] bg-[var(--color-onesurfacealt)]"
                     : "border-transparent hover:border-[var(--color-oneborder)] hover:bg-[var(--color-onesurface)]"
                 }`}
@@ -355,7 +396,7 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
         {/* Right Content: Explainer Card or Shortcuts Cheatsheet */}
         <main aria-label="Help topic details" className="flex flex-col gap-6">
           {/* 3. Empty State */}
-          {filteredTopics.length === 0 && !isShortcutsActive ? (
+          {filteredTopics.length === 0 && !isShortcutsActive && !isErrorsActive ? (
             <div
               role="status"
               data-screen-state="empty"
@@ -374,6 +415,99 @@ export default function HelpPage({ initialState, initialTopic }: HelpPageProps =
                 {t("help.clearSearch")}
               </Button>
             </div>
+          ) : isErrorsActive ? (
+            /* Error Reference — every §2 code, generated (ERROR-HANDLING §3 rule 5) */
+            <section
+              aria-labelledby="error-reference-title"
+              data-testid="error-reference"
+              className="flex flex-col gap-4 rounded-xl border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-6"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-oneborder)] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="h-5 w-5 text-[var(--color-oneprimary)]"
+                  />
+                  <h2
+                    id="error-reference-title"
+                    className="text-lg font-semibold text-[var(--color-onetext)]"
+                  >
+                    {t("help.errors.title")}
+                  </h2>
+                </div>
+                <span
+                  className="text-xs text-[var(--color-onetextmuted)]"
+                  data-testid="error-reference-count"
+                >
+                  {t("help.errors.count", { count: filteredErrors.length })}
+                </span>
+              </div>
+              <p className="text-sm text-[var(--color-onetextsecondary)]">
+                {t("help.errors.subtitle")}
+              </p>
+
+              {filteredErrors.length === 0 ? (
+                <p className="py-8 text-center text-sm text-[var(--color-onetextmuted)]">
+                  {t("help.errors.noMatches")}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm" role="table">
+                    <caption className="sr-only">
+                      Error reference: code, meaning, HTTP status, and whether the action can be
+                      retried.
+                    </caption>
+                    <thead>
+                      <tr className="border-b border-[var(--color-oneborder)] text-xs font-semibold text-[var(--color-onetextmuted)]">
+                        <th scope="col" className="pb-3 pr-4 font-semibold">
+                          {t("help.errors.colCode")}
+                        </th>
+                        <th scope="col" className="pb-3 px-4 font-semibold">
+                          {t("help.errors.colMeaning")}
+                        </th>
+                        <th scope="col" className="pb-3 px-4 font-semibold">
+                          {t("help.errors.colHttp")}
+                        </th>
+                        <th scope="col" className="pb-3 pl-4 font-semibold">
+                          {t("help.errors.colRetry")}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--color-oneborder)]">
+                      {filteredErrors.map((e) => (
+                        <tr key={e.code} data-testid={`error-row-${e.code}`}>
+                          <td className="py-2.5 pr-4 align-top">
+                            <code className="rounded bg-[var(--color-onesurfacealt)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-onetext)]">
+                              {e.code}
+                            </code>
+                          </td>
+                          <td className="py-2.5 px-4 align-top text-[var(--color-onetext)]">
+                            {e.userMessage}
+                          </td>
+                          <td className="py-2.5 px-4 align-top text-xs text-[var(--color-onetextsecondary)]">
+                            {e.httpStatus}
+                          </td>
+                          <td className="py-2.5 pl-4 align-top text-xs">
+                            {e.retryable ? (
+                              <span
+                                className="rounded-full bg-[var(--color-onefavorable)]/10 px-2 py-0.5 font-medium text-[var(--color-onefavorable)]"
+                                title={t("help.errors.retryableYes")}
+                              >
+                                {t("help.errors.retryableYes")}
+                              </span>
+                            ) : (
+                              <span className="text-[var(--color-onetextmuted)]">
+                                {t("help.errors.retryableNo")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           ) : isShortcutsActive ? (
             /* Shortcuts Cheatsheet Table */
             <section

@@ -4,41 +4,61 @@
       "key": "backlog",
       "name": "Backlog (months)",
       "unit": "months",
+      "formula": "costs_to_date / (revenue / 12)",
       "target": {
         "value": 9,
         "direction": "gte"
       },
-      "definition": "Backlog (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Backlog (months) \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 6,
+        "watch": 3
+      }
     },
     {
       "key": "over_under_billing",
       "name": "Over/Under Billing",
       "unit": "money",
+      "formula": "revenue - costs_to_date",
       "target": {
         "value": 250000,
         "direction": "gte"
       },
-      "definition": "Over/Under Billing — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Over/Under Billing \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 0,
+        "watch": -50000
+      }
     },
     {
       "key": "cost_to_cost_pct",
       "name": "Cost-to-Cost % Complete",
       "unit": "pct",
+      "formula": "costs_to_date / revenue * 100",
       "target": {
         "value": 45,
         "direction": "gte"
       },
-      "definition": "Cost-to-Cost % Complete — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cost-to-Cost % Complete \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 90,
+        "watch": 98
+      }
     },
     {
       "key": "gross_margin_pct",
       "name": "Gross Margin %",
       "unit": "pct",
+      "formula": "gross_profit / revenue * 100",
       "target": {
         "value": 18,
         "direction": "gte"
       },
-      "definition": "Gross Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Gross Margin % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 35,
+        "watch": 25
+      }
     }
   ]
 }

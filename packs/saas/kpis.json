@@ -4,41 +4,61 @@
       "key": "nrr",
       "name": "Net Revenue Retention %",
       "unit": "nrr_pct",
+      "formula": "100 - churn * 100 + (arpu - arpu_py) / arpu_py * 100",
       "target": {
         "value": 115,
         "direction": "gte"
       },
-      "definition": "Net Revenue Retention % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Net Revenue Retention % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 110,
+        "watch": 100
+      }
     },
     {
       "key": "burn",
       "name": "Burn Multiple",
       "unit": "burn_x",
+      "formula": "(opex + cogs - revenue) / gross_profit",
       "target": {
         "value": 1.2,
         "direction": "gte"
       },
-      "definition": "Burn Multiple — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Burn Multiple \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 1.2,
+        "watch": 2
+      }
     },
     {
       "key": "cac_payback",
       "name": "CAC Payback (months)",
       "unit": "months",
+      "formula": "opex / (arpu * (1 - churn))",
       "target": {
         "value": 18,
         "direction": "gte"
       },
-      "definition": "CAC Payback (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "CAC Payback (months) \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 18,
+        "watch": 24
+      }
     },
     {
       "key": "arr",
       "name": "Annual Recurring Revenue",
       "unit": "money",
+      "formula": "arpu * 12 * (1 - churn)",
       "target": {
         "value": 12000000,
         "direction": "gte"
       },
-      "definition": "Annual Recurring Revenue — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Annual Recurring Revenue \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 12000000,
+        "watch": 10000000
+      }
     }
   ]
 }

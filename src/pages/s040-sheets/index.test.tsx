@@ -239,7 +239,7 @@ describe("S-040 Sheets / Multi-Tab Grid Manager (F-012)", () => {
       expect(
         screen.getByText("Failed to synchronize workbook sheets from model database."),
       ).toBeInTheDocument();
-      expect(screen.getByText(/MODEL_SHEET_LOAD_FAILED/)).toBeInTheDocument();
+      expect(screen.getByText(/INTERNAL/)).toBeInTheDocument();
       res = await axe(container);
       expect(res.violations).toEqual([]);
 

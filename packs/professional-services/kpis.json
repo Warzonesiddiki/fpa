@@ -4,41 +4,61 @@
       "key": "utilization",
       "name": "Utilization %",
       "unit": "pct",
+      "formula": "utilization * 100",
       "target": {
         "value": 72,
         "direction": "gte"
       },
-      "definition": "Utilization % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Utilization % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 75,
+        "watch": 65
+      }
     },
     {
       "key": "rev_per_fte",
       "name": "Revenue per FTE",
       "unit": "money",
+      "formula": "revenue / fte",
       "target": {
         "value": 210000,
         "direction": "gte"
       },
-      "definition": "Revenue per FTE — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Revenue per FTE \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 150000,
+        "watch": 120000
+      }
     },
     {
       "key": "dso",
       "name": "Days Sales Outstanding",
       "unit": "days",
+      "formula": "cogs / (revenue / 365)",
       "target": {
         "value": 45,
         "direction": "gte"
       },
-      "definition": "Days Sales Outstanding — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Days Sales Outstanding \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 45,
+        "watch": 60
+      }
     },
     {
       "key": "pipeline",
       "name": "Pipeline coverage",
       "unit": "x",
+      "formula": "rate * fte / revenue * 100",
       "target": {
         "value": 3,
         "direction": "gte"
       },
-      "definition": "Pipeline coverage — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Pipeline coverage \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 300,
+        "watch": 200
+      }
     }
   ]
 }

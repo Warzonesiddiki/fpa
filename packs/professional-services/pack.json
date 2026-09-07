@@ -3,8 +3,8 @@
   "pack": {
     "key": "professional-services",
     "name": "Professional Services",
-    "version": "2.1.0",
-    "description": "Utilization, revenue per FTE, pipeline coverage, DSO — billable capacity and delivery.",
+    "version": "2.1.1",
+    "description": "Utilization, revenue per FTE, pipeline coverage, DSO \u2014 billable capacity and delivery.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

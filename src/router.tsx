@@ -27,6 +27,7 @@ import { FirstRunPinPage } from "@/pages/first-run-pin";
 import { UnlockPage } from "@/pages/s001-unlock";
 import { WizardPage } from "@/pages/s002-wizard";
 import { ShellPage } from "@/pages/s004-shell";
+import { RouteErrorBoundary } from "@/components/global/RouteErrorBoundary";
 import { DashboardPage } from "@/pages/s010-dashboard";
 import { CompaniesPage } from "@/pages/s020-companies";
 import { CoaPage } from "@/pages/s021-coa";
@@ -50,12 +51,13 @@ import { ReconciliationPage } from "@/pages/s034-reconcile/lazy";
  * M1: S-003 global search (in-shell overlay), S-020/021/022/023 wired to the Rust core.
  */
 export const router = createBrowserRouter([
-  { path: "/", element: <UnlockPage /> },
-  { path: "/welcome", element: <FirstRunPinPage /> },
-  { path: "/wizard", element: <WizardPage /> },
+  { path: "/", element: <UnlockPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/welcome", element: <FirstRunPinPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/wizard", element: <WizardPage />, errorElement: <RouteErrorBoundary /> },
   {
     path: "/app",
     element: <ShellPage />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/app/dashboard" replace /> },
       { path: "dashboard", element: <DashboardPage /> },

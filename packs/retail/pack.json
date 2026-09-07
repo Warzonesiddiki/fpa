@@ -3,8 +3,8 @@
   "pack": {
     "key": "retail",
     "name": "Retail",
-    "version": "2.1.0",
-    "description": "Same-store sales, GMROI, conversion, inventory turns — merchandising and store operations.",
+    "version": "2.1.1",
+    "description": "Same-store sales, GMROI, conversion, inventory turns \u2014 merchandising and store operations.",
     "default_calendar": "454",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

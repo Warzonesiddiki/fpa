@@ -113,7 +113,11 @@ function TimeSeriesOverlayChart({
     [minMinor, range, padTop, plotHeight],
   );
 
-  const yTicks = [minMinor, Math.floor(minMinor + range / 2), maxMinor];
+  // Integer-exact midpoint tick (B3): range is halved after clearing its parity bit —
+  // every op stays an exact integer (no float division, no int32 bit-shift on money).
+  const rangeMinor = maxMinor - minMinor;
+  const midTickMinor = minMinor + (rangeMinor - (rangeMinor % 2)) / 2;
+  const yTicks = [minMinor, midTickMinor, maxMinor];
 
   return (
     <figure className="relative m-0 flex flex-col items-center">
@@ -439,7 +443,12 @@ function TornadoSensitivityChart({
   const maxSwing = useMemo(() => {
     let m = 1;
     tornadoBars.forEach((b) => {
-      const half = Math.floor(b.swing_minor / 2);
+      // Integer-exact halving (B3): clear parity before /2 — division of an even
+      // safe integer is exact in binary float; Math.floor(odd/2) would drop half a
+      // minor unit. The result feeds a pixel scale, but it derives from money, so
+      // the derivation itself stays exact.
+      const swing = b.swing_minor - (b.swing_minor % 2);
+      const half = swing / 2;
       if (half > m) m = half;
     });
     return m;
@@ -474,7 +483,9 @@ function TornadoSensitivityChart({
 
         {tornadoBars.map((bar, idx) => {
           const yPos = headerHeight + idx * rowHeight + 8;
-          const halfSwing = Math.floor(bar.swing_minor / 2);
+          // Integer-exact halving (B3, same parity-clearing rule as maxSwing).
+          const evenSwing = bar.swing_minor - (bar.swing_minor % 2);
+          const halfSwing = evenSwing / 2;
           const wingPixels = Math.floor((halfSwing / maxSwing) * (chartWidth / 2 - 16));
 
           return (

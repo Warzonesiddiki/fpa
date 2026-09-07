@@ -40,7 +40,7 @@
 **Elements:** Sidebar (Company switcher, Dashboard, Data, Model, Plan, Analyze, Reports, Governance, Settings; collapsible), top bar (Company name, Global Search, Alerts bell, Theme, Backup indicator, Sync/Connector status), status bar (last snapshot, license, version).
 - **Loading:** skeleton shell.
 - **Empty:** n/a.
-- **Error:** shell-level ErrorBoundary with recover/reload.
+- **Error:** shell-level ErrorBoundary with recover/reload; hosts the ERROR-HANDLING §3.7 aggregation banner (5+ identical errors in 1 min → collapsed banner + expandable in-session error log).
 - **Success:** route renders.
 - **Populated:** Company menu + badges (alerts count, pending imports).
 
@@ -416,7 +416,7 @@ cost rollup preview by fiscal period; driver-data import hand-off.
 
 ### S-076 Help & Explainers | `/help/:topic` (+ F1 overlays)
 **Purpose:** F-038 in-app help; KPI/driver explainers; keyboard shortcuts; glossary (mirror GLOSSARY.md).
-**Elements:** topic list, search, explainer cards (definition, formula, example), shortcuts table, keyboard-only navigation.
+**Elements:** topic list, search, explainer cards (definition, formula, example), shortcuts table, keyboard-only navigation, Error reference tab (`/app/help/errors` — every ERROR-HANDLING §2 code with meaning/HTTP/retry, generated; StatePanel code chips deep-link via `?q=`).
 - **Loading:** skeleton.
 - **Empty:** "No help topics yet".
 - **Error:** `HELP_TOPIC_MISSING` → search suggestion.

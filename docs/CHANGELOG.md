@@ -3,6 +3,13 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+- **Pack re-issue 2.1.1 — zero validation warnings (WS-10 · B15 · 2026-09-06):** All 12 Industry Packs now carry the
+  §3/§4 pack-spec surface the validator warned about (132 legacy warnings → **0**): every KPI has an engine-line-key
+  `formula` (canonical `revenue`/`cogs`/`gross_profit`/`opex`/`ebitda` + prior-year `_py` variants + the pack's own
+  driver keys — same grammar the S-023 builder emits) and numeric `bands {good, watch}` aligned with each target's
+  direction, so Alert thresholds no longer fall back to target-only; every driver template declares non-empty `links`
+  (the planning lines consuming it), restoring Federation/attribution wiring. Pack versions bumped 2.1.0 → **2.1.1**;
+  data-only, no code paths touched; `packs:validate` green with zero warnings.
 - **M6-7 Model Health Check — engine + waiver + S-071 (F-032 · US-033 · SCREENS-SPEC S-071 · API-SPEC §16, 2026-09-05):**
   Shipped the Model Health Check at `/app/governance/health` (`src/pages/s071-health/`, code-split). Geometry follows
   WIREFRAMES-ANALYTICS §S-071: five category rows (tie-outs · references · rounding · driver feeds · anomalies), a finding

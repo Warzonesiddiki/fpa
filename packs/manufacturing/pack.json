@@ -3,7 +3,7 @@
   "pack": {
     "key": "manufacturing",
     "name": "Manufacturing",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "description": "Standard costing, production plan, capacity, WIP; OEE, inventory turns, standard cost variance.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",

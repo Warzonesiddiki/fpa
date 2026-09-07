@@ -4,41 +4,61 @@
       "key": "same_store",
       "name": "Same-Store Sales %",
       "unit": "pct",
+      "formula": "revenue / revenue_py * 100",
       "target": {
         "value": 3.5,
         "direction": "gte"
       },
-      "definition": "Same-Store Sales % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Same-Store Sales % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 103,
+        "watch": 100
+      }
     },
     {
       "key": "gmroi",
       "name": "GMROI",
       "unit": "x",
+      "formula": "gross_profit / (cogs / 4)",
       "target": {
         "value": 2.2,
         "direction": "gte"
       },
-      "definition": "GMROI — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "GMROI \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 3,
+        "watch": 2
+      }
     },
     {
       "key": "footfall_conversion",
       "name": "Conversion %",
       "unit": "pct",
+      "formula": "conversion * 100",
       "target": {
         "value": 24,
         "direction": "gte"
       },
-      "definition": "Conversion % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Conversion % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 20,
+        "watch": 15
+      }
     },
     {
       "key": "inventory_turns",
       "name": "Inventory Turns",
       "unit": "x",
+      "formula": "cogs / (aov * footfall * conversion) * 4",
       "target": {
         "value": 4,
         "direction": "gte"
       },
-      "definition": "Inventory Turns — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Inventory Turns \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 4,
+        "watch": 3
+      }
     }
   ]
 }

@@ -1,4 +1,4 @@
-export type HelpCategory = "glossary" | "shortcuts" | "formulas" | "architecture";
+export type HelpCategory = "glossary" | "shortcuts" | "formulas" | "architecture" | "errors";
 
 export interface ShortcutItem {
   id: string;

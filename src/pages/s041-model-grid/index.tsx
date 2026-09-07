@@ -1,11 +1,12 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ArrowDown,
@@ -93,6 +94,89 @@ export function ModelGridPage() {
   const clearSpreadError = useModelGridStore((s) => s.clearSpreadError);
   const actualPeriods = useModelGridStore((s) => s.actualPeriods);
   const forecastPeriods = useModelGridStore((s) => s.forecastPeriods);
+  const scenarioId = useModelGridStore((s) => s.scenarioId);
+  const setScenario = useModelGridStore((s) => s.setScenario);
+
+  // S-071 "→ cell" deep link (SCREENS-SPEC S-041 drill path): `/app/model/grid?line=…&scenario=…&period=…`.
+  // Switches the Scenario first if the finding belongs to another one, then focuses and
+  // flashes the named cell once the grid actually has data AND its API is mounted (AG Grid
+  // auto-focuses the first cell on ready — consuming the link earlier would be overwritten).
+  // Params are consumed on arrival (URL rewritten clean) so a later refresh never re-triggers.
+  // Read-only view of the drill params; consumption rewrites the URL via history
+  // (no router-state cascade). The armed drill itself lives in the model store.
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const drillLine = searchParams.get("line");
+  const drillScenario = searchParams.get("scenario");
+  const drillPeriod = searchParams.get("period");
+  const drillTarget = useModelGridStore((s) => s.drillTarget);
+  const armDrill = useModelGridStore((s) => s.armDrill);
+  const clearDrill = useModelGridStore((s) => s.clearDrill);
+
+  /** Strip the drill params from the URL without touching router state (refresh-safe). */
+  const consumeDrillParams = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("line");
+    url.searchParams.delete("scenario");
+    url.searchParams.delete("period");
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
+
+  // AG Grid mounts asynchronously; the drill landing effect re-runs when ready.
+  const [gridReady, setGridReady] = useState(false);
+  const onGridReady = useCallback((params: { api: GridApi }) => {
+    gridApiRef.current = params.api;
+    setGridReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (drillScenario && drillScenario !== scenarioId) void setScenario(drillScenario);
+  }, [drillScenario, scenarioId, setScenario]);
+
+  // Arm on every NEW navigation that carries the params (location identity — so
+  // clicking the same S-071 finding twice re-arms; primitive-value deps would not).
+  useEffect(() => {
+    if (drillLine && drillPeriod) armDrill({ lineId: drillLine, periodId: drillPeriod });
+  }, [location, drillLine, drillPeriod, armDrill]);
+
+  // Land at most once per armed drill: the effect is keyed on `drillTarget`, which
+  // the landing lifecycle clears (target-cell focus event, stale link, or user
+  // pointerdown). Router params deliberately outlive the URL strip in router
+  // memory — guarding on the store, not on `searchParams`, is what stops a
+  // later status/lines change (e.g. the first edit) from re-stealing focus.
+  useEffect(() => {
+    if (!drillTarget) return;
+    // Grid shows on "success" (post-load) or "populated" (post-edit) — match that.
+    if (status !== "success" && status !== "populated") return;
+    if (lines.length === 0 || periods.length === 0) return;
+    const rowIdx = lines.findIndex((l) => l.id === drillTarget.lineId);
+    const colIdx = periods.findIndex((p) => p.id === drillTarget.periodId);
+    if (rowIdx < 0 || colIdx < 0) {
+      // The finding's line/period no longer exists in this Model — drop the stale
+      // link instead of landing somewhere fabricated.
+      clearDrill();
+      consumeDrillParams();
+      return;
+    }
+    const api = gridApiRef.current;
+    if (!api) return; // wait for onGridReady (gridReady below re-runs this effect)
+    setActiveCell(drillTarget.lineId, drillTarget.periodId);
+    api.ensureIndexVisible(rowIdx, "middle");
+    api.ensureColumnVisible(`p-${drillTarget.periodId}`, "middle");
+    api.setFocusedCell(rowIdx, `p-${drillTarget.periodId}`);
+    const rowNode = api.getRowNode(String(rowIdx));
+    if (rowNode) api.flashCells({ rowNodes: [rowNode], columns: [`p-${drillTarget.periodId}`] });
+    consumeDrillParams();
+  }, [
+    drillTarget,
+    status,
+    lines,
+    periods,
+    gridReady,
+    setActiveCell,
+    clearDrill,
+    consumeDrillParams,
+  ]);
 
   // Active (selected) cell drives the formula bar.
   const [formulaEdited, setFormulaEdited] = useState<string | null>(null);
@@ -322,6 +406,15 @@ export function ModelGridPage() {
     const lineId = row?.data?.line_id;
     const col = e.column as unknown as { colId?: string } | null | undefined;
     const periodId = col?.colId ? String(col.colId).replace(/^p-/, "") : null;
+    if (drillTarget) {
+      // Default/initial focus events are ignored until the drill's own target cell
+      // takes focus — that event disarms the drill. User input also disarms it.
+      if (lineId === drillTarget.lineId && periodId === drillTarget.periodId) {
+        clearDrill();
+        setActiveCell(lineId, periodId);
+      }
+      return;
+    }
     if (lineId && periodId) setActiveCell(lineId, periodId);
   }
 
@@ -634,6 +727,10 @@ export function ModelGridPage() {
           data-testid="model-grid"
           data-density={density}
           onKeyDownCapture={onGridKeyDownCapture}
+          onPointerDownCapture={() => {
+            // Real user intent supersedes any pending deep-link drill (S-071).
+            clearDrill();
+          }}
         >
           <AgGridReact<GridRow>
             rowData={filteredRows}
@@ -642,14 +739,14 @@ export function ModelGridPage() {
             rowHeight={tokens.density[density]}
             headerHeight={tokens.density[density]}
             suppressCellFocus={false}
-            onGridReady={(params) => {
-              gridApiRef.current = params.api;
-            }}
+            onGridReady={onGridReady}
             onCellClicked={onCellClicked}
             onCellFocused={onCellFocused}
             onCellDoubleClicked={onCellDoubleClicked}
             onFirstDataRendered={(params) => {
-              if (rowData.length > 0 && periods.length > 0 && !active) {
+              // Default focus lands on the first cell — suppressed while a deep-link
+              // drill is pending so the finding's target cell wins.
+              if (!drillTarget && rowData.length > 0 && periods.length > 0 && !active) {
                 setActiveCell(rowData[0].line_id, periods[0].id);
               }
               void params;

@@ -88,6 +88,9 @@ Rates are multiplied using `rust_decimal` (never float) in Rust engines; the for
 ## 8. ENFORCEMENT
 
 1. `money:ast` AST scan: any `parseFloat`/`Number()`/`Math.round`/`toFixed`/`REAL` on financial paths = CI fail.
+   Additionally (2026-09-07 hardening): `Math.floor`/`Math.ceil` **on a money value or a money×ratio
+   product** = CI fail — pixel/time geometry stays allowed; money scalings and halvings must run through
+   `Decimal` (or integer-exact parity-cleared arithmetic). Comments are exempt; the rule is line-scoped.
 2. Rust: `MoneyValue` constructors validate `scale ≤ 4`; `impl` only in `core/money.rs`.
 3. Schema: `amount_minor INTEGER`; `rate_decimal TEXT`; no `REAL` money columns (schema-equality check).
 4. UI: `moneyFormat` (decimal.js) is the only money formatter; no arithmetic.

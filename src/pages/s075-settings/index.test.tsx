@@ -69,7 +69,7 @@ describe("S-075 Settings (F-038)", () => {
       "Language & regional formats",
       "Currency & formatting defaults",
       "Keyboard shortcuts",
-      "Auto-update",
+      "Updates",
       "Local Diagnostics",
       "Storage location",
     ]) {

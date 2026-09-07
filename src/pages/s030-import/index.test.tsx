@@ -18,8 +18,8 @@ vi.mock("@/api/bridge", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/bridge")>();
   return { ...actual, call: (...args: unknown[]) => callMock(...args) };
 });
-vi.mock("@/api/mock", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/mock")>();
+vi.mock("@/api/runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/runtime")>();
   return { ...actual, isTauriRuntime: () => runtimeMock() };
 });
 vi.mock("@tauri-apps/plugin-dialog", () => ({

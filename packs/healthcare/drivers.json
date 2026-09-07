@@ -10,7 +10,10 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue",
+        "cogs"
+      ]
     },
     {
       "key": "length_of_stay",
@@ -22,7 +25,9 @@
         "high": "1000000000"
       },
       "default_method": "manual",
-      "links": []
+      "links": [
+        "cogs"
+      ]
     },
     {
       "key": "reimbursement",
@@ -34,7 +39,9 @@
         "high": "1000000000"
       },
       "default_method": "manual",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     }
   ]
 }

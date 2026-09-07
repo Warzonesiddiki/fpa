@@ -4,41 +4,61 @@
       "key": "program_ratio",
       "name": "Program Ratio %",
       "unit": "pct",
+      "formula": "(revenue - opex) / revenue * 100",
       "target": {
         "value": 75,
         "direction": "gte"
       },
-      "definition": "Program Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Program Ratio % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 75,
+        "watch": 65
+      }
     },
     {
       "key": "donor_retention",
       "name": "Donor Retention %",
       "unit": "pct",
+      "formula": "donors / donors_py * 100",
       "target": {
         "value": 60,
         "direction": "gte"
       },
-      "definition": "Donor Retention % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Donor Retention % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 70,
+        "watch": 60
+      }
     },
     {
       "key": "cost_per_dollar",
       "name": "Cost per $ Raised",
       "unit": "money",
+      "formula": "(cogs + opex) / revenue",
       "target": {
         "value": 0.18,
         "direction": "gte"
       },
-      "definition": "Cost per $ Raised — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cost per $ Raised \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 0.35,
+        "watch": 0.45
+      }
     },
     {
       "key": "grant_coverage",
       "name": "Grant Coverage (months)",
       "unit": "months",
+      "formula": "grant_renewal * 12",
       "target": {
         "value": 6,
         "direction": "gte"
       },
-      "definition": "Grant Coverage (months) — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Grant Coverage (months) \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 6,
+        "watch": 3
+      }
     }
   ]
 }

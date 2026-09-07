@@ -73,14 +73,15 @@ fpa/
 │   ├── pages/                 # one dir per screen ID (s001-unlock/, s041-grid/…)
 │   ├── stores/                # Zustand stores (STATE-MANAGEMENT.md)
 │   ├── workers/               # formula.worker.ts (HyperFormula), export.worker.ts
-│   ├── api/                   # generated tauri-specta client + zod gates
+│   ├── api/                   # generated tauri-specta client + zod gates; runtime.ts (shell detection);
+│   │                          # mock.ts = DEV-ONLY dynamic import — tree-shaken from prod (B18-7, WS-08)
 │   ├── hooks/                 # data hooks (useModel, useScenario…)
 │   ├── theme/                 # tokens.ts (DESIGN-SYSTEM tokens)
 │   ├── i18n/                  # en.json (+ locale-format helpers)
 │   └── utils/                 # moneyFormat (decimal.js display only)
 ├── src-tauri/
 │   ├── Cargo.toml / Cargo.lock
-│   ├── tauri.conf.json        # window, capabilities, updater config
+│   ├── tauri.conf.json        # window, capabilities (updater removed — ADR-028)
 │   ├── capabilities/default.json   # least-privilege (reference issue #0005 fixed: no broad FS)
 │   ├── migrations/            # 001_initial.sql … (versioned, tested)
 │   └── src/

@@ -503,7 +503,7 @@ export function FvaPage({
       {currentState === "error" && (
         <StatePanel
           state="error"
-          errorCode={errorDetail?.code ?? "FVA_COMPUTE_FAILED"}
+          errorCode={errorDetail?.code ?? "INTERNAL"}
           message={errorDetail?.userMessage ?? "An error occurred while calculating FVA scores."}
           onRetry={onRetry ?? (() => setErrorDetail(null))}
         />

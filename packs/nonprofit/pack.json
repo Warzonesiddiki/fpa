@@ -3,8 +3,8 @@
   "pack": {
     "key": "nonprofit",
     "name": "Nonprofit",
-    "version": "2.1.0",
-    "description": "Program ratio, donor retention, grant coverage, cost per dollar raised — funds and grant management.",
+    "version": "2.1.1",
+    "description": "Program ratio, donor retention, grant coverage, cost per dollar raised \u2014 funds and grant management.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

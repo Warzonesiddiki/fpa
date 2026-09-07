@@ -34,9 +34,7 @@ import {
   type HeadcountScheduleRow as HeadcountPlanRow,
 } from "@/model/headcount";
 
-export function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
+export { isTauriRuntime } from "./runtime";
 
 interface MockSession {
   unlocked: boolean;
@@ -909,6 +907,30 @@ function modelScopeViolation(modelId: string) {
 }
 const mockAssumptions = new Map<string, AssumptionListRow>();
 const mockAssumptionModels = new Map<string, string>();
+/**
+ * Hardcoded-literal waivers recorded by `assumption.waive` in the dev preview, keyed by
+ * the stable `line:period:start:end` finding key (mirror of the audited native store).
+ */
+const mockHardcodeWaivers = new Map<string, { reason: string; waived_at: string }>();
+/** Highest fixture seq at module load — dynamic waiver events are appended above it. */
+const MOCK_AUDIT_FIXTURE_MAX_SEQ = Math.max(...MOCK_AUDIT_EVENTS.map((e) => e.seq));
+/** Reset the dev waiver mirror between independent test cases/order-sensitive suites. */
+export function resetMockAssumptionWaiverState(): void {
+  mockHardcodeWaivers.clear();
+  // Also drop any dynamically appended waiver events so audit-list counts stay stable.
+  while (
+    MOCK_AUDIT_EVENTS.length > 0 &&
+    MOCK_AUDIT_EVENTS[MOCK_AUDIT_EVENTS.length - 1].seq > MOCK_AUDIT_FIXTURE_MAX_SEQ
+  ) {
+    MOCK_AUDIT_EVENTS.pop();
+  }
+}
+/** Read-only view of the waiver mirror (preview consistency for health/findings). */
+export function mockHardcodeWaiver(
+  cellRef: string,
+): { reason: string; waived_at: string } | undefined {
+  return mockHardcodeWaivers.get(cellRef);
+}
 /** Dev mirror of the app-scope `settings` table (B18-3): key → JSON string. */
 const mockSettings = new Map<string, string>();
 
@@ -937,9 +959,12 @@ function minorToDecimalStr(minor: number): string {
   return `${neg}${major}.${frac}`;
 }
 
-/** Exact Decimal to 2-decimal-places string without float conversion (B3/money-ast). */
+/** Exact Decimal to 2-decimal-places string without float conversion (B3/money-ast).
+ *  Rounds HALF_EVEN first (mirrors Rust Decimal::round_dp) — plain string slicing
+ *  would truncate toward zero. */
 function formatDecimal(dec: Decimal): string {
-  const parts = dec.toString().split(".");
+  const rounded = dec.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
+  const parts = rounded.toString().split(".");
   const intPart = parts[0];
   const fracPart = (parts[1] ?? "").padEnd(2, "0").slice(0, 2);
   return `${intPart}.${fracPart}`;
@@ -2212,8 +2237,13 @@ export async function mockInvoke<C extends CommandName>(
           if (cell?.valueMinor != null) {
             valueMinor = cell.valueMinor;
           } else {
-            const baseMonthly = 125_000_000 + pIdx * 2_500_000;
-            valueMinor = Math.floor((baseMonthly * multiplierNumerator) / 100);
+            // B3: money × ratio via Decimal, never float Math.floor((money*n)/100).
+            const baseMonthly = new Decimal(125_000_000 + pIdx * 2_500_000);
+            valueMinor = baseMonthly
+              .times(multiplierNumerator)
+              .dividedBy(100)
+              .toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN)
+              .toNumber();
           }
           return {
             period_id: p.id,
@@ -2387,7 +2417,12 @@ export async function mockInvoke<C extends CommandName>(
             swingPct: 20,
           };
           const baseMinor = meta.baseMinor;
-          const swingDelta = Math.floor((baseMinor * meta.swingPct) / 100);
+          // B3: percent-of-money swing via Decimal (HALF_EVEN), never float floor.
+          const swingDelta = new Decimal(baseMinor)
+            .times(meta.swingPct)
+            .dividedBy(100)
+            .toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN)
+            .toNumber();
           const lowMinor = baseMinor - swingDelta;
           const highMinor = baseMinor + swingDelta;
           const swingMinor = highMinor - lowMinor;
@@ -2417,8 +2452,12 @@ export async function mockInvoke<C extends CommandName>(
         const targetImpacts: Record<string, string> = {};
 
         for (const t of tornado) {
-          const impactMinor =
-            t.low_minor + Math.floor(((t.high_minor - t.low_minor) * i) / (stepCount - 1));
+          // B3: money interpolation via Decimal (same lane as the driver-value steps
+          // above), never float Math.floor((hi-lo)*i/steps).
+          const impactMinor = new Decimal(t.low_minor)
+            .plus(new Decimal(t.high_minor - t.low_minor).times(i).dividedBy(stepCount - 1))
+            .toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN)
+            .toNumber();
           targetImpacts[t.target_line_id] = minorToDecimalStr(impactMinor);
         }
 
@@ -2986,6 +3025,66 @@ export async function mockInvoke<C extends CommandName>(
         )
         .sort((a, b) => `${a.line_id}:${a.period_id}`.localeCompare(`${b.line_id}:${b.period_id}`));
       return { data: { cells } };
+    }
+    case "assumption.waive": {
+      const { model_id, cell_ref, reason } = args as {
+        model_id: string;
+        cell_ref: string;
+        reason: string;
+      };
+      if (!session.unlocked) {
+        // ERROR-HANDLING §A: SESSION_LOCKED is 401 / not retryable (unlock first).
+        return mockError(
+          "SESSION_LOCKED",
+          "session locked",
+          "Session locked. Unlock to continue.",
+          401,
+        );
+      }
+      if (session.read_only) {
+        return mockError(
+          "AUDIT_CHAIN_BREAK",
+          "read-only session",
+          "Session is read-only after an audit-integrity failure. Restore from the last verified Snapshot?",
+          409,
+        );
+      }
+      // Native: `assumption_waive` checks `model_belongs_to_company`, then rejects a
+      // blank reason with VALUE_INVALID (commands/assumption.rs). Mirror both gates.
+      const waiveScope = modelScopeViolation(model_id);
+      if (waiveScope) return waiveScope;
+      const trimmed = reason.trim();
+      if (!trimmed) {
+        return mockError(
+          "VALUE_INVALID",
+          "waiver reason is required",
+          "A waiver reason is required.",
+          422,
+        );
+      }
+      // B7 mirror: the native handler appends a hash-chained `assumption.waive` event.
+      // The mock cannot compute real HMACs (key lives in the OS keychain) — opaque hex,
+      // same as the fixture events, so S-070 lists the waiver in the dev preview.
+      const last = MOCK_AUDIT_EVENTS[MOCK_AUDIT_EVENTS.length - 1];
+      MOCK_AUDIT_EVENTS.push({
+        seq: last.seq + 1,
+        actor: "owner",
+        action: "assumption.waive",
+        object_type: "assumption_waiver",
+        object_id: cell_ref,
+        before_json: null,
+        after_json: JSON.stringify({
+          action: "assumption.waive",
+          model_id,
+          cell_ref,
+          reason: trimmed,
+        }),
+        prev_hash: last.hash,
+        hash: `mock${(last.seq + 1).toString(16).padStart(60, "0")}`,
+        createdOffsetMs: 0,
+      });
+      mockHardcodeWaivers.set(cell_ref, { reason: trimmed, waived_at: new Date().toISOString() });
+      return { data: { waived: true, cell_ref } };
     }
     case "driver.import": {
       const { file_path } = args as { file_path: string; mapping_id: string };

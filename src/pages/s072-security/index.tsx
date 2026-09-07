@@ -199,7 +199,8 @@ export function SecurityPage({
     }
 
     if (!passwordsMatch) {
-      setPinErrorCode("PIN_CONFIRM_MISMATCH");
+      // Catalog code VALUE_INVALID (422, form stays open) — B12: screens cite §2 codes only.
+      setPinErrorCode("VALUE_INVALID");
       setPinErrorMessage("New PIN and confirmation must match.");
       return;
     }
