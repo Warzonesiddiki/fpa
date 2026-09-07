@@ -3104,7 +3104,14 @@ export async function mockInvoke<C extends CommandName>(
           422,
         );
       }
-      return { data: { batch_id: nextImportId("400") } };
+      return {
+        data: {
+          batch_id: nextImportId("400"),
+          rows: 12,
+          audit_id: 1,
+          source_hash: "a".repeat(64),
+        },
+      };
     }
     /* ── App settings (F-038 · API-SPEC §2 `settings.get`/`settings.set`) ──────────
      * The app DB `settings` table is app-scope; the mock mirror keeps the same

@@ -1,96 +1,79 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
- * M7-5 / UF-002: GL Import Journey
- * Flow:
- * 1. Unlock with PIN (S-001)
- * 2. Navigate to S-030 Import Hub
- * 3. Open GL dump import flow & select file / parse
- * 4. Map columns in S-031 Mapping Wizard
- * 5. Review Tie-Out in S-032
- * 6. Commit batch
+ * M7-5 / UF-002: GL Import Journey (E2E-TESTING §UF-002).
+ * Parse → Mapping Wizard (canonical template) → Validation → Tie-Out → Commit.
+ * The dev-preview core keeps the session in memory: full page loads reset it to
+ * locked, so every in-app step navigates SPA-style (buttons/links, no page.goto).
  */
-test.describe("GL Dump Import Journey (UF-002)", () => {
-  test("Navigate to Import Hub -> Open GL dump import -> Map columns -> Review Tie-Out -> Commit batch", async ({
-    page,
-  }) => {
-    // Step 1: Unlock session to open company
-    await page.goto("/");
-    const pinInput = page.getByRole("textbox", { name: "PIN" });
-    await pinInput.fill("CorrectPin9!");
-    await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page).toHaveURL(/\/app\/dashboard/);
 
-    // Step 2: Navigate to Import Hub (S-030)
-    await page.goto("/app/import");
-    await expect(page.getByRole("heading", { name: "Import Hub" })).toBeVisible();
+/** Unlock S-001 once; every later step must navigate SPA-style. */
+async function unlock(page: Page): Promise<void> {
+  await page.goto("/");
+  const pinInput = page.getByRole("textbox", { name: "PIN" });
+  await pinInput.fill("CorrectPin9!");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page).toHaveURL(/\/app\/dashboard/);
+}
 
-    // Step 3: Ensure GL Dump tab is selected and choose/parse a GL file
-    const glTab = page.getByRole("tab", { name: "GL Dump" });
-    await expect(glTab).toBeVisible();
-    await glTab.click();
+/** The canonical balanced GL dump the mock core answers (dev-only preview fixture). */
+const GL_CSV = [
+  "period,account_code,debit,credit,posting_ref",
+  "2026-08,4000,1000.00,0,REF-1",
+  "2026-08,5000,0,1000.00,REF-2",
+].join("\n");
 
-    // In web preview mode, an hidden file input is rendered for browser testing
-    const fileChooserInput = page.locator('input[type="file"]');
-    await fileChooserInput.setInputFiles({
-      name: "sample_gl_dump.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(
-        "period,account_code,debit,credit,posting_ref\n2026-08,4000,1000.00,1000.00,REF123",
-      ),
-    });
+test("Navigate to Import Hub -> Parse GL dump -> Map columns -> Validate -> Tie-Out -> Commit batch", async ({
+  page,
+}) => {
+  await unlock(page);
 
-    // File selected -> click Parse button
-    const parseBtn = page.getByRole("button", { name: "Parse" });
-    await expect(parseBtn).toBeEnabled();
-    await parseBtn.click();
+  // Step 2: Data nav link → /app/import (S-030 Import Hub).
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await expect(page).toHaveURL(/\/app\/import/);
+  await expect(page.getByRole("heading", { name: "Import Hub" })).toBeVisible();
 
-    // Verify summary is parsed successfully
-    await expect(page.getByText("File parsed successfully")).toBeVisible();
-    const continueBtn = page.getByRole("button", { name: "Continue to Mapping" });
-    await expect(continueBtn).toBeVisible();
-    await continueBtn.click();
-
-    // Step 4: Map columns in S-031 Mapping Wizard
-    await expect(page).toHaveURL(/\/app\/import\/map/);
-    await expect(page.getByRole("heading", { name: "Mapping Wizard" })).toBeVisible();
-
-    // Use canonical mapping template or save a template
-    const useCanonicalBtn = page.getByRole("button", { name: "Use OneFP&A Canonical GL" });
-    if (await useCanonicalBtn.isVisible()) {
-      await useCanonicalBtn.click();
-    } else {
-      const templateNameInput = page.locator("#mapping-template-name");
-      await templateNameInput.fill("E2E GL Mapping");
-      await page.getByRole("button", { name: "Save versioned mapping" }).click();
-    }
-
-    // Validation panel displays outcomes
-    const continueValidationBtn = page.getByRole("button", { name: "Continue to Validation" });
-    if (await continueValidationBtn.isVisible()) {
-      await continueValidationBtn.click();
-    }
-
-    // Continue to Tie-Out (S-032)
-    const tieOutBtn = page.getByRole("button", { name: "Continue to Tie-Out" });
-    await expect(tieOutBtn).toBeEnabled();
-    await tieOutBtn.click();
-
-    // Step 5: Review Tie-Out in S-032 Import Commit
-    await expect(page).toHaveURL(/\/app\/import\/commit/);
-    await expect(page.getByRole("heading", { name: "Tie-Out & Commit Batch" })).toBeVisible();
-    await expect(page.getByText("Balanced")).toBeVisible();
-
-    // Step 6: Commit batch
-    const batchNameInput = page.locator("#import-batch-name");
-    await expect(batchNameInput).toBeVisible();
-
-    const commitBtn = page.getByRole("button", { name: "Commit Batch" });
-    await expect(commitBtn).toBeEnabled();
-    await commitBtn.click();
-
-    // Verify commit success
-    await expect(page.getByText("Batch committed successfully")).toBeVisible();
-    await expect(page.getByRole("link", { name: "View in Import History" })).toBeVisible();
+  // Step 3: GL Dump tab is the default source; pick a file via the dev-preview
+  // browser input (aria-label "Choose an import file"), then parse locally.
+  await expect(page.getByRole("tab", { name: "GL Dump" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "sample_gl_dump.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(GL_CSV),
   });
+  await expect(page.getByText("Source selected")).toBeVisible();
+
+  await page.getByRole("button", { name: "Parse locally" }).click();
+  await expect(page.getByText("Source parsed")).toBeVisible();
+
+  // Step 4: Continue to Mapping (S-031).
+  await page.getByRole("button", { name: "Continue to Mapping" }).click();
+  await expect(page).toHaveURL(/\/app\/import\/map/);
+  await expect(page.getByRole("heading", { name: "Mapping Wizard" })).toBeVisible();
+
+  // The canonical template is the zero-typing path (importHub.mappings.canonical).
+  await page.getByRole("button", { name: "Use OneFP&A Canonical GL" }).click();
+  await expect(page.getByText("OneFP&A Canonical GL selected")).toBeVisible();
+
+  // Step 5: Validation runs from the mapping hand-off.
+  const continueValidation = page.getByRole("button", { name: "Continue to Validation" });
+  await expect(continueValidation).toBeEnabled();
+  await continueValidation.click();
+
+  // Step 6: Tie-Out (S-032) — validation must pass before the button enables.
+  const continueTieOut = page.getByRole("button", { name: "Continue to Tie-Out" });
+  await expect(continueTieOut).toBeEnabled();
+  await continueTieOut.click();
+  await expect(page).toHaveURL(/\/app\/import\/commit/);
+  await expect(page.getByRole("heading", { name: "Tie-Out & Commit" })).toBeVisible();
+  await expect(page.getByText("Balanced")).toBeVisible();
+
+  // Step 7: Commit the audited batch (name is prefilled from the source file name).
+  const commitBtn = page.getByRole("button", { name: "Commit Import Batch" });
+  await expect(commitBtn).toBeEnabled();
+  await commitBtn.click();
+
+  await expect(page.getByText("Import Batch committed")).toBeVisible();
+  await expect(page.getByText(/Batch ID: /)).toBeVisible();
+  await expect(page.getByRole("link", { name: "View Import History" })).toBeVisible();
 });

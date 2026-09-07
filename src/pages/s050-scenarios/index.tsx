@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button, StatePanel } from "@/components/ui";
 import { useScenarioStore } from "@/stores/scenarios";
@@ -46,6 +47,9 @@ const STATE_TONE: Record<ScenarioRow["state"], string> = {
 
 export function ScenariosPage() {
   const { t } = useTranslation();
+  // SPA navigation: window.location.href would reload the webview and drop the
+  // in-memory session (dev preview) — navigate() keeps the session alive.
+  const navigate = useNavigate();
   const status = useScenarioStore((s) => s.status);
   const storeError = useScenarioStore((s) => s.error);
   const models = useScenarioStore((s) => s.models);
@@ -264,22 +268,10 @@ export function ScenariosPage() {
           <Plus aria-hidden="true" className="h-4 w-4" />
           {t("scenariosPage.newScenario")}
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            window.location.href = "/app/plan/compare";
-          }}
-        >
+        <Button variant="secondary" size="sm" onClick={() => navigate("/app/plan/compare")}>
           {t("scenariosPage.compareScenarios")}
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            window.location.href = "/app/plan/whatif";
-          }}
-        >
+        <Button variant="secondary" size="sm" onClick={() => navigate("/app/plan/whatif")}>
           What-If & Sensitivity
         </Button>
       </div>

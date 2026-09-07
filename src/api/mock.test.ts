@@ -1004,11 +1004,13 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     const locked = (await mockInvoke("driver.import", {
       file_path: "/tmp/locked.xlsx",
       mapping_id: "canonical",
+      scenario_id: "3f9f2c9e-0000-4000-8000-000000000001",
     })) as { error: { code: string } };
     expect(locked.error.code).toBe("IMPORT_FILE_LOCKED");
     const ok = (await mockInvoke("driver.import", {
       file_path: "/tmp/drivers.xlsx",
       mapping_id: "canonical",
+      scenario_id: "3f9f2c9e-0000-4000-8000-000000000001",
     })) as { data: { batch_id: string } };
     expect(ok.data.batch_id).toMatch(/^3f9f2c9e-[0-9a-f-]+$/);
   });

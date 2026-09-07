@@ -11,12 +11,20 @@ const SERVICE_HMAC: &str = "com.onefpa.audit";
 const USER_HMAC: &str = "chain-key";
 
 /// Get or create the 32-byte HMAC chain key (hex in keychain; key is zeroised after use).
+/// Tests use the 0600 file fallback only — never the real OS keychain (parallel test runs
+/// would share and pollute the single keychain entry; CI runners have no keychain).
 pub fn audit_hmac_key(data_dir: &Path) -> Result<Vec<u8>, String> {
-    let hex = get_or_create(
-        &Entry::new(SERVICE_HMAC, USER_HMAC).map_err(|e| e.to_string())?,
-        data_dir,
-        64,
-    )?;
+    // `cfg!` (runtime) rather than `#[cfg]` (compile-time) so both arms stay compiled and
+    // `--all-targets` never sees the keychain path as dead code.
+    let hex = if cfg!(test) {
+        fallback_file(data_dir, 64)?
+    } else {
+        get_or_create(
+            &Entry::new(SERVICE_HMAC, USER_HMAC).map_err(|e| e.to_string())?,
+            data_dir,
+            64,
+        )?
+    };
     let mut key = Vec::with_capacity(32);
     for i in (0..64).step_by(2) {
         let byte = u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| format!("KEY_HEX: {e}"))?;

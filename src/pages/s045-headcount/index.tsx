@@ -97,7 +97,7 @@ export function HeadcountPage() {
 
   const submitImport = useCallback(async () => {
     setImportError(null);
-    const ok = await importDriverData(importPath, importMapping);
+    const ok = await importDriverData(importPath, importMapping, "");
     if (!ok) setImportError(t("headcountPage.import.failed"));
   }, [importDriverData, importMapping, importPath, t]);
 

@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ScenariosPage } from "./index";
 import { useScenarioStore } from "@/stores/scenarios";
 import { useSessionStore } from "@/stores/session";
@@ -230,10 +231,19 @@ function uniqueCopy(name: string): string {
 }
 
 function renderPage() {
+  // The page now navigates SPA-style (useNavigate) — wrap in a MemoryRouter with
+  // the two sibling routes the nav buttons target so navigation stays assertable.
+  // <main> keeps all page content inside a landmark (axe region rule).
   return render(
-    <main>
-      <ScenariosPage />
-    </main>,
+    <MemoryRouter initialEntries={["/app/plan/scenarios"]}>
+      <main>
+        <Routes>
+          <Route path="/app/plan/scenarios" element={<ScenariosPage />} />
+          <Route path="/app/plan/compare" element={<div>compare</div>} />
+          <Route path="/app/plan/whatif" element={<div>whatif</div>} />
+        </Routes>
+      </main>
+    </MemoryRouter>,
   );
 }
 

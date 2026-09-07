@@ -449,9 +449,9 @@ export type ImportKind = z.infer<typeof ImportKind>;
 
 /** The import kinds whose committed rows are Actuals of a Period and therefore post through the
  *  `import.commit` general-ledger destination (`gl_lines` / `ic_lines`, DATABASE-SCHEMA §7).
- *  `driver_data` belongs in `driver_values` and `dimension_master` in `dimension_values`; those
- *  destination pipelines do not exist, so the core refuses their commit rather than writing GL
- *  facts, and S-030 must not offer them as commit-capable source tabs. */
+ *  `driver_data` commits through its own `driver.import` → `driver_values` pipeline (M2-5b);
+ *  `dimension_master` still has no destination pipeline, so the core refuses its commit rather
+ *  than writing GL facts. */
 export const LEDGER_IMPORT_KINDS = [
   "gl_dump",
   "excel_csv",
@@ -567,6 +567,8 @@ export const IMPORT_MAPPING_TARGETS = [
   "currency",
   "posting_ref",
   "doc_type",
+  "driver",
+  "value",
 ] as const;
 export const ImportMappingTarget = z.enum(IMPORT_MAPPING_TARGETS);
 export type ImportMappingTarget = z.infer<typeof ImportMappingTarget>;
@@ -1340,15 +1342,20 @@ export const DriverSetValueData = z.object({
   value_decimal: DecimalString,
 });
 
-/** `driver.import` — {file_path, mapping_id} → {batch_id} (API-SPEC §2; `import.parse` pipeline). */
+/** `driver.import` — {file_path, mapping_id, scenario_id} → {batch_id, rows, audit_id,
+ *  source_hash} (API-SPEC §2; the Rust pipeline parses the file itself — no parse_id round-trip). */
 export const DriverImportArgs = z
   .object({
     file_path: z.string().min(1, "FILE_PATH_REQUIRED"),
     mapping_id: ImportMappingRef,
+    scenario_id: Uuid,
   })
   .strict();
 export const DriverImportData = z.object({
   batch_id: Uuid,
+  rows: z.number().int().nonnegative(),
+  audit_id: z.number().int(),
+  source_hash: z.string().length(64),
 });
 
 /** Assumption Register row (F-014 · DATABASE-SCHEMA §6). Values remain exact decimals. */

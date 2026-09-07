@@ -136,7 +136,7 @@ export function DriverTablesPage() {
   const [importMapping, setImportMapping] = useState("canonical");
   const submitImport = useCallback(async () => {
     if (!importPath.trim()) return;
-    await importDrivers(importPath.trim(), importMapping);
+    await importDrivers(importPath.trim(), importMapping, "");
   }, [importDrivers, importMapping, importPath]);
 
   const activeImpact = activeDriverId ? (impact[activeDriverId] ?? []) : [];

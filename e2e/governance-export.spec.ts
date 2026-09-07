@@ -1,72 +1,67 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
- * M7-5 / UF-005, UF-010, UF-014: Governance & Export Journey
- * Flow:
- * 1. Unlock session & navigate to S-070 Audit Trail
- * 2. Verify HMAC audit log entries & verified chain indicator
- * 3. Export Auditor Data Room package
- * 4. Navigate to S-074 Backup & Restore
- * 5. Open backup creation flow & create encrypted backup
+ * M7-5 / UF-005, UF-010, UF-014: Governance & Export Journey (E2E-TESTING).
+ * Audit Trail (verify chain + expand payload) → Auditor Data-Room export →
+ * Backup & Restore (create an encrypted backup).
+ * The dev-preview core keeps the session in memory: full page loads reset it to
+ * locked, so every in-app step navigates SPA-style (no page.goto after unlock).
  */
-test.describe("Governance & Export Journey (UF-005, UF-010, UF-014)", () => {
-  test("Navigate to Audit Trail -> Verify HMAC log entries -> Export Auditor Data Room -> Open Backup & Restore -> Create Backup", async ({
-    page,
-  }) => {
-    // Step 1: Unlock session to open company
-    await page.goto("/");
-    const pinInput = page.getByRole("textbox", { name: "PIN" });
-    await pinInput.fill("CorrectPin9!");
-    await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page).toHaveURL(/\/app\/dashboard/);
 
-    // Navigate to S-070 Audit Trail
-    await page.goto("/app/governance/audit");
-    await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
+/** Unlock S-001 once; every later step must navigate SPA-style. */
+async function unlock(page: Page): Promise<void> {
+  await page.goto("/");
+  const pinInput = page.getByRole("textbox", { name: "PIN" });
+  await pinInput.fill("CorrectPin9!");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page).toHaveURL(/\/app\/dashboard/);
+}
 
-    // Step 2: Verify HMAC audit log entries and verified chain indicator
-    await expect(page.getByText("Chain verified").or(page.getByText("Chain intact"))).toBeVisible();
-    const eventRows = page.locator("li").filter({ hasText: /expand payload/i });
-    await expect(eventRows.first()).toBeVisible();
+test("Audit Trail -> verify HMAC chain -> Data-Room export -> Backup & Restore -> Create Backup", async ({
+  page,
+}) => {
+  await unlock(page);
 
-    // Expand the first event row to inspect HMAC hash linkage
-    await eventRows
-      .first()
-      .getByRole("button", { name: /expand payload/i })
-      .click();
-    await expect(page.getByText("Previous event hash")).toBeVisible();
-    await expect(page.getByText("Event hash")).toBeVisible();
+  // Step 1: Governance nav link → /app/governance redirects to the Audit Trail.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Governance" })
+    .click();
+  await expect(page).toHaveURL(/\/app\/governance\/audit/);
+  await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
 
-    // Step 3: Export Auditor Data Room package
-    const exportDataRoomBtn = page.getByRole("button", { name: "Auditor Data-Room Export" });
-    await expect(exportDataRoomBtn).toBeVisible();
-    await exportDataRoomBtn.click();
+  // Step 2: verified chain chip + expandable event rows with hash linkage.
+  const chainChip = page.getByTestId("audit-chain-chip");
+  await expect(chainChip).toContainText(/Chain verified/i);
+  const firstToggle = page.getByRole("button", { name: /^#\d+$/ }).first();
+  await expect(firstToggle).toBeVisible();
+  await firstToggle.click();
+  await expect(page.getByText("Previous hash")).toBeVisible();
+  await expect(page.getByText(/^Hash$/)).toBeVisible();
 
-    // Verify success banner feedback
-    await expect(page.getByTestId("audit-export-success-banner")).toBeVisible();
+  // Step 3: Auditor Data-Room export (audited mutation; success banner asserts).
+  const dataRoomBtn = page.getByRole("button", { name: /Auditor Data-Room Export/i });
+  await expect(dataRoomBtn).toBeEnabled();
+  await dataRoomBtn.click();
+  await expect(page.getByTestId("audit-export-success-banner")).toBeVisible();
 
-    // Step 4: Navigate to S-074 Backup & Restore
-    await page.goto("/app/governance/backup");
-    await expect(page.getByRole("heading", { name: "Backup & Restore" })).toBeVisible();
+  // Step 4: Backup & Restore (S-074) via the ⌘K palette — the only SPA path.
+  await page.getByRole("button", { name: /Search/ }).click();
+  await page.getByRole("combobox", { name: /Search/i }).fill("Backup");
+  await page
+    .getByRole("option", { name: /Backup & Restore/i })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/app\/governance\/backup/);
+  await expect(page.getByText("Backup & Restore")).toBeVisible();
 
-    // Step 5: Create Backup
-    const backupNowBtn = page.getByTestId("backup-now-btn");
-    await expect(backupNowBtn).toBeVisible();
-    await backupNowBtn.click();
-
-    // Dialog opens: specify destination path & passphrase
-    await expect(page.getByText("Create Encrypted Backup")).toBeVisible();
-    const pathInput = page.locator("#backup-path");
-    const passphraseInput = page.locator("#backup-passphrase");
-
-    await pathInput.fill("C:\\backups\\e2e-demo-backup.fpa-bak");
-    await passphraseInput.fill("StrongBackupPass9!");
-
-    const confirmCreateBtn = page.getByRole("button", { name: "Create Backup" });
-    await expect(confirmCreateBtn).toBeEnabled();
-    await confirmCreateBtn.click();
-
-    // Verify success message / state
-    await expect(page.getByText(/Backup created and encrypted successfully/i)).toBeVisible();
-  });
+  // Step 5: Create an encrypted backup.
+  await page.getByTestId("backup-now-btn").first().click();
+  await expect(page.getByText("Create Encrypted Backup")).toBeVisible();
+  await page.locator("#backup-path").fill("C:\\backups\\e2e-demo-backup.fpa-bak");
+  await page.locator("#backup-passphrase").fill("StrongBackupPass9!");
+  const confirmCreate = page.getByRole("button", { name: "Create Backup" });
+  await expect(confirmCreate).toBeEnabled();
+  await confirmCreate.click();
+  await expect(page.getByText(/Backup created and encrypted successfully/i)).toBeVisible();
 });

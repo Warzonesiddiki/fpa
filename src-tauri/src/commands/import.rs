@@ -21,6 +21,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -34,6 +35,7 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::commands::company::{app_data_dir, audited_hash};
+use crate::commands::model::check_scenario_unlocked;
 use crate::commands::session::{SessionState, require_session_write, require_unlocked};
 use crate::core::audit::next_hash;
 use crate::core::error::{AppError, AppResult};
@@ -73,6 +75,11 @@ const CANONICAL_TARGETS: [&str; 15] = [
     "posting_ref",
     "doc_type",
 ];
+
+/// Semantic targets of the Driver Data pipeline (PRD F-008; API-SPEC §2 `driver.import`): one
+/// period, one driver name and one exact decimal value per row. A mapping either uses these
+/// three targets alone or is a GL mapping — mixing the families is refused at save time.
+const DRIVER_TARGETS: [&str; 3] = ["period", "driver", "value"];
 
 /// The pre-installed "OneFP&A Canonical GL" mapping (GL-TEMPLATE-SPEC §7): a file that already
 /// follows the template needs zero mapping steps — its headers ARE the semantic targets.
@@ -317,7 +324,9 @@ fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<Validated
                 column.source_pattern
             )));
         }
-        if !CANONICAL_TARGETS.contains(&target.as_str()) {
+        if !CANONICAL_TARGETS.contains(&target.as_str())
+            && !DRIVER_TARGETS.contains(&target.as_str())
+        {
             return Err(AppError::map_target_invalid(format!(
                 "MAPPING_TARGET_UNKNOWN: {target}"
             )));
@@ -334,15 +343,36 @@ fn validate_mapping_template(input: MappingTemplateInput) -> AppResult<Validated
         }
         columns.push((source, target));
     }
-    if !targets.contains("period") || !targets.contains("account_code") {
-        return Err(AppError::map_target_invalid(
-            "MAPPING_TARGET_REQUIRED: period and account_code",
-        ));
-    }
-    if !targets.contains("amount") && !(targets.contains("debit") && targets.contains("credit")) {
-        return Err(AppError::map_target_invalid(
-            "MAPPING_AMOUNT_REQUIRED: amount or debit+credit",
-        ));
+    // Kind-aware required targets: a mapping is either a GL mapping (all GL targets only,
+    // period + account_code + amount/debit+credit) or a Driver mapping (exactly period +
+    // driver + value). Mixing the two families is refused — one template drives one pipeline.
+    let is_driver_mapping = targets.contains("driver") || targets.contains("value");
+    if is_driver_mapping {
+        let mixed = targets
+            .iter()
+            .any(|t| CANONICAL_TARGETS.contains(&t.as_str()) && t != "period");
+        if mixed
+            || targets.len() != DRIVER_TARGETS.len()
+            || targets
+                .iter()
+                .any(|t| !DRIVER_TARGETS.contains(&t.as_str()))
+        {
+            return Err(AppError::map_target_invalid(
+                "MAPPING_TARGET_REQUIRED: driver mappings map exactly 'period', 'driver' and 'value'",
+            ));
+        }
+    } else {
+        if !targets.contains("period") || !targets.contains("account_code") {
+            return Err(AppError::map_target_invalid(
+                "MAPPING_TARGET_REQUIRED: period and account_code",
+            ));
+        }
+        if !targets.contains("amount") && !(targets.contains("debit") && targets.contains("credit"))
+        {
+            return Err(AppError::map_target_invalid(
+                "MAPPING_AMOUNT_REQUIRED: amount or debit+credit",
+            ));
+        }
     }
 
     let sign_convention = input.sign_convention;
@@ -2578,6 +2608,417 @@ pub fn import_commit(
     }))
 }
 
+/* ── Driver Data destination pipeline (M2-5b) ────────────────────── */
+
+/// One normalised driver source row (API-SPEC §2 `driver.import`). The value stays text until
+/// validation converts it exactly once (B3 — no float anywhere).
+#[derive(Debug, Clone)]
+struct DriverSourceRow {
+    line_no: i64,
+    driver_name: String,
+    period: String,
+    value: String,
+}
+
+/// Driver rows re-use the same parse grid and mapping resolver as GL rows, but the required
+/// semantic targets are `period`, `driver` and `value` (GL-TEMPLATE-SPEC §2 does not apply).
+fn prepare_driver_rows(
+    session: &ParseSession,
+    mapping: &Mapping,
+) -> AppResult<Vec<DriverSourceRow>> {
+    if session.grid.is_empty() {
+        return Err(AppError::import_file_unreadable(
+            "EMPTY_FILE: the sheet has no header row",
+        ));
+    }
+    let headers: Vec<String> = session.grid[0]
+        .iter()
+        .map(|h| h.trim().to_string())
+        .collect();
+    let idx = column_index(&headers, mapping);
+    for required in DRIVER_TARGETS {
+        if !idx.contains_key(required) {
+            return Err(AppError::invalid(format!(
+                "COLUMN_MISSING: no source column mapped to '{required}' (API-SPEC §2 driver.import)"
+            )));
+        }
+    }
+    let mut rows = Vec::with_capacity(session.grid.len().saturating_sub(1));
+    for (i, cells) in session.grid.iter().enumerate().skip(1) {
+        if cells.iter().all(|c| c.trim().is_empty()) {
+            continue;
+        }
+        rows.push(DriverSourceRow {
+            line_no: (i + 1) as i64,
+            driver_name: normalize_dimension_value(
+                &cell_at(cells, &idx, "driver").unwrap_or_default(),
+                &mapping.dimension_normalization,
+            ),
+            period: normalize_period_value(
+                &cell_at(cells, &idx, "period").unwrap_or_default(),
+                &mapping.period_normalization,
+            ),
+            value: cell_at(cells, &idx, "value").unwrap_or_default(),
+        });
+    }
+    Ok(rows)
+}
+
+/// Resolved driver target for one row: driver id + model-scoped bounds.
+#[derive(Debug, Clone)]
+struct ResolvedDriver {
+    driver_id: String,
+    model_id: String,
+    bounds_low: Option<String>,
+    bounds_high: Option<String>,
+}
+
+/// Map + validate driver rows. Same one-hard-issue-per-row policy as `build_lines`.
+fn build_driver_values(
+    conn: &Connection,
+    company_id: &str,
+    scenario_id: &str,
+    rows: &[DriverSourceRow],
+) -> AppResult<Vec<(DriverSourceRow, ResolvedDriver, String)>> {
+    let scenario_model: Option<String> = conn
+        .query_row(
+            "SELECT model_id FROM scenarios WHERE id = ?1",
+            [scenario_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    let Some(scenario_model) = scenario_model else {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: scenario_id does not exist",
+        ));
+    };
+    let mut resolved: Vec<(DriverSourceRow, ResolvedDriver, String)> = Vec::new();
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    let mut driver_cache: HashMap<String, Vec<ResolvedDriver>> = HashMap::new();
+    for row in rows {
+        if row.driver_name.is_empty() {
+            // Surfaced as the row's own error by issue_to_error → VALUE_INVALID.
+            return Err(AppError::invalid(format!(
+                "DRIVER_NAME_BLANK: row {} does not name a driver",
+                row.line_no
+            )));
+        }
+        let candidates = match driver_cache.get(&row.driver_name) {
+            Some(v) => v.clone(),
+            None => {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT d.id, d.model_id, d.bounds_low, d.bounds_high
+                           FROM drivers d JOIN models m ON m.id = d.model_id
+                          WHERE m.company_id = ?1 AND LOWER(TRIM(d.name)) = LOWER(?2)",
+                    )
+                    .map_err(AppError::from)?;
+                let list: Vec<ResolvedDriver> = stmt
+                    .query_map(rusqlite::params![company_id, row.driver_name], |r| {
+                        Ok(ResolvedDriver {
+                            driver_id: r.get(0)?,
+                            model_id: r.get(1)?,
+                            bounds_low: r.get(2)?,
+                            bounds_high: r.get(3)?,
+                        })
+                    })
+                    .map_err(AppError::from)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(AppError::from)?;
+                driver_cache.insert(row.driver_name.clone(), list);
+                driver_cache
+                    .get(&row.driver_name)
+                    .cloned()
+                    .expect("just inserted")
+            }
+        };
+        let driver = match candidates.len() {
+            0 => {
+                return Err(AppError::invalid(format!(
+                    "DRIVER_NAME_UNKNOWN: row {} names driver '{}' which this Company does not define (S-043 Driver Tables)",
+                    row.line_no, row.driver_name
+                )));
+            }
+            1 => candidates.into_iter().next().expect("len == 1"),
+            _ => {
+                return Err(AppError::invalid(format!(
+                    "DRIVER_NAME_AMBIGUOUS: row {} names driver '{}' which exists in more than one Model — import one Model's drivers at a time",
+                    row.line_no, row.driver_name
+                )));
+            }
+        };
+        if driver.model_id != scenario_model {
+            return Err(AppError::invalid(format!(
+                "SCENARIO_MODEL_MISMATCH: row {} driver '{}' belongs to a different Model than scenario {scenario_id}",
+                row.line_no, row.driver_name
+            )));
+        }
+        let period_key = match parse_period_key(&row.period) {
+            Some(k) => k,
+            None => {
+                return Err(AppError::invalid(format!(
+                    "PERIOD_UNPARSEABLE: '{}' (row {})",
+                    row.period, row.line_no
+                )));
+            }
+        };
+        let period_id = resolve_period(conn, company_id, &period_key)?.ok_or_else(|| {
+            AppError::period_not_found(format!(
+                "PERIOD_OUT_OF_RANGE: '{}' is outside this Company calendar (row {})",
+                row.period, row.line_no
+            ))
+        })?;
+        if !seen.insert((driver.driver_id.clone(), period_id.clone())) {
+            return Err(AppError::invalid(format!(
+                "DRIVER_VALUE_DUPLICATE_IN_BATCH: driver '{}' appears more than once for period '{}' (row {})",
+                row.driver_name, row.period, row.line_no
+            )));
+        }
+        let decimal = parse_driver_decimal(&row.value).map_err(|_| {
+            AppError::invalid(format!(
+                "VALUE_INVALID: driver value must be an exact decimal string (row {})",
+                row.line_no
+            ))
+        })?;
+        // Bounds come from the Assumption Register (PRD F-013) and are enforced exactly like
+        // driver.set_value (DRIVER_OUT_OF_BOUNDS, 422).
+        if let Some(low) = &driver.bounds_low
+            && decimal < parse_driver_decimal(low)?
+        {
+            return Err(AppError::driver_out_of_bounds(
+                &row.value,
+                low,
+                driver.bounds_high.as_deref().unwrap_or(""),
+            ));
+        }
+        if let Some(high) = &driver.bounds_high
+            && decimal > parse_driver_decimal(high)?
+        {
+            return Err(AppError::driver_out_of_bounds(
+                &row.value,
+                driver.bounds_low.as_deref().unwrap_or(""),
+                high,
+            ));
+        }
+        resolved.push((row.clone(), driver, period_id));
+    }
+    Ok(resolved)
+}
+
+/// Exact decimal text for a driver value (same grammar as `driver.set_value`).
+fn parse_driver_decimal(value: &str) -> AppResult<rust_decimal::Decimal> {
+    let text = value.trim();
+    let body = text.strip_prefix('-').unwrap_or(text);
+    let mut pieces = body.split('.');
+    let whole = pieces.next().unwrap_or_default();
+    let fraction = pieces.next();
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || pieces.next().is_some()
+        || fraction
+            .is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err(AppError::invalid(
+            "VALUE_INVALID: driver value must be an exact decimal string",
+        ));
+    }
+    rust_decimal::Decimal::from_str(text).map_err(|_| {
+        AppError::invalid("VALUE_INVALID: driver value must be an exact decimal string")
+    })
+}
+
+/// `driver.import` — {file_path, mapping_id, scenario_id} → {batch_id, rows, audit_id,
+/// source_hash} (API-SPEC §2; PRD F-008). Writes kind `driver_data` into `driver_values`
+/// (DATABASE-SCHEMA §6) — never into `gl_lines`. One HMAC-chained `driver.import` audit event
+/// per batch; existing (driver, scenario, period) values are overwritten exactly like an
+/// individual `driver.set_value`.
+#[tauri::command(name = "driver.import", rename_all = "snake_case")]
+pub fn driver_import(
+    app: tauri::AppHandle,
+    file_path: String,
+    mapping_id: String,
+    scenario_id: String,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    driver_import_internal(
+        &mut conn,
+        &dir,
+        &company_id,
+        &file_path,
+        &mapping_id,
+        &scenario_id,
+    )
+}
+
+fn driver_import_internal(
+    conn: &mut Connection,
+    dir: &Path,
+    company_id: &str,
+    file_path: &str,
+    mapping_id: &str,
+    scenario_id: &str,
+) -> AppResult<serde_json::Value> {
+    check_scenario_unlocked(conn, scenario_id)?;
+
+    // Parse with the exact machinery of import.parse, pinned to the driver_data kind.
+    let path = resolve_import_path(Path::new(file_path), None, None)
+        .ok_or_else(|| AppError::import_file_unreadable(format!("FILE_NOT_FOUND: {file_path}")))?;
+    let bytes =
+        fs::read(&path).map_err(|e| AppError::import_file_unreadable(format!("IO: {e}")))?;
+    let source_hash = sha256_hex(&bytes);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let parsed = match ext.as_str() {
+        "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" => {
+            read_workbook(&path, &bytes, ImportKind::DriverData)?
+        }
+        "csv" | "tsv" | "txt" => read_delimited(&bytes, &ext)?,
+        "zip" => {
+            return Err(AppError::import_file_unreadable(
+                "ZIP_UNSUPPORTED: unzip the workbook and select the .xlsx/.csv inside",
+            ));
+        }
+        other => {
+            return Err(AppError::import_file_unreadable(format!(
+                "FILE_TYPE_UNSUPPORTED: .{other} (GL-TEMPLATE-SPEC §1: .xlsx/.csv/.tsv)"
+            )));
+        }
+    };
+    let source_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file_path)
+        .to_string();
+
+    let mapping = if mapping_id == CANONICAL_MAPPING_ID {
+        return Err(AppError::invalid(
+            "COLUMN_MISSING: the Canonical GL mapping is not a driver mapping — map 'period', 'driver' and 'value' first (S-031)",
+        ));
+    } else {
+        resolve_mapping(conn, company_id, mapping_id)?
+    };
+    let headers = parsed
+        .grid
+        .first()
+        .map(|r| r.iter().map(|c| c.trim().to_string()).collect())
+        .unwrap_or_default();
+    let session_grid = ParseSession {
+        parse_id: String::new(),
+        company_id: company_id.to_string(),
+        kind: ImportKind::DriverData,
+        source_name: source_name.clone(),
+        source_hash: source_hash.clone(),
+        size_bytes: bytes.len() as i64,
+        grid: parsed.grid,
+        headers,
+        sheets: parsed.sheets,
+        encodings: Vec::new(),
+        created_ms: 0,
+    };
+    let rows = prepare_driver_rows(&session_grid, &mapping)?;
+    if rows.is_empty() {
+        return Err(AppError::invalid("BATCH_EMPTY: the sheet has no data rows"));
+    }
+    let resolved = build_driver_values(conn, company_id, scenario_id, &rows)?;
+
+    // Duplicate-source guard, persistence and audit share one immediate transaction.
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(AppError::from)?;
+    let existing: Option<String> = tx
+        .query_row(
+            "SELECT id FROM import_batches WHERE company_id = ?1 AND source_hash = ?2 LIMIT 1",
+            rusqlite::params![company_id, source_hash],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if let Some(batch) = existing {
+        return Err(AppError::import_batch_hash_exists(&batch));
+    }
+
+    let batch_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let row_count = resolved.len() as i64;
+    tx.execute(
+        "INSERT INTO import_batches (id, company_id, kind, source_name, source_hash,
+                                     mapping_version, status, row_count, debits_minor,
+                                     credits_minor, tie_out_status, rollback_to_batch_id,
+                                     committed_at, created_at)
+         VALUES (?1, ?2, 'driver_data', ?3, ?4, ?5, 'committed', ?6, NULL, NULL, 'pass', NULL, ?7, ?7)",
+        rusqlite::params![
+            batch_id,
+            company_id,
+            source_name,
+            source_hash,
+            mapping.version,
+            row_count,
+            now,
+        ],
+    )
+    .map_err(AppError::from)?;
+
+    for (row, driver, period_id) in &resolved {
+        let dv_id = format!("dv-{}", Uuid::new_v4());
+        tx.execute(
+            "INSERT INTO driver_values (id, driver_id, scenario_id, period_id, value_decimal, source_batch_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(driver_id, scenario_id, period_id) DO UPDATE SET
+               value_decimal = excluded.value_decimal,
+               source_batch_id = excluded.source_batch_id",
+            rusqlite::params![
+                dv_id,
+                driver.driver_id,
+                scenario_id,
+                period_id,
+                row.value.trim(),
+                batch_id,
+            ],
+        )
+        .map_err(AppError::from)?;
+    }
+
+    let after_json = json!({
+        "batchId": batch_id,
+        "kind": "driver_data",
+        "rows": row_count,
+        "scenarioId": scenario_id,
+        "sourceHash": source_hash,
+        "sourceName": source_name,
+        "mappingId": mapping.id,
+        "mappingVersion": mapping.version,
+    })
+    .to_string();
+    let key = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
+                                   before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'driver.import', 'import_batch', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![company_id, batch_id, after_json, prev, hash, now],
+    )
+    .map_err(AppError::from)?;
+    let audit_id = tx.last_insert_rowid();
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(json!({
+        "data": {
+            "batch_id": batch_id,
+            "rows": row_count,
+            "audit_id": audit_id,
+            "source_hash": source_hash,
+        }
+    }))
+}
+
 fn import_history_data(
     conn: &Connection,
     company_id: &str,
@@ -3957,5 +4398,273 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert_eq!(a, sha256_hex(b"onefpa"));
         assert_ne!(a, sha256_hex(b"onefpb"));
+    }
+
+    /* ── driver.import (M2-5b) ── */
+
+    fn driver_seed() -> (Connection, std::path::PathBuf) {
+        let conn = db::open_in_memory().unwrap();
+        let now = "2026-09-06T00:00:00Z";
+        conn.execute(
+            "INSERT INTO companies (id, name, type, default_currency_code, base_locale, pack_schema_version, company_file_path, created_at, updated_at)
+             VALUES ('c-drv', 'Driver Co', 'single', 'USD', 'en-US', '1.0.0', '/tmp/co.fpa', ?1, ?1)",
+            [now],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO packs (id, key, name, version, schema_version, is_bundled, source_checksum, installed_at)
+             VALUES ('p-1', 'manu', 'Manufacturing', '1.0.0', '1.0.0', 1, 'sha', ?1)",
+            [now],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_calendars (id, company_id, name, preset, fy_start_month, week_start_day, tz)
+             VALUES ('fc-1', 'c-drv', 'Main', '12month', 1, 1, 'UTC')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_years (id, calendar_id, fy_label, start_date, end_date, week_count)
+             VALUES ('fy-1', 'fc-1', 'FY2026', '2026-01-01', '2026-12-31', 52)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_periods (id, fiscal_year_id, period_no, code, start_date, end_date)
+             VALUES ('fp-1', 'fy-1', 1, '2026-01', '2026-01-01', '2026-12-31')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO models (id, company_id, name, horizon, pack_id)
+             VALUES ('m-1', 'c-drv', 'Plan', '1y', 'p-1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO scenarios (id, model_id, name, kind, state)
+             VALUES ('sc-1', 'm-1', 'Base', 'budget', 'draft')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO drivers (id, model_id, name, driver_type, source, bounds_low, bounds_high)
+             VALUES ('dr-units', 'm-1', 'units', 'volume_x_rate', 'global', '0', '100000')",
+            [],
+        )
+        .unwrap();
+        let dir = std::env::temp_dir().join(format!("onefpa-drimp-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        (conn, dir)
+    }
+
+    fn driver_csv(dir: &Path, body: &str) -> String {
+        let p = dir.join("drivers.csv");
+        fs::write(&p, body).unwrap();
+        p.to_str().unwrap().to_string()
+    }
+
+    /// Persist a real driver mapping through the audited save path so resolve_mapping's
+    /// checksum + audit-verification gates are exercised exactly as in production.
+    fn save_driver_mapping(conn: &mut Connection, dir: &Path) -> String {
+        let key = keystore::audit_hmac_key(dir).unwrap();
+        let template = validate_mapping_template(MappingTemplateInput {
+            name: "Driver upload".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Month".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Driver".into(),
+                    semantic_target: "driver".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Qty".into(),
+                    semantic_target: "value".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim".into(),
+                dimension_values: "trim".into(),
+                period: "documented".into(),
+            },
+        })
+        .unwrap();
+        persist_mapping(conn, "c-drv", &key, &template).unwrap().0
+    }
+
+    #[test]
+    fn driver_import_persists_values_batch_and_audited_event() {
+        let (mut conn, dir) = driver_seed();
+        let mapping_id = save_driver_mapping(&mut conn, &dir);
+        let file = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,12000\n");
+        let res =
+            driver_import_internal(&mut conn, &dir, "c-drv", &file, &mapping_id, "sc-1").unwrap();
+        assert_eq!(res["data"]["rows"], 1);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM driver_values WHERE source_batch_id = ?1",
+                [res["data"]["batch_id"].as_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        let value: String = conn
+            .query_row("SELECT value_decimal FROM driver_values WHERE driver_id='dr-units' AND period_id='fp-1' AND scenario_id='sc-1'",
+                [], |r| r.get(0)).unwrap();
+        assert_eq!(value, "12000");
+        let action: String = conn
+            .query_row(
+                "SELECT action FROM audit_events WHERE object_type='import_batch' AND object_id=?1",
+                [res["data"]["batch_id"].as_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(action, "driver.import");
+        let kind: String = conn
+            .query_row(
+                "SELECT kind FROM import_batches WHERE id=?1",
+                [res["data"]["batch_id"].as_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kind, "driver_data");
+        let gl: i64 = conn
+            .query_row("SELECT COUNT(*) FROM gl_lines", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(gl, 0, "driver data never lands in gl_lines");
+    }
+
+    #[test]
+    fn driver_import_overwrites_existing_values_like_driver_set_value() {
+        let (mut conn, dir) = driver_seed();
+        conn.execute(
+            "INSERT INTO driver_values (id, driver_id, scenario_id, period_id, value_decimal)
+             VALUES ('dv-0', 'dr-units', 'sc-1', 'fp-1', '100')",
+            [],
+        )
+        .unwrap();
+        let mapping_id = save_driver_mapping(&mut conn, &dir);
+        let file = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,250\n");
+        driver_import_internal(&mut conn, &dir, "c-drv", &file, &mapping_id, "sc-1").unwrap();
+        let value: String = conn
+            .query_row("SELECT value_decimal FROM driver_values WHERE driver_id='dr-units' AND period_id='fp-1' AND scenario_id='sc-1'",
+                [], |r| r.get(0)).unwrap();
+        assert_eq!(value, "250");
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM driver_values", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(total, 1, "upsert, not duplicate");
+    }
+
+    #[test]
+    fn driver_import_enforces_bounds_and_unknown_and_duplicate_names() {
+        let (mut conn, dir) = driver_seed();
+        let mapping_id = save_driver_mapping(&mut conn, &dir);
+        let out_of_bounds = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,999999\n");
+        let err = driver_import_internal(
+            &mut conn,
+            &dir,
+            "c-drv",
+            &out_of_bounds,
+            &mapping_id,
+            "sc-1",
+        )
+        .unwrap_err();
+        assert_eq!(err.body().code, "DRIVER_OUT_OF_BOUNDS");
+
+        let unknown = driver_csv(&dir, "Month,Driver,Qty\n2026-01,nope,5\n");
+        let err = driver_import_internal(&mut conn, &dir, "c-drv", &unknown, &mapping_id, "sc-1")
+            .unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+        assert!(
+            err.body().message.contains("DRIVER_NAME_UNKNOWN"),
+            "{err:?}"
+        );
+
+        let dup = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,1\n2026-01,units,2\n");
+        let err = driver_import_internal(&mut conn, &dir, "c-drv", &dup, &mapping_id, "sc-1")
+            .unwrap_err();
+        assert!(
+            err.body()
+                .message
+                .contains("DRIVER_VALUE_DUPLICATE_IN_BATCH"),
+            "{err:?}"
+        );
+
+        let bad_value = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,1.5.5\n");
+        let err = driver_import_internal(&mut conn, &dir, "c-drv", &bad_value, &mapping_id, "sc-1")
+            .unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+    }
+
+    #[test]
+    fn driver_import_refuses_reimport_of_same_source_and_locked_scenarios() {
+        let (mut conn, dir) = driver_seed();
+        let mapping_id = save_driver_mapping(&mut conn, &dir);
+        let file = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,12000\n");
+        driver_import_internal(&mut conn, &dir, "c-drv", &file, &mapping_id, "sc-1").unwrap();
+        let err = driver_import_internal(&mut conn, &dir, "c-drv", &file, &mapping_id, "sc-1")
+            .unwrap_err();
+        assert_eq!(err.body().code, "IMPORT_BATCH_HASH_EXISTS");
+
+        conn.execute("UPDATE scenarios SET state='locked' WHERE id='sc-1'", [])
+            .unwrap();
+        let file2 = driver_csv(&dir, "Month,Driver,Qty\n2026-01,units,7\n");
+        let err = driver_import_internal(&mut conn, &dir, "c-drv", &file2, &mapping_id, "sc-1")
+            .unwrap_err();
+        assert_eq!(err.body().code, "MODEL_CELL_LOCKED");
+    }
+
+    #[test]
+    fn driver_mapping_targets_are_strictly_validated_at_save_time() {
+        // Exact triple is accepted; GL mixing is refused.
+        let ok = MappingTemplateInput {
+            name: "Driver upload".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Month".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Driver".into(),
+                    semantic_target: "driver".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Qty".into(),
+                    semantic_target: "value".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: MappingNormalizationInput {
+                account_code: "trim".into(),
+                dimension_values: "trim".into(),
+                period: "documented".into(),
+            },
+        };
+        assert!(validate_mapping_template(ok.clone()).is_ok());
+        let mixed = MappingTemplateInput {
+            name: "Mixed".into(),
+            columns: vec![
+                MappingColumnInput {
+                    source_pattern: "Month".into(),
+                    semantic_target: "period".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Driver".into(),
+                    semantic_target: "driver".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Qty".into(),
+                    semantic_target: "value".into(),
+                },
+                MappingColumnInput {
+                    source_pattern: "Acct".into(),
+                    semantic_target: "account_code".into(),
+                },
+            ],
+            sign_convention: "debit_positive".into(),
+            normalization: ok.normalization.clone(),
+        };
+        assert!(validate_mapping_template(mixed).is_err());
     }
 }

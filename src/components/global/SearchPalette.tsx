@@ -46,6 +46,14 @@ const SCREEN_INDEX: { id: string; path: string; fallback: string }[] = [
   { id: "boardpack", path: "/app/reports/boardpack", fallback: "Board Pack" },
   { id: "settings", path: "/app/settings", fallback: "Settings" },
   { id: "wizard", path: "/wizard", fallback: "First-Run Wizard" },
+  // Governance screens (S-070/071/072/073/074) + Help (S-076) — added when the
+  // routes landed; the palette is the only SPA path to some of them.
+  { id: "audit", path: "/app/governance/audit", fallback: "Audit Trail" },
+  { id: "health", path: "/app/governance/health", fallback: "Model Health Check" },
+  { id: "security", path: "/app/governance/security", fallback: "Security" },
+  { id: "license", path: "/app/governance/license", fallback: "License" },
+  { id: "backup", path: "/app/governance/backup", fallback: "Backup & Restore" },
+  { id: "help", path: "/app/help", fallback: "Help & Explainers" },
 ];
 
 function readHistory(): HistoryEntry[] {
