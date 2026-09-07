@@ -40,7 +40,7 @@ export function RouteErrorBoundary() {
       role="alert"
       data-screen-state="error"
       data-testid="route-error-boundary"
-      className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--color-onebg)] p-8"
+      className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--color-oneapp)] p-8"
     >
       <StatePanel state="error" message={userMessage} errorCode={code} />
       <div className="flex flex-wrap items-center justify-center gap-2">

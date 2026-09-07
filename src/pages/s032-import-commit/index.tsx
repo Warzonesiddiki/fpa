@@ -99,7 +99,7 @@ export function ImportCommitPage() {
         >
           {parseExpired && (
             <Link
-              className="text-sm font-medium text-[var(--color-oneaccent)] underline"
+              className="text-sm font-medium text-[var(--color-oneprimary)] underline"
               to="/app/import"
             >
               {t("importCommit.selectAgain")}
@@ -115,7 +115,7 @@ export function ImportCommitPage() {
       <Card title={t("importCommit.title")}>
         <StatePanel state="empty" message={t("importCommit.noRows")}>
           <Link
-            className="text-sm font-medium text-[var(--color-oneaccent)] underline"
+            className="text-sm font-medium text-[var(--color-oneprimary)] underline"
             to="/app/import/map"
           >
             {t("importCommit.returnToMapping")}
@@ -191,7 +191,7 @@ export function ImportCommitPage() {
       {readOnly && (
         <div
           role="alert"
-          className="flex gap-3 rounded-lg border border-[var(--color-onewarning)] bg-[var(--color-onewarningcontainer)] p-4 text-sm text-[var(--color-onewarning)]"
+          className="flex gap-3 rounded-lg border border-[var(--color-onewarning)] bg-[var(--color-onesurfacealt)] p-4 text-sm text-[var(--color-onewarning)]"
         >
           <LockKeyhole aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
           <p>{t("importCommit.readOnly")}</p>
@@ -307,7 +307,7 @@ export function ImportCommitPage() {
                     >
                       <input
                         type="checkbox"
-                        className="mt-1 h-4 w-4 accent-[var(--color-oneaccent)]"
+                        className="mt-1 h-4 w-4 accent-[var(--color-oneprimary)]"
                         checked={draft.selected}
                         onChange={(event) =>
                           updateExclusion(row.line_no, { selected: event.target.checked })
@@ -418,7 +418,7 @@ export function ImportCommitPage() {
                 </p>
                 <Link
                   to="/app/import"
-                  className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--color-oneaccent)] px-4 font-medium text-white"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--color-oneprimary)] px-4 font-medium text-white"
                 >
                   {t("importCommit.success.history")}
                 </Link>

@@ -369,7 +369,7 @@ export function FvaPage({
               id="fva-horizon-select"
               value={horizon}
               onChange={(e) => setHorizon(e.target.value)}
-              className="rounded border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2.5 py-1 text-xs text-[var(--color-onetext)] shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-onebrand)]"
+              className="rounded border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-2.5 py-1 text-xs text-[var(--color-onetext)] shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-oneprimary)]"
             >
               {HORIZON_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -438,8 +438,8 @@ export function FvaPage({
                 key={v.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs cursor-pointer transition-colors select-none ${
                   isChecked
-                    ? "bg-[var(--color-onebrand)]/10 border-[var(--color-onebrand)] text-[var(--color-onetext)] font-medium"
-                    : "bg-[var(--color-onesurface)] border-[var(--color-oneborder)] text-[var(--color-onetextsecondary)] hover:bg-[var(--color-onesurfacehover)]"
+                    ? "bg-[var(--color-oneprimary)]/10 border-[var(--color-oneprimary)] text-[var(--color-onetext)] font-medium"
+                    : "bg-[var(--color-onesurface)] border-[var(--color-oneborder)] text-[var(--color-onetextsecondary)] hover:bg-[var(--color-onesurfacealt)]"
                 }`}
               >
                 <input
@@ -447,7 +447,7 @@ export function FvaPage({
                   checked={isChecked}
                   onChange={() => toggleVersion(v.id)}
                   aria-label={v.name}
-                  className="rounded border-[var(--color-oneborder)] text-[var(--color-onebrand)] focus:ring-0"
+                  className="rounded border-[var(--color-oneborder)] text-[var(--color-oneprimary)] focus:ring-0"
                 />
                 <span>{v.label}</span>
               </label>
@@ -533,7 +533,7 @@ export function FvaPage({
                   type="button"
                   onClick={() => setActiveFormulaModal("mape")}
                   aria-label="Explain MAPE formula and calculation"
-                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacehover)]"
+                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacealt)]"
                 >
                   <HelpCircle className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -556,7 +556,7 @@ export function FvaPage({
                   type="button"
                   onClick={() => setActiveFormulaModal("bias")}
                   aria-label="Explain Bias formula and calculation"
-                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacehover)]"
+                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacealt)]"
                 >
                   <HelpCircle className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -579,7 +579,7 @@ export function FvaPage({
                   type="button"
                   onClick={() => setActiveFormulaModal("hit_rate")}
                   aria-label="Explain Hit Rate formula and calculation"
-                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacehover)]"
+                  className="p-1 rounded text-[var(--color-onetextsecondary)] hover:text-[var(--color-onetext)] hover:bg-[var(--color-onesurfacealt)]"
                 >
                   <HelpCircle className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -598,7 +598,7 @@ export function FvaPage({
             aria-label="By-Line FVA Scores Table"
             className="rounded-lg border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] shadow-sm overflow-hidden"
           >
-            <div className="p-3.5 border-b border-[var(--color-oneborder)] flex items-center justify-between bg-[var(--color-onesurfacehover)]/50">
+            <div className="p-3.5 border-b border-[var(--color-oneborder)] flex items-center justify-between bg-[var(--color-onesurfacealt)]/50">
               <h2 className="text-sm font-semibold text-[var(--color-onetext)]">
                 Scored Lines ({lines.length})
               </h2>
@@ -641,7 +641,7 @@ export function FvaPage({
                   {lines.map((row) => (
                     <tr
                       key={row.line_id}
-                      className="hover:bg-[var(--color-onesurfacehover)]/40 transition-colors"
+                      className="hover:bg-[var(--color-onesurfacealt)]/40 transition-colors"
                     >
                       <td className="p-3 pl-4 font-medium text-[var(--color-onetext)]">
                         {row.line_name}
@@ -677,7 +677,7 @@ export function FvaPage({
             className="rounded-lg border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-4 shadow-sm"
           >
             <div className="flex items-center gap-2 mb-3">
-              <Layers className="w-4 h-4 text-[var(--color-onebrand)]" aria-hidden="true" />
+              <Layers className="w-4 h-4 text-[var(--color-oneprimary)]" aria-hidden="true" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-onetext)]">
                 Business Unit Rollup Strip (Group Only)
               </h2>
@@ -687,7 +687,7 @@ export function FvaPage({
               {buRollups.map((bu) => (
                 <div
                   key={bu.business_unit}
-                  className="rounded border border-[var(--color-oneborder)] bg-[var(--color-onesurfacehover)]/30 p-3 text-xs"
+                  className="rounded border border-[var(--color-oneborder)] bg-[var(--color-onesurfacealt)]/30 p-3 text-xs"
                 >
                   <div className="flex items-center justify-between font-semibold text-[var(--color-onetext)] mb-1">
                     <span>{bu.business_unit}</span>
@@ -754,7 +754,7 @@ export function FvaPage({
                 <span className="font-semibold text-[var(--color-onetextsecondary)] block mb-1">
                   Formula:
                 </span>
-                <code className="block rounded bg-[var(--color-onesurfacehover)] p-2 font-mono text-[11px] text-[var(--color-onebrand)] break-words">
+                <code className="block rounded bg-[var(--color-onesurfacealt)] p-2 font-mono text-[11px] text-[var(--color-oneprimary)] break-words">
                   {FORMULA_EXPLANATIONS[activeFormulaModal].formula}
                 </code>
               </div>

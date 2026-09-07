@@ -208,7 +208,7 @@ export function DriverTablesPage() {
             <span
               className={`rounded-md px-2 py-0.5 font-mono ${
                 coreDriverCount > CORE_DRIVER_ADVISORY_MAX
-                  ? "bg-[var(--color-oneerror)] text-white"
+                  ? "bg-[var(--color-onerror)] text-white"
                   : "bg-[var(--color-onesurfacealt)] text-[var(--color-onetextsecondary)]"
               }`}
             >

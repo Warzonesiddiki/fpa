@@ -407,7 +407,7 @@ export function ComparePage() {
                         row.delta_minor > 0
                           ? "text-[var(--color-onefavorable)]"
                           : row.delta_minor < 0
-                            ? "text-[var(--color-oneerror)]"
+                            ? "text-[var(--color-onerror)]"
                             : ""
                       }`}
                     >

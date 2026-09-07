@@ -284,7 +284,7 @@ export function ScenariosPage() {
       {dialogError && !dialog && (
         <p
           role="alert"
-          className="rounded-md border border-[var(--color-oneerror)] bg-[var(--color-onesurfacealt)] px-3 py-2 text-xs text-[var(--color-onerror)]"
+          className="rounded-md border border-[var(--color-onerror)] bg-[var(--color-onesurfacealt)] px-3 py-2 text-xs text-[var(--color-onerror)]"
         >
           {dialogError}
         </p>

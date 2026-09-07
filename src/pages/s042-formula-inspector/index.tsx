@@ -214,7 +214,7 @@ export function FormulaInspectorPage() {
               </div>
 
               {inspectResult.cycle && inspectResult.cycle.length > 0 && (
-                <div className="rounded-md border border-[var(--color-oneerror)] bg-[var(--color-onesurface)] p-3">
+                <div className="rounded-md border border-[var(--color-onerror)] bg-[var(--color-onesurface)] p-3">
                   <h3 className="mb-1 text-sm font-semibold text-[var(--color-onerror)]">
                     {t("inspectorPage.cyclePath")}
                   </h3>
