@@ -30,6 +30,11 @@ export default defineConfig({
         "src/**/*.bench.{ts,tsx}",
         "src/main.tsx",
         "src/components/ui/index.ts",
+        // Dev-only mock core (B18-3/WS-08): tree-shaken from every production
+        // bundle — it is browser-preview tooling, not product code, so it must not
+        // dilute the product coverage gate. The mock's own contract tests run in
+        // mock.test.ts; this exclusion does NOT change any threshold.
+        "src/api/mock.ts",
       ],
       thresholds: {
         // Stage 3 gate — overall ≥85 lines / 80 branches (CI-CD §2.3); critical gate runs separately
