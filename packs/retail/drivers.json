@@ -10,7 +10,9 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     },
     {
       "key": "conversion",
@@ -22,7 +24,9 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     },
     {
       "key": "aov",
@@ -34,7 +38,9 @@
         "high": "1000000000"
       },
       "default_method": "manual",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     }
   ]
 }

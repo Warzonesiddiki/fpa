@@ -3,8 +3,8 @@
   "pack": {
     "key": "logistics",
     "name": "Logistics",
-    "version": "2.1.0",
-    "description": "Cost per mile, fleet utilization, on-time delivery, DSO — fleet and network operations.",
+    "version": "2.1.1",
+    "description": "Cost per mile, fleet utilization, on-time delivery, DSO \u2014 fleet and network operations.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

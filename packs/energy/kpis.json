@@ -4,41 +4,61 @@
       "key": "tariff_recovery",
       "name": "Tariff Recovery %",
       "unit": "pct",
+      "formula": "tariff * volume_mwh / revenue * 100",
       "target": {
         "value": 97,
         "direction": "gte"
       },
-      "definition": "Tariff Recovery % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Tariff Recovery % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 95,
+        "watch": 85
+      }
     },
     {
       "key": "availability",
       "name": "Plant Availability %",
       "unit": "pct",
+      "formula": "volume_mwh / volume_mwh_py * 100",
       "target": {
         "value": 88,
         "direction": "gte"
       },
-      "definition": "Plant Availability % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Plant Availability % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 95,
+        "watch": 90
+      }
     },
     {
       "key": "cost_per_mwh",
       "name": "Cost per MWh",
       "unit": "money",
+      "formula": "cogs / volume_mwh",
       "target": {
         "value": 42,
         "direction": "gte"
       },
-      "definition": "Cost per MWh — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cost per MWh \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 40,
+        "watch": 55
+      }
     },
     {
       "key": "hedge_ratio",
       "name": "Hedge Ratio %",
       "unit": "pct",
+      "formula": "cogs / (tariff * volume_mwh) * 100",
       "target": {
         "value": 70,
         "direction": "gte"
       },
-      "definition": "Hedge Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Hedge Ratio % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 100,
+        "watch": 110
+      }
     }
   ]
 }

@@ -3,8 +3,8 @@
   "pack": {
     "key": "energy",
     "name": "Energy",
-    "version": "2.1.0",
-    "description": "Tariff recovery, plant availability, cost per MWh, hedge ratio — generation and trading.",
+    "version": "2.1.1",
+    "description": "Tariff recovery, plant availability, cost per MWh, hedge ratio \u2014 generation and trading.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

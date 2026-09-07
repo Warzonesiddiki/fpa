@@ -4,41 +4,61 @@
       "key": "budget_execution",
       "name": "Budget Execution %",
       "unit": "pct",
+      "formula": "cogs / appropriation * 100",
       "target": {
         "value": 92,
         "direction": "gte"
       },
-      "definition": "Budget Execution % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Budget Execution % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 95,
+        "watch": 85
+      }
     },
     {
       "key": "encumbrance",
       "name": "Encumbrance %",
       "unit": "pct",
+      "formula": "(appropriation - cogs) / appropriation * 100",
       "target": {
         "value": 12,
         "direction": "gte"
       },
-      "definition": "Encumbrance % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Encumbrance % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 15,
+        "watch": 5
+      }
     },
     {
       "key": "program_spend",
       "name": "Program Spend %",
       "unit": "pct",
+      "formula": "(revenue - opex) / revenue * 100",
       "target": {
         "value": 68,
         "direction": "gte"
       },
-      "definition": "Program Spend % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Program Spend % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 80,
+        "watch": 70
+      }
     },
     {
       "key": "timely_close",
       "name": "Timely Close %",
       "unit": "pct",
+      "formula": "revenue / (revenue + opex) * 100",
       "target": {
         "value": 90,
         "direction": "gte"
       },
-      "definition": "Timely Close % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Timely Close % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 95,
+        "watch": 90
+      }
     }
   ]
 }

@@ -4,41 +4,61 @@
       "key": "noi",
       "name": "Net Operating Income",
       "unit": "money",
+      "formula": "gross_profit - opex",
       "target": {
         "value": 3800000,
         "direction": "gte"
       },
-      "definition": "Net Operating Income — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Net Operating Income \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 500000,
+        "watch": 400000
+      }
     },
     {
       "key": "cap_rate",
       "name": "Cap Rate %",
       "unit": "pct",
+      "formula": "(gross_profit - opex) / revenue * 100",
       "target": {
         "value": 6.5,
         "direction": "gte"
       },
-      "definition": "Cap Rate % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cap Rate % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 6,
+        "watch": 4
+      }
     },
     {
       "key": "occupancy",
       "name": "Occupancy %",
       "unit": "pct",
+      "formula": "occupancy * 100",
       "target": {
         "value": 92,
         "direction": "gte"
       },
-      "definition": "Occupancy % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Occupancy % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 92,
+        "watch": 85
+      }
     },
     {
       "key": "rent_roll",
       "name": "Rent Roll",
       "unit": "money",
+      "formula": "rent_psi * occupancy",
       "target": {
         "value": 9200000,
         "direction": "gte"
       },
-      "definition": "Rent Roll — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Rent Roll \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 500000,
+        "watch": 450000
+      }
     }
   ]
 }

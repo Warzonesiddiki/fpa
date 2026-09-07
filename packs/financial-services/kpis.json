@@ -4,41 +4,61 @@
       "key": "nim",
       "name": "Net Interest Margin %",
       "unit": "pct",
+      "formula": "revenue / aum * 100",
       "target": {
         "value": 3.2,
         "direction": "gte"
       },
-      "definition": "Net Interest Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Net Interest Margin % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 3,
+        "watch": 2
+      }
     },
     {
       "key": "mlr",
       "name": "Medical Loss Ratio (insurance) %",
       "unit": "pct",
+      "formula": "(cogs + opex) / revenue * 100",
       "target": {
         "value": 82,
         "direction": "gte"
       },
-      "definition": "Medical Loss Ratio (insurance) % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Medical Loss Ratio (insurance) % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 85,
+        "watch": 92
+      }
     },
     {
       "key": "loss_ratio",
       "name": "Loss Ratio %",
       "unit": "pct",
+      "formula": "cogs / revenue * 100",
       "target": {
         "value": 62,
         "direction": "gte"
       },
-      "definition": "Loss Ratio % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Loss Ratio % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 60,
+        "watch": 70
+      }
     },
     {
       "key": "cost_income",
       "name": "Cost/Income %",
       "unit": "pct",
+      "formula": "opex / revenue * 100",
       "target": {
         "value": 58,
         "direction": "gte"
       },
-      "definition": "Cost/Income % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cost/Income % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 55,
+        "watch": 65
+      }
     }
   ]
 }

@@ -4,41 +4,61 @@
       "key": "inventory_turns",
       "name": "Inventory Turns",
       "unit": "x",
+      "formula": "cogs / (material_price * units)",
       "target": {
         "value": 6,
         "direction": "gte"
       },
-      "definition": "Inventory Turns — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Inventory Turns \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 8,
+        "watch": 5
+      }
     },
     {
       "key": "oee",
       "name": "OEE %",
       "unit": "pct",
+      "formula": "(1 - scrap_pct) * units / units_py * 100",
       "target": {
         "value": 78,
         "direction": "gte"
       },
-      "definition": "OEE % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "OEE % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 85,
+        "watch": 75
+      }
     },
     {
       "key": "cost_variance",
       "name": "Standard Cost Variance %",
       "unit": "pct",
+      "formula": "material_price * units / cogs * 100",
       "target": {
         "value": 2,
         "direction": "gte"
       },
-      "definition": "Standard Cost Variance % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Standard Cost Variance % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 100,
+        "watch": 110
+      }
     },
     {
       "key": "gross_margin_pct",
       "name": "Gross Margin %",
       "unit": "pct",
+      "formula": "gross_profit / revenue * 100",
       "target": {
         "value": 38,
         "direction": "gte"
       },
-      "definition": "Gross Margin % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Gross Margin % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 35,
+        "watch": 25
+      }
     }
   ]
 }

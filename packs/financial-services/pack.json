@@ -3,8 +3,8 @@
   "pack": {
     "key": "financial-services",
     "name": "Financial Services",
-    "version": "2.1.0",
-    "description": "Net interest margin, loss ratio, cost/income, medical loss ratio — balance sheet and underwriting.",
+    "version": "2.1.1",
+    "description": "Net interest margin, loss ratio, cost/income, medical loss ratio \u2014 balance sheet and underwriting.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

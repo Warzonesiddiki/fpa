@@ -3,8 +3,8 @@
   "pack": {
     "key": "real-estate",
     "name": "Real Estate",
-    "version": "2.1.0",
-    "description": "Net operating income, cap rate, occupancy, rent roll — property operations and valuations.",
+    "version": "2.1.1",
+    "description": "Net operating income, cap rate, occupancy, rent roll \u2014 property operations and valuations.",
     "default_calendar": "12month",
     "default_currency_hint": "USD",
     "locale_hint": "en-US"

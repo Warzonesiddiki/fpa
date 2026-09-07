@@ -4,41 +4,61 @@
       "key": "cost_per_patient",
       "name": "Cost per Patient",
       "unit": "money",
+      "formula": "(cogs + opex) / volume",
       "target": {
         "value": 2400,
         "direction": "gte"
       },
-      "definition": "Cost per Patient — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Cost per Patient \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 4500,
+        "watch": 6000
+      }
     },
     {
       "key": "days_ar",
       "name": "Net Days in AR",
       "unit": "days",
+      "formula": "reimbursement / (revenue / 365)",
       "target": {
         "value": 42,
         "direction": "gte"
       },
-      "definition": "Net Days in AR — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Net Days in AR \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 45,
+        "watch": 60
+      }
     },
     {
       "key": "denial_rate",
       "name": "Denial Rate %",
       "unit": "pct",
+      "formula": "(revenue - reimbursement) / revenue * 100",
       "target": {
         "value": 8,
         "direction": "gte"
       },
-      "definition": "Denial Rate % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Denial Rate % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 5,
+        "watch": 10
+      }
     },
     {
       "key": "payer_mix_pct",
       "name": "Payer Mix (commercial) %",
       "unit": "pct",
+      "formula": "reimbursement / revenue * 100",
       "target": {
         "value": 55,
         "direction": "gte"
       },
-      "definition": "Payer Mix (commercial) % — rendered in the in-app KPI explainer (D-008) with formula and bounds."
+      "definition": "Payer Mix (commercial) % \u2014 rendered in the in-app KPI explainer (D-008) with formula and bounds.",
+      "bands": {
+        "good": 70,
+        "watch": 60
+      }
     }
   ]
 }

@@ -2,7 +2,7 @@
   "drivers": [
     {
       "key": "reps_quota",
-      "name": "Reps × quota",
+      "name": "Reps \u00d7 quota",
       "type": "volume_x_rate",
       "unit": "units",
       "bounds": {
@@ -10,7 +10,9 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     },
     {
       "key": "churn",
@@ -22,7 +24,9 @@
         "high": "1000000000"
       },
       "default_method": "seasonal",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     },
     {
       "key": "arpu",
@@ -34,7 +38,9 @@
         "high": "1000000000"
       },
       "default_method": "manual",
-      "links": []
+      "links": [
+        "revenue"
+      ]
     }
   ]
 }
