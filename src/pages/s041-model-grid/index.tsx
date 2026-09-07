@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ArrowDown,
@@ -104,6 +104,7 @@ export function ModelGridPage() {
   // Params are consumed on arrival (URL rewritten clean) so a later refresh never re-triggers.
   // Read-only view of the drill params; consumption rewrites the URL via history
   // (no router-state cascade). The armed drill itself lives in the model store.
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const drillLine = searchParams.get("line");
   const drillScenario = searchParams.get("scenario");
@@ -132,17 +133,24 @@ export function ModelGridPage() {
     if (drillScenario && drillScenario !== scenarioId) void setScenario(drillScenario);
   }, [drillScenario, scenarioId, setScenario]);
 
+  // Arm on every NEW navigation that carries the params (location identity — so
+  // clicking the same S-071 finding twice re-arms; primitive-value deps would not).
   useEffect(() => {
     if (drillLine && drillPeriod) armDrill({ lineId: drillLine, periodId: drillPeriod });
-  }, [drillLine, drillPeriod, armDrill]);
+  }, [location, drillLine, drillPeriod, armDrill]);
 
+  // Land at most once per armed drill: the effect is keyed on `drillTarget`, which
+  // the landing lifecycle clears (target-cell focus event, stale link, or user
+  // pointerdown). Router params deliberately outlive the URL strip in router
+  // memory — guarding on the store, not on `searchParams`, is what stops a
+  // later status/lines change (e.g. the first edit) from re-stealing focus.
   useEffect(() => {
-    if (!drillLine || !drillPeriod) return;
+    if (!drillTarget) return;
     // Grid shows on "success" (post-load) or "populated" (post-edit) — match that.
     if (status !== "success" && status !== "populated") return;
     if (lines.length === 0 || periods.length === 0) return;
-    const rowIdx = lines.findIndex((l) => l.id === drillLine);
-    const colIdx = periods.findIndex((p) => p.id === drillPeriod);
+    const rowIdx = lines.findIndex((l) => l.id === drillTarget.lineId);
+    const colIdx = periods.findIndex((p) => p.id === drillTarget.periodId);
     if (rowIdx < 0 || colIdx < 0) {
       // The finding's line/period no longer exists in this Model — drop the stale
       // link instead of landing somewhere fabricated.
@@ -152,16 +160,15 @@ export function ModelGridPage() {
     }
     const api = gridApiRef.current;
     if (!api) return; // wait for onGridReady (gridReady below re-runs this effect)
-    setActiveCell(drillLine, drillPeriod);
+    setActiveCell(drillTarget.lineId, drillTarget.periodId);
     api.ensureIndexVisible(rowIdx, "middle");
-    api.ensureColumnVisible(`p-${drillPeriod}`, "middle");
-    api.setFocusedCell(rowIdx, `p-${drillPeriod}`);
+    api.ensureColumnVisible(`p-${drillTarget.periodId}`, "middle");
+    api.setFocusedCell(rowIdx, `p-${drillTarget.periodId}`);
     const rowNode = api.getRowNode(String(rowIdx));
-    if (rowNode) api.flashCells({ rowNodes: [rowNode], columns: [`p-${drillPeriod}`] });
+    if (rowNode) api.flashCells({ rowNodes: [rowNode], columns: [`p-${drillTarget.periodId}`] });
     consumeDrillParams();
   }, [
-    drillLine,
-    drillPeriod,
+    drillTarget,
     status,
     lines,
     periods,
