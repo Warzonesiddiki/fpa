@@ -165,6 +165,13 @@ interface ModelGridState {
   client: ModelEngineClient | null;
   /** Active (selected) cell — drives the formula bar and paste anchoring. */
   active: { lineId: string; periodId: string } | null;
+  /**
+   * Deep-link drill target (S-071 health "→ cell" → S-041): armed from
+   * `/app/model/grid?line=…&period=…`, cleared when the target cell takes focus,
+   * the link proves stale, or the user interacts. While set, the grid suppresses
+   * its default first-cell focus so the finding's cell wins.
+   */
+  drillTarget: { lineId: string; periodId: string } | null;
   /** Current selection rectangle (anchor × focus); `null` when nothing is selected. */
   selection: SelectionRect | null;
   /** In-memory edit history (M3-9 undo/redo). */
@@ -181,6 +188,10 @@ interface ModelGridState {
   reset: () => void;
   /** Select a single cell (collapse any range selection to it). */
   setActiveCell: (lineId: string, periodId: string) => void;
+  /** Arm the S-071 deep-link drill target (see `drillTarget`). */
+  armDrill: (target: { lineId: string; periodId: string }) => void;
+  /** Disarm the deep-link drill (focus landed / stale link / user interaction). */
+  clearDrill: () => void;
   /** Shift+click / extend: grow the selection to include `lineId:periodId`. */
   extendSelection: (lineId: string, periodId: string) => void;
   /** Arrow-key navigation: move the active cell by a (line, period) delta, collapse selection. */
@@ -269,11 +280,15 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   scenarioId: WORKING_SCENARIO_ID,
   client: null,
   active: null,
+  drillTarget: null,
   selection: null,
   history: new History(),
   canUndo: false,
   canRedo: false,
   spreadError: null,
+
+  armDrill: (target) => set({ drillTarget: target }),
+  clearDrill: () => set({ drillTarget: null }),
 
   load: async () => {
     set({ status: "loading", error: null, spreadError: null });
@@ -847,6 +862,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       auditId: null,
       client: null,
       active: null,
+      drillTarget: null,
       selection: null,
       history: new History(),
       canUndo: false,

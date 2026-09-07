@@ -283,6 +283,69 @@ describe("S-041 Model Grid (F-012)", () => {
   });
 });
 
+describe("S-041 Model Grid - S-071 health drill deep link", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    useModelGridStore.getState().reset();
+    useSettingsStore.setState({
+      preferences: {
+        ...createDefaultSettings("en-US"),
+        displayThousands: false,
+        displayDecimals: "2",
+      },
+    });
+  });
+
+  function renderWithSearchParams(query: string) {
+    return render(
+      <main>
+        <MemoryRouter initialEntries={[`/app/model/grid?${query}`]}>
+          <Routes>
+            <Route path="/app/model/grid" element={<ModelGridPage />} />
+          </Routes>
+        </MemoryRouter>
+      </main>,
+    );
+  }
+
+  it("focuses the named cell and consumes the params once the grid has data", async () => {
+    mockLoad();
+    const { container } = renderWithSearchParams(
+      `line=${LINE}&scenario=3f9f2c9e-9f8b-4e2d-9a1c-400000000003&period=fp-2026-p02`,
+    );
+    await waitForGridCell(container);
+    // AG Grid + the in-process HyperFormula graph settle asynchronously (~1.5s in
+    // jsdom) — same budget as the rest of this suite.
+    await waitFor(
+      () => {
+        // The active cell (drives the formula bar) is the finding's line × period.
+        expect(useModelGridStore.getState().active).toEqual({
+          lineId: LINE,
+          periodId: "fp-2026-p02",
+        });
+      },
+      { timeout: 8000 },
+    );
+    // Params are consumed after the drill so a refresh never re-triggers it.
+    await waitFor(() => {
+      expect(window.location.search).toBe("");
+    });
+  }, 20000);
+
+  it("drops a stale link whose line no longer exists instead of landing on fabricated data", async () => {
+    mockLoad();
+    const { container } = renderWithSearchParams(`line=deleted-line&period=fp-2026-p02`);
+    await waitForGridCell(container);
+    await waitFor(() => {
+      expect(window.location.search).toBe("");
+    });
+    // The stale target never becomes the active cell (AG Grid keeps its own default focus).
+    const active = useModelGridStore.getState().active;
+    expect(active?.lineId ?? "").not.toBe("deleted-line");
+  }, 20000);
+});
+
 describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
   beforeEach(() => {
     callMock.mockReset();
