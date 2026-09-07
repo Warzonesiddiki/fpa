@@ -118,9 +118,13 @@ for (const [prefix, governing] of validatorPrefixes)
     err(
       `ERROR-HANDLING 2B: prefix ${prefix} cites governing code ${governing}, which §2 does not define`,
     );
-if (validatorPrefixes.size !== 9)
+// 14 = 7 import-row validators + 5 command-argument validators (batch name,
+// rollback reason, company-delete reason) + IMPORT_KIND_DESTINATION_UNAVAILABLE
+// + the INVALID_ARGUMENT note. Bump only when a prefix is added/dropped
+// deliberately alongside its Rust assertion.
+if (validatorPrefixes.size !== 14)
   err(
-    `ERROR-HANDLING 2B: expected 9 validator prefixes, parsed ${validatorPrefixes.size} — the section format changed`,
+    `ERROR-HANDLING 2B: expected 14 validator prefixes, parsed ${validatorPrefixes.size} — the section format changed`,
   );
 const citations = (text) => {
   const out = new Set();

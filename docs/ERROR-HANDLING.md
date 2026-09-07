@@ -188,6 +188,11 @@ when its governing code exists in §2.
 - `OPENING_PERIOD_MIXED` → **OPENING_ALREADY_SET** · `import.rs:1754` (hard) · one period per opening batch
 - `OPENING_ACCOUNT_DUPLICATE` → **OPENING_ALREADY_SET** · `import.rs:1773` (hard) · account/period pair repeats
 - `IMPORT_KIND_DESTINATION_UNAVAILABLE` → **VALUE_INVALID** · `import.rs:2372` (command error) · Import kind that does not post to the GL and has no destination pipeline
+- `BATCH_NAME_REQUIRED` → **VALUE_INVALID** · `import.rs:2378` (command error) · `import.commit_batch` name blank after trim (mock mirrors at `mock.ts` `importCommitBatch`)
+- `BATCH_NAME_TOO_LONG` → **VALUE_INVALID** · `import.rs:2382` (command error) · name over 120 characters
+- `ROLLBACK_REASON_REQUIRED` → **VALUE_INVALID** · `import.rs:2718` (command error) · `import.rollback` reason blank — the audit trail needs a reason
+- `ROLLBACK_REASON_TOO_LONG` → **VALUE_INVALID** · `import.rs:2723` (command error) · reason over 500 characters
+- `COMPANY_DELETE_REASON_REQUIRED` → **VALUE_INVALID** · `company.rs:903` (command error) · `company.delete` reason blank — deletion audit event needs a reason
 
 `INVALID_ARGUMENT` is **not** a prefix and not a code: it is the Rust variant `AppError::InvalidArgument`, which
 `core/error.rs:168` serializes as **`VALUE_INVALID` (422, not retryable)**.

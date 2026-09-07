@@ -282,7 +282,7 @@ export function SheetsManagerPage() {
   const promptDelete = (sheetId: string) => {
     if (sheets.length <= 1) {
       setErrorMessage("Workbook must contain at least 1 sheet. Cannot delete the only sheet.");
-      setErrorCode("SHEET_DELETE_MINIMUM_REQUIRED");
+      setErrorCode("VALUE_INVALID");
       return;
     }
     setDeletingSheetId(sheetId);
@@ -469,7 +469,7 @@ export function SheetsManagerPage() {
           onClick={() => {
             setState("error");
             setErrorMessage("Failed to synchronize workbook sheets from model database.");
-            setErrorCode("MODEL_SHEET_LOAD_FAILED");
+            setErrorCode("INTERNAL");
           }}
         >
           Error
@@ -498,7 +498,7 @@ export function SheetsManagerPage() {
         <StatePanel
           state="error"
           message={errorMessage || "An error occurred while managing workbook sheets."}
-          errorCode={errorCode || "SHEET_OPERATION_ERROR"}
+          errorCode={errorCode || "INTERNAL"}
           onRetry={handleResetDefault}
         />
       )}

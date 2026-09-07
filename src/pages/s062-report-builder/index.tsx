@@ -261,7 +261,7 @@ export function ReportBuilderPage() {
               <StatePanel
                 state="error"
                 message={errorMessage || "Unable to render layout."}
-                errorCode="LAYOUT_ERROR"
+                errorCode="LAYOUT_INVALID"
               />
               {brokenRefCount > 0 && (
                 <div className="flex items-center justify-between rounded border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
