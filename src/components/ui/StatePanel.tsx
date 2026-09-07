@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useInRouterContext } from "react-router-dom";
 import { Button } from "./Button";
 import { Loader2, AlertTriangle, Inbox, CircleCheck, Layers } from "lucide-react";
 
@@ -67,6 +67,7 @@ export function StatePanel({
   children,
 }: StatePanelProps) {
   const { t } = useTranslation();
+  const inRouter = useInRouterContext();
   const { icon: Icon, label, tone, aria } = config[state];
   const labelText =
     label === "Loading…" ? t("common.loading") : label === "Done" ? t("common.success") : label;
@@ -83,16 +84,23 @@ export function StatePanel({
         className={`h-8 w-8 ${state === "loading" ? "animate-spin" : ""} ${tone}`}
       />
       <p className="text-sm font-medium text-[var(--color-onetext)]">{message ?? labelText}</p>
-      {errorCode && (
-        <Link
-          to={`/app/help/errors?q=${encodeURIComponent(errorCode)}`}
-          aria-label={t("errors.lookup")}
-          title={t("errors.lookup")}
-          className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)] underline-offset-2 hover:text-[var(--color-onetext)] hover:underline"
-        >
-          {t("errors.code", { code: errorCode })}
-        </Link>
-      )}
+      {errorCode &&
+        (inRouter ? (
+          <Link
+            to={`/app/help/errors?q=${encodeURIComponent(errorCode)}`}
+            aria-label={t("errors.lookup")}
+            title={t("errors.lookup")}
+            className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)] underline-offset-2 hover:text-[var(--color-onetext)] hover:underline"
+          >
+            {t("errors.code", { code: errorCode })}
+          </Link>
+        ) : (
+          // Isolated/unit renders without a Router (react-router's own escape hatch:
+          // useInRouterContext). In the app every panel is inside RouterProvider.
+          <p className="rounded bg-[var(--color-onesurfacealt)] px-2 py-1 font-mono text-xs text-[var(--color-onetextsecondary)]">
+            {t("errors.code", { code: errorCode })}
+          </p>
+        ))}
       {state === "error" && onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
           {t("common.retry")}
