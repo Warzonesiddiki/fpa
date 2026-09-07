@@ -1002,32 +1002,91 @@ mod validate_tests {
     }
 
     /// The §17 gate agrees with the repo gate on the real bundled packs: every one of the
-    /// 12 must validate with zero blocking errors (the file tree IS the fixture — no copy).
+    /// Post-WS-10: all 12 bundled packs must validate with zero errors AND zero warnings.
     #[test]
-    fn all_bundled_packs_validate_with_zero_errors() {
+    fn all_bundled_packs_validate_with_zero_errors_and_zero_warnings() {
         for k in BUNDLED_KEYS {
-            let (errors, _) = validate_pack_dir(&packs_root().join(k));
+            let (errors, warnings) = validate_pack_dir(&packs_root().join(k));
             assert!(
                 errors.is_empty(),
-                "bundled pack '{k}' must pass pack.validate: {errors:?}"
+                "bundled pack '{k}' must pass pack.validate with zero errors: {errors:?}"
+            );
+            assert!(
+                warnings.is_empty(),
+                "bundled pack '{k}' must pass pack.validate with zero warnings post-WS-10: {warnings:?}"
             );
         }
     }
 
-    /// Legacy-pack warning tier: the bundled packs carry no driver links and no KPI
-    /// formula/bands (§8 debts) — the warnings must surface, not be silently dropped.
+    /// Pack warning tier: drivers without links and KPIs without formula/bands must warn.
     #[test]
-    fn bundled_packs_surface_legacy_warning_tier() {
-        let (errors, warnings) = validate_pack_dir(&packs_root().join("saas"));
-        assert!(errors.is_empty());
+    fn unlinked_driver_and_missing_formula_surface_warnings() {
+        let dir = std::env::temp_dir().join("onefpa-pack-validate-warnings");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("pack.json"),
+            r#"{
+                "schema_version": "1.0.0",
+                "pack": { "key": "onefpa-pack-validate-warnings", "name": "X", "version": "1.0.0", "description": "d", "locale_hint": "en-US" },
+                "coa_template": "coa.json",
+                "kpi_definitions": "kpis.json",
+                "driver_templates": "drivers.json",
+                "report_layouts": "layouts.json",
+                "gl_template": "gl.json",
+                "group_rollup_maps": "rollup.json"
+            }"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("coa.json"),
+            r#"{ "accounts": [
+                {"code":"1000","name":"Cash","type":"asset","section":"Assets"},
+                {"code":"2000","name":"AP","type":"liability","section":"Liabilities"},
+                {"code":"3000","name":"Equity","type":"equity","section":"Equity"},
+                {"code":"4000","name":"Rev","type":"revenue","section":"Revenue"},
+                {"code":"5000","name":"Cogs","type":"cogs","section":"COGS"}
+            ] }"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("kpis.json"),
+            r#"{ "kpis": [
+                {"key":"k1","definition":"d","target":{"value":"1"}},
+                {"key":"k2","definition":"d","target":{"value":"1"}},
+                {"key":"k3","definition":"d","target":{"value":"1"}},
+                {"key":"k4","definition":"d","target":{"value":"1"}}
+            ] }"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("drivers.json"),
+            r#"{ "drivers": [
+                {"key":"d1","type":"manual","bounds":{"low":"0","high":"10"},"links":[]},
+                {"key":"d2","type":"manual","bounds":{"low":"0","high":"10"},"links":[]},
+                {"key":"d3","type":"manual","bounds":{"low":"0","high":"10"},"links":[]}
+            ] }"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("layouts.json"),
+            r#"{ "layouts": [ {"key":"L","rows":["Revenue"],"columns":[{"type":"period"}]} ] }"#,
+        )
+        .unwrap();
+        fs::write(dir.join("gl.json"), r#"{ "columns": {"date":"A"} }"#).unwrap();
+        fs::write(dir.join("rollup.json"), r#"{}"#).unwrap();
+
+        let (errors, warnings) = validate_pack_dir(&dir);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert!(
             warnings.iter().any(|w| w.contains("has no links")),
-            "saas drivers must warn on missing links: {warnings:?}"
+            "drivers must warn on missing links: {warnings:?}"
         );
         assert!(
             warnings.iter().any(|w| w.contains("formula missing")),
-            "saas KPIs must warn on missing formula: {warnings:?}"
+            "KPIs must warn on missing formula: {warnings:?}"
         );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// A directory without pack.json is a blocking error in the payload, not a throw.
@@ -1233,7 +1292,7 @@ mod install_tests {
 
         let pack_id = data["pack_id"].as_str().unwrap();
         let version = data["version"].as_str().unwrap();
-        assert_eq!(version, "2.1.0");
+        assert_eq!(version, "2.1.1");
 
         // packs row: user-built flag, checksum = sha256 of pack.json bytes.
         let (is_bundled, stored_checksum): (i64, String) = conn
@@ -1284,9 +1343,12 @@ mod install_tests {
             .unwrap();
         assert!(coa_payload.contains("accounts"));
 
-        // Warnings ride the payload (saas carries legacy §8 debts).
+        // Warnings ride the payload (post-WS-10 re-issue: saas carries 0 warnings).
         let warnings = data["warnings"].as_array().unwrap();
-        assert!(!warnings.is_empty());
+        assert!(
+            warnings.is_empty(),
+            "post-WS-10 saas has 0 warnings: {warnings:?}"
+        );
 
         // Audit event on the Company chain (B7).
         let audits: i64 = conn

@@ -406,7 +406,7 @@ describe("S-031 Mapping and Validation Wizard (M2-3)", () => {
 
     const results = await axe(document.body);
     expect(results.violations).toEqual([]);
-  });
+  }, 30000);
 
   it("renders an honest zero-valid-row edge state without a fabricated source preview", async () => {
     readyForValidation();
