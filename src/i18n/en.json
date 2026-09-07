@@ -135,7 +135,21 @@
     "alerts": "Alerts",
     "backup": "Backup",
     "license": "License",
-    "version": "v"
+    "version": "v",
+    "errorLog": {
+      "bannerTitle": "Repeated errors",
+      "moreGroups": "+{{count}} more",
+      "viewLog": "View error log",
+      "hideLog": "Hide error log",
+      "logCaption": "In-session error log: repeated typed errors in the last minute with meaning, count, and last-seen time.",
+      "colCode": "Code",
+      "colMeaning": "What it means",
+      "colCount": "Count",
+      "colLastSeen": "Last seen",
+      "timesInLastMinute": "{{count}}× in the last minute",
+      "dismiss": "Dismiss",
+      "dismissGroup": "Dismiss {{code}}"
+    }
   },
   "importHub": {
     "title": "Import Hub",
@@ -985,7 +999,11 @@
   "errors": {
     "code": "{{code}}",
     "unknown": "An unexpected error occurred. Please try again.",
-    "lookup": "Look up this code in Help"
+    "lookup": "Look up this code in Help",
+    "boundaryMessage": "This screen failed to render. Your data is safe — reload, or recover to the Dashboard.",
+    "boundaryReload": "Reload",
+    "boundaryRecover": "Recover to Dashboard",
+    "boundaryHelp": "Error reference"
   },
   "driversPage": {
     "title": "Driver Tables",

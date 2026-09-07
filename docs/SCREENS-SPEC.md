@@ -40,7 +40,7 @@
 **Elements:** Sidebar (Company switcher, Dashboard, Data, Model, Plan, Analyze, Reports, Governance, Settings; collapsible), top bar (Company name, Global Search, Alerts bell, Theme, Backup indicator, Sync/Connector status), status bar (last snapshot, license, version).
 - **Loading:** skeleton shell.
 - **Empty:** n/a.
-- **Error:** shell-level ErrorBoundary with recover/reload.
+- **Error:** shell-level ErrorBoundary with recover/reload; hosts the ERROR-HANDLING §3.7 aggregation banner (5+ identical errors in 1 min → collapsed banner + expandable in-session error log).
 - **Success:** route renders.
 - **Populated:** Company menu + badges (alerts count, pending imports).
 

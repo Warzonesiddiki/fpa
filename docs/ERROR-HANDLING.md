@@ -221,11 +221,11 @@ left in `CHANGELOG.md`/`DECISIONS.md` are dated history and must not be rewritte
 ## 3. UI RENDERING RULES
 
 1. `httpStatus 401/403` → lock/license UX (never a generic toast).
-2. `retryable=true` → button + countdown (`retryAfterMs`); auto-retry only for idempotent reads (max 2).
+2. `retryable=true` → button + countdown (`retryAfterMs`); auto-retry only for idempotent reads (max 2). **Countdown note (2026-09-07):** the only envelope that ever carries a non-null `retryAfterMs` today is `AUTH_LOCKED` (Rust `session.rs` lockout) and S-001 renders its live countdown there (KI-013); StatePanel shows the plain Retry button when `retryAfterMs` is null — a generic countdown with no producer would be unreachable UI, so it is deliberately not built.
 3. `422` → inline field-level or dialog-level errors with `details`; form stays open with user input intact.
 4. Toast only for transient (success/info); errors on destructive actions render in Modal/D-004 context.
 5. Every error code is documented in-app (Help → "Error reference") — users never see raw `message`. **Built (S-076):** the "Errors" tab at `/app/help/errors` renders all §2 codes (meaning/HTTP/retry) from the generated `errorCatalog.ts` (`npm run errors:catalog`; sync-enforced by docs:verify 7e), and every StatePanel code chip links straight to its entry via `?q=`.
 6. Errors are logged to Local Diagnostics with redaction (no money, no secrets, no paths with user names when removable).
-7. Aggregation: 5+ identical errors in 1 min → collapsed banner + link to error log.
+7. Aggregation: 5+ identical errors in 1 min → collapsed banner + link to error log. **Built (S-004 shell):** the API bridge feeds an in-session log (`stores/errorLog.ts` — code + catalog `userMessage` only, B18-redaction-safe) and the shell's `ErrorAggregationBanner` collapses at the threshold with an expandable log view; the persistent redacted log remains the native `app.diagnostics.export` (S-075 native gate).
 
 *Referenced by: API-SPEC.md, QA-CHECKLIST.md, SECURITY-CHECKLIST.md, CLAUDE.md.*

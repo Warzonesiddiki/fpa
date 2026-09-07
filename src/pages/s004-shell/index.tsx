@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, NavLink } from "react-router-dom";
+import { ErrorAggregationBanner } from "@/components/global/ErrorAggregationBanner";
 import {
   LayoutDashboard,
   Database,
@@ -53,6 +54,9 @@ export function ShellPage() {
           </span>
         </div>
       )}
+      {/* ERROR-HANDLING §3 rule 7: 5+ identical errors in 1 min → collapsed
+          banner + expandable in-session error log (fed by the API bridge). */}
+      <ErrorAggregationBanner />
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-oneborder)] bg-[var(--color-onesurface)] px-4">
         <span className="truncate text-sm font-medium text-[var(--color-onetext)]">
           {companyName ?? t("shell.companyUnknown")}
