@@ -5,7 +5,7 @@ import {
   type CommandInput,
   type CommandName,
 } from "./schema";
-import { mockInvoke, isTauriRuntime } from "./mock";
+import { isTauriRuntime } from "./runtime";
 
 export interface BridgeError {
   code: string;
@@ -69,10 +69,16 @@ export async function call<C extends CommandName>(
     });
   }
 
-  /** Works in the Tauri shell; in the browser dev preview (`npm run dev`) the mock core answers (B18-3: dev-only). */
+  /**
+   * Dev-only mock core (B18-3/B18-7): answers ONLY in the browser dev preview.
+   * Static `import.meta.env.DEV` guard lets Rollup dead-code-eliminate the dynamic
+   * `import("./mock")` in production builds — the ~4,600-line mock (sample data,
+   * fake handlers) is fully tree-shaken out of every shipped bundle (WS-08).
+   * The real app always runs inside Tauri, where `invoke` answers.
+   */
   const data = isTauriRuntime()
     ? await invoke(command, parsed.data as never)
-    : await mockInvoke(command, parsed.data as CommandInput<C>);
+    : await invokeMock(command, parsed.data as CommandInput<C>);
 
   if (typeof data === "object" && data !== null && "error" in data) {
     throw toBridgeError((data as { error: unknown }).error);
@@ -81,3 +87,24 @@ export async function call<C extends CommandName>(
 }
 
 export { toBridgeError };
+
+async function invokeMock<C extends CommandName>(
+  command: C,
+  args: CommandInput<C>,
+): Promise<unknown> {
+  if (!import.meta.env.DEV) {
+    // Should never happen: the mock is dev-only (B18-3/B18-7) and the built app
+    // runs inside Tauri where `invoke` answers. Refuse rather than fall back.
+    throw toBridgeError({
+      code: "INTERNAL",
+      userMessage:
+        "This build must run inside the OneFP&A desktop app. Start it with the desktop launcher, not a browser.",
+      httpStatus: 500,
+      retryable: false,
+      retryAfterMs: null,
+      details: { command, attempted: "mock-core-in-production" },
+    });
+  }
+  const { mockInvoke } = await import("./mock");
+  return mockInvoke(command, args);
+}
