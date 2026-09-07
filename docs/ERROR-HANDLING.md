@@ -162,7 +162,7 @@
 
 Row-level findings in `src-tauri/src/commands/import.rs` carry a **typed catalog code** in `RowIssue.code` and a
 machine-readable **sub-reason prefix** at the head of `message`, as `PREFIX: detail`. The prefix is not a code: it has
-no `httpStatus`, no `userMessage`, no `Retry`, and nothing maps it — the UI renders the governing code's copy. The
+no `httpStatus`, no `userMessage`, no `Retry`, and nothing maps it — the UI renders the governing code's copy. The TS-side argument validators in `src/api/schema.ts` (`MAPPING_*_REQUIRED`/`_TOO_LONG`/`_DUPLICATE`, `COMPANY_PATH_REQUIRED`, `SANDBOX_NAME_REQUIRED`, `LICENSE_PAYLOAD_REQUIRED`, `FILE_PATH_REQUIRED`, `FY_LABEL_REQUIRED`, `TIE_OUT_RESIDUAL_REQUIRED`, `EXCLUSION_*`) are the same class: field-level messages inside the `VALUE_INVALID` details envelope (zod `message`s), never codes. The
 prefixes are asserted verbatim by the Rust tests (`message.starts_with("OPENING_PERIOD_MIXED:")`), so renaming one is
 a breaking change to the test suite, not a free edit. `docs:verify` 7b accepts a name here only in this form, and only
 when its governing code exists in §2.
@@ -209,6 +209,7 @@ inventing a twenty-second. A reserved name has **no `userMessage`**: adding the 
 - `CONNECTOR_AUTH_EXPIRED`, `CONNECTOR_RATE_LIMITED`, `CONNECTOR_NETWORK`, `CONNECTOR_ALREADY_CONNECTED`, `CONNECTOR_AUTH_STATE_MISMATCH` → `API-SPEC.md`/`INTEGRATIONS.md` (connector sync error paths not built)
 - `GROUP_ROLLUP_INCOMPLETE` → `API-SPEC.md`/`INDUSTRY-PACK-SPEC.md` (consolidation rollup guard not built)
 - `CONSOLIDATION_RUNNING` → `API-SPEC.md` (consolidation single-flight guard not built)
+- `READ_ONLY_MODE` → `src-tauri/src/commands/report.rs` module docs (403 write-guard for read-only sessions) · emitted today only by the dev mock (`mock.ts`) — the native guard lands with the read-only write-protection work
 
 `UPDATE_FETCH_FAILED` was **deleted**, not reserved: the updater was removed outright (ADR-028) and no spec cites it
 any more. It must not be re-added unless the updater returns.

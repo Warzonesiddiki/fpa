@@ -6,7 +6,7 @@
  *   1. All 5 canonical UI states:
  *       - loading: spinner with role="status" and message
  *       - empty: "Need at least 3 Forecast Versions to score a line." when < 3 versions selected
- *       - error: typed error with code (e.g. FVA_COMPUTE_FAILED) and retry handler
+ *       - error: typed error with a catalog code and retry handler
  *       - success: confirmation banner
  *       - populated: full score cards, by-line table, and rollup strip
  *   2. Selector controls:
@@ -111,7 +111,7 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
         <FvaPage
           initialState="error"
           initialError={{
-            code: "FVA_RESTATED_UNAVAILABLE",
+            code: "INTERNAL",
             userMessage: "Restated actuals could not be loaded for selected horizon.",
             retryable: true,
           }}
@@ -119,7 +119,7 @@ describe("S-055 FVA Screen (F-025 · M5-3 · SCREENS-SPEC S-055)", () => {
         />,
       );
 
-      expect(screen.getByText(/FVA_RESTATED_UNAVAILABLE/i)).toBeInTheDocument();
+      expect(screen.getByText(/INTERNAL/i)).toBeInTheDocument();
       expect(screen.getByText(/Restated actuals could not be loaded/i)).toBeInTheDocument();
 
       const retryBtn = screen.getByRole("button", { name: /Retry/i });
