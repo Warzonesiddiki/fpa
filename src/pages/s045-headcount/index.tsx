@@ -6,7 +6,7 @@
  * `model.schedule.upsert` command before updating the preview. Native persistence/calculation is a
  * follow-on because cargo is unavailable in this sandbox; this page must remain marked PARTIAL.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input, StatePanel } from "@/components/ui";
 import { ModelSectionNav } from "@/components/domain/ModelSectionNav";
@@ -46,7 +46,18 @@ export function HeadcountPage() {
   const removeRow = useHeadcountStore((s) => s.removeRow);
   const importDriverData = useHeadcountStore((s) => s.importDriverData);
   const scenarios = useScenarioStore((s) => s.scenarios);
+  const loadScenarios = useScenarioStore((s) => s.load);
   const retry = useHeadcountStore((s) => s.retry);
+  const scenariosLoadedRef = useRef(false);
+
+  useEffect(() => {
+    // Populate the import dropdown on first mount when no earlier screen (S-050)
+    // loaded the list (AUDIT-2026-09-07 §3 P2). Ref-gated + empty-only: no loops.
+    if (!scenariosLoadedRef.current && scenarios.length === 0) {
+      scenariosLoadedRef.current = true;
+      void loadScenarios();
+    }
+  }, [scenarios.length, loadScenarios]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

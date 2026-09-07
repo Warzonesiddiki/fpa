@@ -45,9 +45,20 @@ function DriverImportPanel() {
   const driverImportError = useImportStore((s) => s.driverImportError);
   const driverImportResult = useImportStore((s) => s.driverImportResult);
   const driverImport = useImportStore((s) => s.driverImport);
+  const loadScenarios = useScenarioStore((s) => s.load);
   const [scenarioId, setScenarioId] = useState("");
+  const scenariosLoadedRef = useRef(false);
   const busy = driverImportStatus === "loading";
   const ready = Boolean(mappingId && scenarioId) && !busy && !readOnly;
+
+  useEffect(() => {
+    // Populate the dropdown on first mount when no earlier screen (S-050) loaded the
+    // list (AUDIT-2026-09-07 §3 P2). Ref-gated + empty-only: no retry loops on error.
+    if (!scenariosLoadedRef.current && scenarios.length === 0) {
+      scenariosLoadedRef.current = true;
+      void loadScenarios();
+    }
+  }, [scenarios.length, loadScenarios]);
 
   if (driverImportStatus === "success" && driverImportResult) {
     return (

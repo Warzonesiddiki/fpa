@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -157,6 +157,15 @@ describe("S-045 Headcount Plan (F-016)", () => {
     expect(screen.getByText("Add roles or import headcount.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add role" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Import from Driver Data" })).toBeInTheDocument();
+  });
+
+  it("loads the scenario list on mount so the import dropdown can be populated", async () => {
+    useScenarioStore.setState({ status: "loading", error: null, models: [], scenarios: [] });
+    const loadSpy = vi.spyOn(useScenarioStore.getState(), "load");
+    renderPage();
+    // Ref-gated, empty-only (AUDIT-2026-09-07 §3 P2): without this, the dropdown
+    // stayed empty until the user happened to visit S-050 first.
+    await waitFor(() => expect(loadSpy).toHaveBeenCalled());
   });
 
   it("renders typed errors with retry semantics and keeps the schedule context", async () => {

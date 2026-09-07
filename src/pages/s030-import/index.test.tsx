@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { ImportHubPage } from "./index";
 import { useImportStore } from "@/stores/import";
+import { useScenarioStore } from "@/stores/scenarios";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -310,6 +311,21 @@ describe("S-030 Import Hub (M2-1)", () => {
         "Dimension master lists remain unavailable: dimension_values has no destination pipeline and import.commit refuses the kind rather than writing it as a GL fact. Driver data commits through driver.import into driver_values.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("populates the driver-import scenario dropdown on first mount", async () => {
+    useScenarioStore.setState({ status: "loading", error: null, models: [], scenarios: [] });
+    useImportStore.setState({
+      kind: "driver_data",
+      status: "success",
+      parsed: PARSED,
+      mappingId: "map-driver-1",
+    });
+    const loadSpy = vi.spyOn(useScenarioStore.getState(), "load");
+    renderPage();
+    // DriverImportPanel mounts only with a parsed file; the dropdown must not
+    // wait for a prior S-050 visit (AUDIT-2026-09-07 §3 P2).
+    await waitFor(() => expect(loadSpy).toHaveBeenCalled());
   });
 
   it("renders the loading state while the local parser is working", async () => {
