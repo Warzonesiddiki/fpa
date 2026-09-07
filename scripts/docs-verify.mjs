@@ -215,6 +215,28 @@ for (const c of [...citedCodes].sort())
     err("docs:verify self-test FAILED: the phantom guard is inert");
 }
 
+/* 7f. Screen error contracts: every code on a SCREENS-SPEC "- **Error:**" line
+   must exist in ERROR-HANDLING §2 (produced) or §2C (reserved) — a screen citing
+   an uncataloged code is B12 drift (found 2026-09-07: 2 screen-invented codes). */
+{
+  const screenErr = new Set();
+  for (const line of (all["SCREENS-SPEC.md"] ?? "").split("\n")) {
+    if (/^- \*\*Error:\*\*/.test(line))
+      for (const m of line.matchAll(/`([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)`/g)) screenErr.add(m[1]);
+  }
+  for (const c of screenErr)
+    if (!errDefs.has(c) && !reservedNames.has(c))
+      err(
+        `SCREENS-SPEC Error line cites uncataloged code: ${c} (add it to §2/§2C or map the screen to a catalog code)`,
+      );
+  // self-test: the matcher must fire on a fake screen error line.
+  const fakeLine = "- **Error:** `ZZ_SCREEN_GUARD_PROBE`.";
+  const caught = [...fakeLine.matchAll(/`([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)`/g)].some(
+    ([, c]) => !errDefs.has(c) && !reservedNames.has(c),
+  );
+  if (!caught) err("docs:verify self-test FAILED: the screen-error guard is inert");
+}
+
 /* 8. Banned-term scan (GLOSSARY synonyms used as domain terms — context-filtered) */
 const banned = /(?<![A-Za-z])(workspace|uploaded?|metric)(?![A-Za-z])/gi;
 for (const [f, t] of Object.entries(all)) {
