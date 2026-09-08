@@ -366,7 +366,7 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 /// `license.verify` — {license_payload} → {status, days_left}. Session-less signature +
 /// expiry check (NO Company/machine binding — there is no active Company to bind to);
 /// binding happens in `license.apply_response`.
-#[tauri::command(name = "license.verify", rename_all = "camelCase")]
+#[tauri::command(name = "license.verify", rename_all = "snake_case")]
 pub fn license_verify(license_payload: String) -> AppResult<serde_json::Value> {
     let payload: serde_json::Value =
         serde_json::from_str(&license_payload).map_err(|e| AppError::LicenseInvalidSignature {
@@ -380,7 +380,7 @@ pub fn license_verify(license_payload: String) -> AppResult<serde_json::Value> {
 /// `license.request_file` — {company_path} → {file}. Writes `<company_path>.license-request.json`
 /// (Company id + machine fingerprint + our public key) for the licensor. Read-only w.r.t. the
 /// Company database (no audit event: nothing in the DB changes).
-#[tauri::command(name = "license.request_file", rename_all = "camelCase")]
+#[tauri::command(name = "license.request_file", rename_all = "snake_case")]
 pub fn license_request_file(
     app: tauri::AppHandle,
     company_path: String,
@@ -418,7 +418,7 @@ pub fn license_request_file(
 /// A JSON payload string is used as-is; otherwise the value is treated as a file path.
 /// `invalid` → LICENSE_INVALID_SIGNATURE (403); beyond grace → LICENSE_EXPIRED (403);
 /// otherwise the license is upserted (audited, same transaction) and the status returned.
-#[tauri::command(name = "license.apply_response", rename_all = "camelCase")]
+#[tauri::command(name = "license.apply_response", rename_all = "snake_case")]
 pub fn license_apply_response(
     app: tauri::AppHandle,
     response_path_or_payload: String,

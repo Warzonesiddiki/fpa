@@ -46,7 +46,7 @@ fn validate_settings_value(value_json: &str) -> AppResult<()> {
 /// `settings.get` — {key} → {value}. The active session is required because the app DB belongs
 /// to the unlocked installation; a missing row is `null` (not an error) so first-use defaults
 /// remain the client's job.
-#[tauri::command(name = "settings.get", rename_all = "camelCase")]
+#[tauri::command(name = "settings.get", rename_all = "snake_case")]
 pub fn settings_get(
     app: AppHandle,
     key: String,
@@ -72,7 +72,7 @@ pub fn settings_get(
 
 /// `settings.set` — {key, value_json} → {ok}. A write is an app-scope settings upsert plus one
 /// HMAC-chained audit event within the same transaction (never a silent auto-fix).
-#[tauri::command(name = "settings.set", rename_all = "camelCase")]
+#[tauri::command(name = "settings.set", rename_all = "snake_case")]
 pub fn settings_set(
     app: AppHandle,
     key: String,

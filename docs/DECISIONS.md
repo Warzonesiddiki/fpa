@@ -219,6 +219,23 @@ engine only through `require_unlocked`-gated loads), so it performs no separate 
 engine-served. `CommandArgs`/mock parity tests are untouched. D1's remaining half — `company.archive_year` (WS-07) —
 stays a genuine Rust handler: company lifecycle is Rust-owned, no graph involved.
 
+### ADR-030 · The Tauri wire contract is snake_case — every command declares it; a gate enforces it
+**Why:** the 2026-09-07 continuation audit found 21 of 84 `#[tauri::command]`s annotated `rename_all = "camelCase"`
+(the M1-era modules: session, company, coa, calendar, pack, security, settings, license, backup), while the entire
+frontend wire contract is strict snake_case (API-SPEC §2 rows, Zod `CommandArgs`, every `call()` site). Tauri 2
+expects camelCase invoke keys under that annotation, so `invoke("session.unlock", {company_id})` deserializes nothing —
+15 commands with multi-word args were dead in the real desktop shell, including `session.unlock`, `company.create`,
+`calendar.preview`, `coa.list`, and `company.delete`. Nothing caught it: the mock answers the dev preview, E2E runs on
+the dev server (WS-08), and CI compiles Rust but never crosses the invoke boundary.
+**Decision:** normalize all commands to `rename_all = "snake_case"` (attribute-only change; the 61 newest commands —
+`driver.import`, `model.cell.set.v1`, `assumption.waive`, … — already used it because that is what actually works), make
+the two zero-arg session commands explicit, and add `scripts/ipc-casing-check.mjs` to `npm run check` + CI: every
+`#[tauri::command]` in `src-tauri/src` must declare `rename_all = "snake_case"`.
+**Consequences:** single-word commands are unaffected by casing; multi-word commands now deserialize their arguments
+in the real shell. The gate makes the convention machine-checked, so a camelCase annotation can never land again.
+Known residual gap (recorded, not fixed here): no test executes the real invoke boundary end-to-end — tauri-driver
+E2E in release CI remains the durable closure (CI-CD §6.2).
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

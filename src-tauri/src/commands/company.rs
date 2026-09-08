@@ -31,7 +31,7 @@ pub fn app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
 }
 
 /// `company.list` — CompanyMeta[] (last_opened_at = last activity: create/open/unlock).
-#[tauri::command(name = "company.list", rename_all = "camelCase")]
+#[tauri::command(name = "company.list", rename_all = "snake_case")]
 pub fn company_list(app: AppHandle) -> AppResult<serde_json::Value> {
     let dir = app_data_dir(&app)?;
     let conn = db::open_at(&dir)?;
@@ -84,7 +84,7 @@ fn parse_preset(preset: &str) -> Result<CalendarPreset, AppError> {
 
 /// Calendar config (mirrors the schema's `calendar` object; camelCase across IPC).
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct CalendarConfig {
     pub preset: String,
     pub fy_start_month: Option<u32>,
@@ -229,7 +229,7 @@ fn create_default_model(
 /// `company.create` — {name, path, pack_key, calendar{...}, plan_only?, horizon?}
 /// Seals a fresh `.fpa` container at `path`: random 256-bit Company key, wrapped by the
 /// PIN-derived vault key (AUTH-SPEC §2.1). Requires an unlocked vault (API-SPEC: session).
-#[tauri::command(name = "company.create", rename_all = "camelCase")]
+#[tauri::command(name = "company.create", rename_all = "snake_case")]
 pub fn company_create(
     app: AppHandle,
     name: String,
@@ -338,7 +338,7 @@ pub fn company_create(
 
 /// `company.open` — {path}. Switches the active session Company (S-020 Open) and records the
 /// activity timestamp used by the retention gate (`last_opened_at`).
-#[tauri::command(name = "company.open", rename_all = "camelCase")]
+#[tauri::command(name = "company.open", rename_all = "snake_case")]
 pub fn company_open(
     app: AppHandle,
     path: String,
@@ -437,7 +437,7 @@ pub fn company_open(
 /// `ARCHIVE_IN_USE_REF` guard: cloning is blocked while the source references an archived
 /// Fiscal Year. At M1 no Fiscal Year can be archived yet (`company.archive_year` lands with the
 /// archive schema), so the guard is structurally present but vacuously satisfied.
-#[tauri::command(name = "company.clone_sandbox", rename_all = "camelCase")]
+#[tauri::command(name = "company.clone_sandbox", rename_all = "snake_case")]
 pub fn company_clone_sandbox(
     app: AppHandle,
     company_id: String,
@@ -891,7 +891,7 @@ pub fn company_clone_sandbox(
 /// blocked while the Company was used within the retention window (`COMPANY_IN_USE_RECENT`)
 /// or holds model/import content; otherwise removes the Company + its calendar/BU tree and
 /// excises its per-Company audit segment (F-033) inside one transaction.
-#[tauri::command(name = "company.delete", rename_all = "camelCase")]
+#[tauri::command(name = "company.delete", rename_all = "snake_case")]
 pub fn company_delete(
     app: AppHandle,
     company_id: String,

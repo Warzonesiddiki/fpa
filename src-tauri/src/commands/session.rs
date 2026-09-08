@@ -192,7 +192,7 @@ pub fn require_session_write(state: &SessionState) -> AppResult<String> {
 }
 
 /// `session.status` — pre-unlock safe (no secrets).
-#[tauri::command(name = "session.status")]
+#[tauri::command(name = "session.status", rename_all = "snake_case")]
 pub fn session_status(
     app: AppHandle,
     state: State<'_, SessionState>,
@@ -277,7 +277,7 @@ fn now_ms() -> i64 {
 
 /// `session.unlock` — verify PIN (Argon2id), enforce lockout, unwrap the vault key, prove the
 /// Company container opens with it, then mint the session token (AUTH-SPEC §2.2).
-#[tauri::command(name = "session.unlock", rename_all = "camelCase")]
+#[tauri::command(name = "session.unlock", rename_all = "snake_case")]
 pub fn session_unlock(
     app: AppHandle,
     pin: String,
@@ -395,7 +395,7 @@ pub fn session_unlock(
 /// `session.lock` — invalidate the session token and drop every key from memory
 /// (AUTH-SPEC §2.3). Nothing unencrypted is ever written beside the container, so locking has
 /// nothing to scrub on disk: the next unlock re-derives the keys from the PIN.
-#[tauri::command(name = "session.lock")]
+#[tauri::command(name = "session.lock", rename_all = "snake_case")]
 pub fn session_lock(
     state: State<'_, SessionState>,
     vault: State<'_, KeyVault>,

@@ -40,7 +40,7 @@ fn parse_week_rule(s: Option<&str>, preset: CalendarPreset) -> Result<WeekRule, 
 }
 
 /// `calendar.preview` — {preset, fy_start_month?, week_start_day?, anchor_rule?, year_end_rule?, from, year_count?}
-#[tauri::command(name = "calendar.preview", rename_all = "camelCase")]
+#[tauri::command(name = "calendar.preview", rename_all = "snake_case")]
 pub fn calendar_preview(
     preset: String,
     fy_start_month: Option<u32>,
@@ -83,7 +83,7 @@ pub fn calendar_preview(
 
 /// Transit-map row: how a BU period relates to a Group period (SCREENS-SPEC S-022).
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct BuMapEntry {
     pub bu_id: String,
     pub group_period_id: String,
@@ -126,7 +126,7 @@ fn validate_apply(
 /// `calendar.apply` — {company_id, config[], bu_map[]}. Replaces the Company's 'Default'
 /// calendar with the validated config + generated years/periods (transactional + audited).
 /// bu_map is the Group-transit contract (empty for a single-entity Company in M1).
-#[tauri::command(name = "calendar.apply", rename_all = "camelCase")]
+#[tauri::command(name = "calendar.apply", rename_all = "snake_case")]
 pub fn calendar_apply(
     app: tauri::AppHandle,
     company_id: String,
