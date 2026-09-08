@@ -1125,17 +1125,18 @@ pub(crate) fn company_archive_year_internal(
     let tx = conn.transaction().map_err(AppError::from)?;
 
     // Ownership fails closed: the join through fiscal_calendars only matches this Company.
-    const FY_SELECT: &str = "SELECT fy.id FROM fiscal_years fy
-         JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
-         WHERE fc.company_id = ?1 AND fy.fy_label = ?2";
-    let mut stmt = tx.prepare(FY_SELECT).map_err(AppError::from)?;
-    let fy_rows: Vec<String> = stmt
-        .query_map(rusqlite::params![company_id, fy_label], |r| r.get(0))
-        .map_err(AppError::from)?
-        .collect::<Result<_, _>>()
+    // One COUNT, not a row fetch — the ids are never needed, only the count is.
+    let fy_count: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM fiscal_years fy
+             JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+             WHERE fc.company_id = ?1 AND fy.fy_label = ?2",
+            rusqlite::params![company_id, fy_label],
+            |r| r.get(0),
+        )
         .map_err(AppError::from)?;
 
-    if fy_rows.is_empty() {
+    if fy_count == 0 {
         // B20: reuse VALUE_INVALID for a row-level miss without a dedicated code.
         return Err(AppError::invalid(format!(
             "VALUE_INVALID: no Fiscal Year '{fy_label}' exists in this Company"
@@ -1185,7 +1186,7 @@ pub(crate) fn company_archive_year_internal(
             |r| r.get(0),
         )
         .map_err(AppError::from)?;
-    if archived_already == fy_rows.len() as i64 {
+    if archived_already == fy_count {
         return Ok(affected);
     }
 
