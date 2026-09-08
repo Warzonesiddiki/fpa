@@ -1112,8 +1112,7 @@ pub fn company_archive_year(
     crate::commands::session::require_company_write(&state, &company_id)?;
     let dir = app_data_dir(&app)?;
     let mut conn = db::open_at(&dir)?;
-    let affected =
-        company_archive_year_internal(&mut conn, &dir, &company_id, &fy_label)?;
+    let affected = company_archive_year_internal(&mut conn, &dir, &company_id, &fy_label)?;
     Ok(serde_json::json!({ "data": { "affected_periods": affected } }))
 }
 
@@ -1439,13 +1438,12 @@ mod tests {
     #[test]
     fn archive_year_stamps_mark_counts_periods_and_audits() {
         let dir = audit_dir("archive-year");
-        let conn = db::open_in_memory().unwrap();
+        let mut conn = db::open_in_memory().unwrap();
         insert_company(&conn, COMP_A);
         seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
         seed_fiscal_year(&conn, COMP_A, "cal-a2", "fy-a2", "FY2027", 13);
 
-        let affected =
-            company_archive_year_internal(&mut conn.clone(), &dir, COMP_A, "FY2026").unwrap();
+        let affected = company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
         assert_eq!(affected, 12);
 
         let archived: i64 = conn
@@ -1485,7 +1483,7 @@ mod tests {
     #[test]
     fn archive_year_refuses_referenced_periods_without_partial_write() {
         let dir = audit_dir("archive-in-use");
-        let conn = db::open_in_memory().unwrap();
+        let mut conn = db::open_in_memory().unwrap();
         insert_company(&conn, COMP_A);
         seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
         conn.execute(
@@ -1507,8 +1505,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = company_archive_year_internal(&mut conn.clone(), &dir, COMP_A, "FY2026")
-            .unwrap_err();
+        let err = company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap_err();
         assert_eq!(err.body().code, "ARCHIVE_IN_USE");
         assert_eq!(err.body().http_status, 409);
 
@@ -1533,12 +1530,11 @@ mod tests {
     #[test]
     fn archive_year_unknown_label_and_empty_label_are_value_invalid() {
         let dir = audit_dir("archive-unknown");
-        let conn = db::open_in_memory().unwrap();
+        let mut conn = db::open_in_memory().unwrap();
         insert_company(&conn, COMP_A);
         seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
 
-        let err = company_archive_year_internal(&mut conn.clone(), &dir, COMP_A, "FY2099")
-            .unwrap_err();
+        let err = company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2099").unwrap_err();
         assert_eq!(err.body().code, "VALUE_INVALID");
         assert_eq!(err.body().http_status, 422);
     }
@@ -1546,14 +1542,12 @@ mod tests {
     #[test]
     fn archive_year_is_idempotent_across_re_archive() {
         let dir = audit_dir("archive-idempotent");
-        let conn = db::open_in_memory().unwrap();
+        let mut conn = db::open_in_memory().unwrap();
         insert_company(&conn, COMP_A);
         seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
 
-        let first = company_archive_year_internal(&mut conn.clone(), &dir, COMP_A, "FY2026")
-            .unwrap();
-        let second = company_archive_year_internal(&mut conn.clone(), &dir, COMP_A, "FY2026")
-            .unwrap();
+        let first = company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
+        let second = company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
         assert_eq!(first, 12);
         assert_eq!(second, 12, "re-archive reports the same count");
         let events: i64 = conn
