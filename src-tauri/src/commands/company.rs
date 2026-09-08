@@ -1134,7 +1134,6 @@ pub(crate) fn company_archive_year_internal(
         .map_err(AppError::from)?
         .collect::<Result<_, _>>()
         .map_err(AppError::from)?;
-    drop(stmt);
 
     if fy_rows.is_empty() {
         // B20: reuse VALUE_INVALID for a row-level miss without a dedicated code.
@@ -1179,7 +1178,9 @@ pub(crate) fn company_archive_year_internal(
     // Idempotence: every matching FY already archived → report the count, no new event.
     let archived_already: i64 = tx
         .query_row(
-            &format!("{FY_SELECT} AND fy.archived_at IS NOT NULL"),
+            "SELECT COUNT(*) FROM fiscal_years fy
+             JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+             WHERE fc.company_id = ?1 AND fy.fy_label = ?2 AND fy.archived_at IS NOT NULL",
             rusqlite::params![company_id, fy_label],
             |r| r.get(0),
         )
