@@ -83,4 +83,4 @@ npm run build
 - `docs/API-SPEC.md` — ensure `assumption.waive` row exists with args/returns/errors.
 - `docs/ERROR-HANDLING.md` — confirm the reason-required code is listed.
 - `docs/traceability` / `docs/DOCS-INDEX.md` if any spec text changes.
-- `AUDIT-2026-09-06-fresh.md` §4 — mark the finding resolved (optional).
+- `../audits/AUDIT-2026-09-06-fresh.md` §4 — mark the finding resolved (optional).

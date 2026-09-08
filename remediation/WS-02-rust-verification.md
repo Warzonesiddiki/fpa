@@ -66,4 +66,4 @@ npm run check          # unchanged product code → stays green
 
 - `docs/CI-CD.md` — document the Rust job and OS matrix.
 - `README.md` — confirm the Rust toolchain/version statement matches `rust-toolchain.toml`.
-- `HANDOVER.md` / `TASKBOARD.md` — note Rust now verified in CI.
+- `../audits/HANDOVER.md` / `TASKBOARD.md` — note Rust now verified in CI.

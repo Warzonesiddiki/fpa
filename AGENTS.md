@@ -6,7 +6,7 @@
 > routes you to the right document and states what fails a PR.
 >
 > Note: `.github/copilot-instructions.md` is intentionally absent — `.github/` is git-ignored in this repo
-> (Actions are disabled; see `HANDOVER.md` §3 and TASKBOARD M7-1), so a Copilot file there would never be tracked.
+> (Actions are disabled; see `audits/HANDOVER.md` §3 and TASKBOARD M7-1), so a Copilot file there would never be tracked.
 > Copilot/other agents: read this file.
 
 ## What this product is
@@ -27,7 +27,7 @@ import → model → plan → analyze → report → govern. It has **no server,
 | What command/IPC shape do I implement?                          | `docs/API-SPEC.md` (Rust serde structs first, then regenerate specta, then Zod)               |
 | Which table/column/index?                                       | `docs/DATABASE-SCHEMA.md` (migration + `schema-equality-check` is blocking)                   |
 | What is "done"?                                                 | `docs/DEFINITION-OF-DONE.md` + `docs/QA-CHECKLIST.md`                                         |
-| What is the build order right now?                              | `TASKBOARD.md` then `HANDOVER.md` §2                                                          |
+| What is the build order right now?                              | `TASKBOARD.md` then `audits/HANDOVER.md` §2                                                   |
 | Why was it decided this way?                                    | `docs/DECISIONS.md` (ADR-001…026)                                                             |
 
 ## Non-negotiables (violating any of these voids the change)

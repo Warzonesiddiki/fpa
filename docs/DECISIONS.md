@@ -257,6 +257,39 @@ vendored rustfmt and CI's stable toolchain ever disagree (version skew on future
 style editions), CI remains the gate of record and this script gets re-pinned; a local
 false positive is an early warning, never a green light.
 
+### ADR-032 · The wire contract is gate-enforced three ways; archive is a fully restorable mark
+
+**Context.** The 2026-09-07 audit closed WS-07 (`company.archive_year`) but left three
+named follow-ups: restore, the clone guard, and the fact that `ARCHIVE_IN_USE_REF` was a
+documented-but-never-emitted code (the phantom-code sweep had just made every catalogued
+code emitter-proven — a regression of that guarantee the moment the row shipped). The
+same audit's method finding: shipped-but-undocumented handlers (`security.pin_setup`,
+`assumption.waive`) were found by hand; nothing machine-checked registry agreement.
+
+**Decision (2026-09-08).**
+1. `command:parity` (scripts/command-parity-check.mjs, in `npm run check`) enforces
+   three-way agreement: every typed command carries a Zod binding, a mock case, and a
+   native implementation (`#[tauri::command]` registered in `generate_handler![…]`, or an
+   engine command per ADR-029) — and vice versa in every direction, including
+   ownership (a handler not registered is dead code and fails the gate).
+2. `company.restore_year` mirrors `company.archive_year`: `{company_id, fy_label}` →
+   `{restored_periods}`, one transaction, one HMAC-chained audit event, idempotent on an
+   active label (count returned, no second event). **Restore carries no reference guard**
+   — re-attachment cannot orphan data (F-037: archive is a mark, nothing is moved).
+3. `company.clone_sandbox` now refuses (`ARCHIVE_IN_USE_REF`, 409) while the source
+   carries an archived FY: the clone would copy the detached mark silently. The dev mock
+   mirrors both behaviours (seeded `Vela Foods (archived_source)` demo company).
+4. `storage::db` gains `migrated_v1_schema_equals_fresh_schema`: the v1→latest migration
+   path must produce a `sqlite_master` identical to a fresh install — a lossy down
+   migration is caught before it ships to user databases, not after.
+
+**Consequences.** The command-count and error-code ground truths moved (102→103
+commands, 86→87 codes) and are claim-checked by `docs:verify`. Adding a command now
+fails `npm run check` until all three registries + the API-SPEC row agree — the
+"documented-but-unanswerable" and "shipped-but-undocumented" failure classes are
+structurally closed. Deferred with this decision: write-gating mutations into archived
+periods (WS-12 card) and F-037 compression, both recorded on the board.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

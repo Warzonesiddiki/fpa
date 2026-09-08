@@ -13,7 +13,7 @@
 4. [`docs/CLAUDE.md`](docs/CLAUDE.md) — DO / DON'T / forbidden patterns / response format.
 5. [`docs/ZERO-COMPROMISE-RULES.md`](docs/ZERO-COMPROMISE-RULES.md) — B1–B20, the rules that end a PR.
 6. Task-specific spec, then code. Money work: [`docs/MONEY-ROUNDING-SPEC.md`](docs/MONEY-ROUNDING-SPEC.md) first.
-7. Current state and next task: [`TASKBOARD.md`](TASKBOARD.md), then [`HANDOVER.md`](HANDOVER.md).
+7. Current state and next task: [`TASKBOARD.md`](TASKBOARD.md), then [`audits/HANDOVER.md`](audits/HANDOVER.md).
 
 ## Hard rules (the ones that void a PR — full list in docs/CLAUDE.md §5–§6)
 

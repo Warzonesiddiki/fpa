@@ -71,4 +71,4 @@ npm run build
 
 - `docs/CI-CD.md` §2.3 and `docs/DEFINITION-OF-DONE.md` — coverage now in `check`.
 - `README.md` "Common scripts" table — note `check` includes coverage.
-- `HANDOVER.md` — update the coverage note (was 80.07%).
+- `../audits/HANDOVER.md` — update the coverage note (was 80.07%).
