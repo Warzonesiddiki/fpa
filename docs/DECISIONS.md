@@ -236,6 +236,27 @@ in the real shell. The gate makes the convention machine-checked, so a camelCase
 Known residual gap (recorded, not fixed here): no test executes the real invoke boundary end-to-end — tauri-driver
 E2E in release CI remains the durable closure (CI-CD §6.2).
 
+### ADR-031 · Rust formatting is verified locally by a WASM rustfmt gate (`fmt:rust`); CI `cargo fmt --check` stays the authority
+
+**Context.** The dev sandbox cannot reach rustup/crates.io, so before this gate Rust
+formatting was verified only inside the CI rust job. WS-07 shipped three consecutive
+pushes whose sole failure was `cargo fmt --check` (a collapsible `let` binding, a
+108-char import list, then `fn_call_width=60` violations on an `include_str!` migration
+path and two assert macros) — each discovered only after a ~4-minute CI round-trip,
+worse because the Actions log-download endpoint was simultaneously down (Azure blob
+EOF), leaving the actual diff invisible.
+
+**Decision.** `scripts/rust-fmt-check.mjs` runs `@scalar/rust-fmt` (rustfmt compiled to
+WebAssembly, pinned 0.2.0) over every `.rs` file under `src-tauri/src`, with the edition
+read from the workspace `Cargo.toml`. Wired into `npm run check` as `fmt:rust` and
+documented in CI-CD.md stage 6. At adoption, all 40 crate files agree with its output —
+i.e. it reproduces CI's stable `cargo fmt` on this codebase.
+
+**Consequences.** Formatting drift is caught pre-push without a toolchain. If the
+vendored rustfmt and CI's stable toolchain ever disagree (version skew on future
+style editions), CI remains the gate of record and this script gets re-pinned; a local
+false positive is an early warning, never a green light.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

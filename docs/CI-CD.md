@@ -30,7 +30,7 @@ PR → [1 Install cache] → [2 Lint/Type/Fmt] → [3 Unit TS] → [4 Unit Rust+
 | 3 Unit TS | `vitest run` (sharded) | 0 failures; coverage ≥85/80 (≥95 critical) |
 | 4 Unit Rust | `cargo test` (incl. proptest 10k, oracle fixtures) | 0 failures; engines ≥95 lines/90 branch |
 | 5 Coverage | `scripts/coverage-gate.mjs` (run right after `vitest run --coverage`, main + critical) + `cargo llvm-cov`. **Also inside the local `npm run check`** (WS-11) — main ≥85/80, critical ≥95/90; the dev-only `src/api/mock.ts` is excluded from the product gate (B18-3/WS-08: tree-shaken from prod) | threshold + no reduction without waiver |
-| 6 Schema/Docs | `scripts/schema-equality-check.mjs` · `scripts/docs-link-check.mjs --strict` · `npm run docs:verify` (index↔files, orphans, 5 states, counts) · `money:ast` · `tokens:check` (no undefined `--color-*` references) · `ipc:casing` (ADR-030) | 0 drift; index complete; no float; 0 undefined tokens; 0 casing violations |
+| 6 Schema/Docs | `scripts/schema-equality-check.mjs` · `scripts/docs-link-check.mjs --strict` · `npm run docs:verify` (index↔files, orphans, 5 states, counts) · `money:ast` · `tokens:check` (no undefined `--color-*` references) · `ipc:casing` (ADR-030) · `fmt:rust` (ADR-031, local pre-push; CI Stage 2 `cargo fmt --check` stays authority) | 0 drift; index complete; no float; 0 undefined tokens; 0 casing violations; 0 unformatted Rust files |
 | 7 A11y | `vitest-axe` all screens ×5 states; contrast token test | 0 violations |
 | 8 E2E | `playwright test` on 3 OS (tauri-driver; P0 flows = full) | 0 failures; no flake-mask |
 | 9 Perf | `npm run bench` (`vitest bench`) + `cargo bench` | ≤10% regression vs baseline |

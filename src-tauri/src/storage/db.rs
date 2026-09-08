@@ -61,8 +61,10 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/001_initial.sql")),
         M::up(include_str!("../../migrations/002_packs_description.sql"))
             .down("ALTER TABLE packs DROP COLUMN description;"),
-        M::up(include_str!("../../migrations/003_fiscal_year_archived_at.sql"))
-            .down("ALTER TABLE fiscal_years DROP COLUMN archived_at;"),
+        M::up(include_str!(
+            "../../migrations/003_fiscal_year_archived_at.sql"
+        ))
+        .down("ALTER TABLE fiscal_years DROP COLUMN archived_at;"),
     ])
 }
 

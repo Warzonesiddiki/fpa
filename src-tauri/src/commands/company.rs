@@ -1455,7 +1455,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(archived, 1, "the FY2026 row under cal-a must carry the mark");
+        assert_eq!(
+            archived, 1,
+            "the FY2026 row under cal-a must carry the mark"
+        );
         let untouched: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM fiscal_years WHERE fy_label = 'FY2027' AND archived_at IS NULL",
@@ -1565,6 +1568,9 @@ mod tests {
         let body = AppError::ArchiveInUse("model_values.period_id: 1 row(s)".into()).body();
         assert_eq!(body.code, "ARCHIVE_IN_USE");
         assert_eq!(body.http_status, 409);
-        assert!(!body.retryable, "the user must remove the reference, not retry");
+        assert!(
+            !body.retryable,
+            "the user must remove the reference, not retry"
+        );
     }
 }
