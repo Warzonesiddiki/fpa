@@ -4,7 +4,7 @@
 
 ---
 
-## MASTER INDEX (63 docs/specs + README pointer = 64 rows; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
+## MASTER INDEX (64 docs/specs + README pointer = 65 rows; 2026-09-08 adds row 65 — CI-ADDITIONS runbook; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
 
 | # | File | One-line summary | Depends on |
 |---|---|---|---|
@@ -22,7 +22,7 @@
 | 12 | `TECH-STACK.md` | Exact packages/versions + why + rejected alternatives + version policy | 1 |
 | 13 | `ARCHITECTURE.md` | Mermaid system + data flow + exact folder tree + engine contracts | 12 |
 | 14 | `DATABASE-SCHEMA.md` | 56 tables: types/PK/FK/constraints/indexes + example row each | 13 |
-| 15 | `API-SPEC.md` | 102 typed IPC commands incl. 17 detailed specs + error code index | 14, 31 |
+| 15 | `API-SPEC.md` | 103 typed IPC commands incl. 17 detailed specs + error code index | 14, 31 |
 | 16 | `AUTH-SPEC.md` | Local auth: PIN/recovery/lock/license flows + permission matrix | 13, 14 |
 | 17 | `STATE-MANAGEMENT.md` | State table (scope/storage/invalidation) + race rules | 13, 15 |
 | 18 | `INTEGRATIONS.md` | 11 integrations: purpose/secrets/rate-limits/fallbacks | 13, 16 |
@@ -72,6 +72,7 @@
 | 62 | `DESKTOP-PACKAGING.md` | Native desktop packaging (MSI/NSIS, DMG, AppImage/DEB), signing, least-privilege security, and build verification | 12, 26, 28 |
 | 63 | `E2E-TESTING.md` | Playwright E2E testing architecture, execution commands, and user journey specs | 12, 23, 24 |
 | 64 | `BENCHMARKS.md` | Performance benchmarking suite, methodology, numeric targets (<5s GL, <50ms recalc), and baseline results | 12, 23, 25 |
+| 65 | `CI-ADDITIONS.md` | Owner runbook for CI/repo changes an agent cannot land (clippy diagnostics artifact, branch protection, dependabot, cargo-deny, signing, nightly probe) | 4, 23 |
 
 ## DEPENDENCY MAP (subset — build order)
 

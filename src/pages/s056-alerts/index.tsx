@@ -291,7 +291,7 @@ function RuleManager() {
         </button>
 
         {createError && (
-          <p role="alert" className="text-xs text-[var(--color-oneerror)]">
+          <p role="alert" className="text-xs text-[var(--color-onerror)]">
             {createError.userMessage} <code className="font-mono">[{createError.code}]</code>
           </p>
         )}

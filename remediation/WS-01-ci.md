@@ -27,7 +27,7 @@ slip into the product unnoticed.
 1. Read `infra/ci.yml` end to end and `docs/CI-CD.md`. Confirm the job stages match the
    local gates in `package.json` `check`.
 2. Determine the real blocker. The docs say the token "lacks Workflows permission"
-   (`docs/DOCUMENTATION-GAP-ANALYSIS.md` row 76, `HANDOVER.md §3`, `TASKBOARD.md M7-1`).
+   (`docs/DOCUMENTATION-GAP-ANALYSIS.md` row 76, `../audits/HANDOVER.md §3`, `TASKBOARD.md M7-1`).
    Verify by attempting the correct setup:
    - Un-ignore the workflows path: change `.gitignore` so `.github/` is no longer fully
      ignored. Prefer a **narrow** ignore (keep ignoring anything sensitive) while
@@ -71,4 +71,4 @@ Report Rust gates as UNVERIFIED locally (WS-02 wires them into CI).
 ## Docs to sync
 
 - `TASKBOARD.md` M7-1 → update status.
-- `HANDOVER.md §3` and `docs/DOCUMENTATION-GAP-ANALYSIS.md` row 76 → reflect CI live/blocked.
+- `../audits/HANDOVER.md §3` and `docs/DOCUMENTATION-GAP-ANALYSIS.md` row 76 → reflect CI live/blocked.

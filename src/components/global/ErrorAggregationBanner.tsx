@@ -26,12 +26,12 @@ export function ErrorAggregationBanner() {
       role="status"
       aria-live="polite"
       data-testid="error-aggregation-banner"
-      className="shrink-0 border-b border-[var(--color-oneerror)]/30 bg-[var(--color-onesurface)] px-4 py-2"
+      className="shrink-0 border-b border-[var(--color-onerror)]/30 bg-[var(--color-onesurface)] px-4 py-2"
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <AlertTriangle
           aria-hidden="true"
-          className="h-4 w-4 shrink-0 text-[var(--color-oneerror)]"
+          className="h-4 w-4 shrink-0 text-[var(--color-onerror)]"
         />
         <span className="font-medium text-[var(--color-onetext)]">
           {t("shell.errorLog.bannerTitle")}

@@ -1288,17 +1288,32 @@ describe("model grid contract (F-012 · FORMULA-ENGINE-SPEC §2/§4)", () => {
     expect(CommandArgs["driver.set_value"]).toBeDefined();
   });
 
-  it("driver.import validates file_path + mapping_id and returns a batch_id", () => {
+  it("driver.import validates file_path + mapping_id + scenario_id and returns a batch_id", () => {
     expect(
-      DriverImportArgs.safeParse({ file_path: "/tmp/drivers.xlsx", mapping_id: "canonical" })
-        .success,
+      DriverImportArgs.safeParse({
+        file_path: "/tmp/drivers.xlsx",
+        mapping_id: "canonical",
+        scenario_id: "3f9f2c9e-9f8b-4e2d-9a1c-500000000001",
+      }).success,
     ).toBe(true);
+    expect(
+      DriverImportArgs.safeParse({
+        file_path: "/tmp/drivers.xlsx",
+        mapping_id: "canonical",
+        scenario_id: "",
+      }).success,
+    ).toBe(false);
     expect(DriverImportArgs.safeParse({ file_path: "", mapping_id: "canonical" }).success).toBe(
       false,
     );
     expect(CommandArgs["driver.import"]).toBeDefined();
     expect(
-      DriverImportData.safeParse({ batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001" }).success,
+      DriverImportData.safeParse({
+        batch_id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+        rows: 12,
+        audit_id: 1,
+        source_hash: "a".repeat(64),
+      }).success,
     ).toBe(true);
   });
 

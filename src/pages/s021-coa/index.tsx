@@ -179,7 +179,7 @@ export function CoaPage() {
     <div className="rounded-lg border border-[var(--color-oneborder)] p-4">
       <h2 className="text-sm font-semibold">{t("coa.import.title")}</h2>
       {packsError ? (
-        <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+        <p role="alert" className="mt-2 text-sm text-[var(--color-onerror)]">
           {packsError.userMessage}{" "}
           <button
             type="button"
@@ -242,7 +242,7 @@ export function CoaPage() {
         </p>
       )}
       {importError && (
-        <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+        <p role="alert" className="mt-2 text-sm text-[var(--color-onerror)]">
           {importError.userMessage}
         </p>
       )}
@@ -329,7 +329,7 @@ export function CoaPage() {
           </p>
         )}
         {mergeError && !showMergeConfirm && (
-          <p role="alert" className="mt-2 text-sm text-[var(--color-oneerror)]">
+          <p role="alert" className="mt-2 text-sm text-[var(--color-onerror)]">
             {mergeError.userMessage}
           </p>
         )}
@@ -395,7 +395,7 @@ export function CoaPage() {
               </div>
 
               {mergeError && (
-                <p role="alert" className="mt-3 text-sm text-[var(--color-oneerror)]">
+                <p role="alert" className="mt-3 text-sm text-[var(--color-onerror)]">
                   {mergeError.userMessage}
                 </p>
               )}

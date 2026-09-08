@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { call, toBridgeError } from "./bridge";
+import { call, registerEngineCommand, toBridgeError, unregisterEngineCommand } from "./bridge";
 import { CommandArgs } from "./schema";
 
 const invokeMock = vi.fn();
@@ -106,5 +106,86 @@ describe("toBridgeError — defensive error shape (B12)", () => {
     expect(err.userMessage).toBe(
       "Something went wrong. Diagnostics were captured — retry or export Local Diagnostics.",
     );
+  });
+});
+
+describe("engine-command routing (ADR-029 · model.inspect is engine-owned)", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it("routes a registered command to the in-process handler, bypassing IPC", async () => {
+    const handler = vi.fn(async () => ({
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+      period_id: "fp-2026-p01",
+      formula: "=B2*C2",
+      computed_text: "1200",
+      error_code: null,
+      precedents: [],
+      dependents: [],
+      cycle: null,
+      is_cycle: false,
+    }));
+    registerEngineCommand("model.inspect", handler);
+    try {
+      const data = (await call("model.inspect", {
+        line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+        period_id: "fp-2026-p01",
+      })) as Record<string, unknown>;
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler).toHaveBeenCalledWith({
+        line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+        period_id: "fp-2026-p01",
+      });
+      expect(invokeMock).not.toHaveBeenCalled();
+      expect(data.formula).toBe("=B2*C2");
+    } finally {
+      unregisterEngineCommand("model.inspect");
+    }
+  });
+
+  it("still enforces the Zod arg gate before the engine handler", async () => {
+    const handler = vi.fn(async () => ({}));
+    registerEngineCommand("model.inspect", handler);
+    try {
+      await expect(
+        call("model.inspect", { line_id: "not-a-uuid", period_id: "fp-2026-p01" } as never),
+      ).rejects.toMatchObject({ code: "VALUE_INVALID", httpStatus: 422 });
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      unregisterEngineCommand("model.inspect");
+    }
+  });
+
+  it("converts a thrown engine error into the BridgeError surface", async () => {
+    registerEngineCommand("model.inspect", async () => {
+      throw { code: "FORMULA_CYCLE", userMessage: "cycle", httpStatus: 422 };
+    });
+    try {
+      await expect(
+        call("model.inspect", {
+          line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+          period_id: "fp-2026-p01",
+        }),
+      ).rejects.toMatchObject({ code: "FORMULA_CYCLE", httpStatus: 422, retryable: false });
+    } finally {
+      unregisterEngineCommand("model.inspect");
+    }
+  });
+
+  it("falls back to IPC/mock once the handler is unregistered", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true } });
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    unregisterEngineCommand("model.inspect");
+    const data = await call("model.inspect", {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+      period_id: "fp-2026-p01",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("model.inspect", {
+      line_id: "3f9f2c9e-9f8b-4e2d-9a1c-700000000001",
+      period_id: "fp-2026-p01",
+    });
+    expect(data).toEqual({ ok: true });
   });
 });

@@ -390,7 +390,7 @@ function WaterfallDecompositionChart({
                   step.kind === "other_manual"
                     ? "fill-[var(--color-onewarning)]"
                     : step.delta_minor < 0
-                      ? "fill-[var(--color-oneerror)]"
+                      ? "fill-[var(--color-onerror)]"
                       : "fill-[var(--color-onetext)]"
                 }`}
               >
@@ -622,7 +622,7 @@ function ApplyScenarioDialog({
         {dialogError && (
           <div
             role="alert"
-            className="mt-3 rounded-md bg-[var(--color-oneerror)]/10 p-2.5 text-xs text-[var(--color-oneerror)]"
+            className="mt-3 rounded-md bg-[var(--color-onerror)]/10 p-2.5 text-xs text-[var(--color-onerror)]"
           >
             {dialogError}
           </div>

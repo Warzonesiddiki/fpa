@@ -61,6 +61,10 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/001_initial.sql")),
         M::up(include_str!("../../migrations/002_packs_description.sql"))
             .down("ALTER TABLE packs DROP COLUMN description;"),
+        M::up(include_str!(
+            "../../migrations/003_fiscal_year_archived_at.sql"
+        ))
+        .down("ALTER TABLE fiscal_years DROP COLUMN archived_at;"),
     ])
 }
 
@@ -110,6 +114,60 @@ mod tests {
             has_description, 1,
             "re-apply must restore packs.description"
         );
+    }
+
+    #[test]
+    fn migrated_v1_schema_equals_fresh_schema() {
+        // DATABASE-SCHEMA §11: a v1 database migrated to latest must be structurally
+        // IDENTICAL to a fresh install — a user who upgrades must never hold a different
+        // schema than a new user. Catches lossy down-migrations (a down that drops an index
+        // or narrows a type makes the down→up cycle drift from the fresh path) and
+        // hand-edit divergence between the paths. The comparison is the full sqlite_master
+        // dump (type, name, tbl_name, sql) — tables, indexes, views, triggers.
+        let mut migrated = Connection::open_in_memory().unwrap();
+        migrations()
+            .to_version(&mut migrated, 1)
+            .map_err(|e| panic!("rollback to v1 failed: {e}"))
+            .unwrap();
+        migrations()
+            .to_latest(&mut migrated)
+            .map_err(|e| panic!("migrate v1→latest failed: {e}"))
+            .unwrap();
+
+        let fresh = open_in_memory().unwrap();
+
+        let dump = |conn: &Connection| -> Vec<(String, String, String, String)> {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT type, name, tbl_name, COALESCE(sql, '') FROM sqlite_master
+                     ORDER BY type, name",
+                )
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            rows
+        };
+
+        let a = dump(&migrated);
+        let b = dump(&fresh);
+        assert_eq!(a.len(), b.len(), "object count differs: migrated vs fresh");
+        for (m, f) in a.iter().zip(b.iter()) {
+            assert_eq!(
+                m, f,
+                "sqlite_master object {} differs between migrated and fresh",
+                m.1
+            );
+        }
     }
 
     #[test]

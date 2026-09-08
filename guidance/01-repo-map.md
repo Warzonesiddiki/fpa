@@ -5,18 +5,18 @@ wrong place, or adding a second implementation, voids the change.
 
 ## Top level
 
-| Path           | What it is                                                               |
-| -------------- | ------------------------------------------------------------------------ |
-| `docs/`        | 64 canonical specs — the source of truth. Start at `docs/DOCS-INDEX.md`. |
-| `src/`         | React 19 + TS UI (view only; never computes money).                      |
-| `src-tauri/`   | Rust core (all math, storage, security) + Tauri shell.                   |
-| `packs/`       | 12 Industry Packs — **data only** (JSON + SQL seeds), no code (B15).     |
-| `e2e/`         | Playwright user-flow specs (UF-001…UF-014).                              |
-| `scripts/`     | Gate scripts (money:ast, docs:verify, pack-validate, schema check, …).   |
-| `benchmarks/`  | Vitest perf benches.                                                     |
-| `infra/ci.yml` | The CI pipeline (see remediation WS-01/02).                              |
-| `TASKBOARD.md` | Live build order & status.                                               |
-| `HANDOVER.md`  | Session-to-session state and pitfalls.                                   |
+| Path                    | What it is                                                               |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `docs/`                 | 64 canonical specs — the source of truth. Start at `docs/DOCS-INDEX.md`. |
+| `src/`                  | React 19 + TS UI (view only; never computes money).                      |
+| `src-tauri/`            | Rust core (all math, storage, security) + Tauri shell.                   |
+| `packs/`                | 12 Industry Packs — **data only** (JSON + SQL seeds), no code (B15).     |
+| `e2e/`                  | Playwright user-flow specs (UF-001…UF-014).                              |
+| `scripts/`              | Gate scripts (money:ast, docs:verify, pack-validate, schema check, …).   |
+| `benchmarks/`           | Vitest perf benches.                                                     |
+| `infra/ci.yml`          | The CI pipeline (see remediation WS-01/02).                              |
+| `TASKBOARD.md`          | Live build order & status.                                               |
+| `../audits/HANDOVER.md` | Session-to-session state and pitfalls.                                   |
 
 ## Rust core (`src-tauri/src/`)
 

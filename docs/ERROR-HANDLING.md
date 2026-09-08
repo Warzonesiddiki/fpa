@@ -2,7 +2,7 @@
 
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
-> **Code count: 86 (2026-09-07 phantom sweep — was 99: 13 catalog rows had zero producers under `src/`/`src-tauri/` and moved to §2C as reserved names; `UPDATE_FETCH_FAILED` was deleted with the updater, ADR-028; the never-counted `MODEL/RECALC_IN_FLIGHT` row was merged into §2C's `RECALC_IN_FLIGHT`. Every §2 code is now gate-proven to be emitted by real code — docs:verify 7d. History: 97-code catalog + `HC_DATE_INVALID`/`HC_OVERLAP` by ADR-26.)**
+> **Code count: 87 (2026-09-08 — `ARCHIVE_IN_USE_REF` moved from documented-guard to emitted when the `company.clone_sandbox` source guard landed, WS-07 follow-up. 2026-09-07 phantom sweep — was 99: 13 catalog rows had zero producers under `src/`/`src-tauri/` and moved to §2C as reserved names; `UPDATE_FETCH_FAILED` was deleted with the updater, ADR-028; the never-counted `MODEL/RECALC_IN_FLIGHT` row was merged into §2C's `RECALC_IN_FLIGHT`. Every §2 code is now gate-proven to be emitted by real code — docs:verify 7d. History: 97-code catalog + `HC_DATE_INVALID`/`HC_OVERLAP` by ADR-26.)**
 > **§2B and §2C are deliberately NOT part of the 99:** §2B lists the message *prefixes* the row validators emit under an existing code, §2C lists names reserved by specs for capability that is not built. Adding a name to either is never a way to raise the count (ADR-027).
 
 ---
@@ -79,6 +79,7 @@
 | COA_REFERENCED | in use | "Account is used by {n} lines/batches. Merge or remap instead of deleting." | 409 | false |
 | COA_TYPE_MISMATCH | type differs | "Cannot merge: account types differ (Revenue vs COGS)." | 422 | false |
 | ARCHIVE_IN_USE_REF | reference | "Sandbox references the archived year. Use a Year copy before cloning." | 409 | false |
+| ARCHIVE_IN_USE | in use | "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first." | 409 | false |
 
 ### E. Model & Formulas
 | Code | Message | userMessage | httpStatus | Retry |
@@ -205,7 +206,6 @@ inventing a twenty-second. A reserved name has **no `userMessage`**: adding the 
 - `RECOVERY_PHRASE_INVALID` → `AUTH-SPEC.md`/`API-SPEC.md` (recovery-phrase unlock path not built)
 - `KEYCHAIN_UNAVAILABLE` → `SCREENS-SPEC.md` S-072 / `WIREFRAMES-ANALYTICS.md` (S-072 renders its amber banner; the OS-keychain error producer lands with the native keychain work)
 - `STORAGE_INSUFFICIENT`, `FILE_IN_USE` → `API-SPEC.md`/`AUTH-SPEC.md` (storage/single-instance guards not built)
-- `ARCHIVE_IN_USE` → `API-SPEC.md`/`USER-STORIES.md` (archive-reference guard not built)
 - `CONNECTOR_AUTH_EXPIRED`, `CONNECTOR_RATE_LIMITED`, `CONNECTOR_NETWORK`, `CONNECTOR_ALREADY_CONNECTED`, `CONNECTOR_AUTH_STATE_MISMATCH` → `API-SPEC.md`/`INTEGRATIONS.md` (connector sync error paths not built)
 - `GROUP_ROLLUP_INCOMPLETE` → `API-SPEC.md`/`INDUSTRY-PACK-SPEC.md` (consolidation rollup guard not built)
 - `CONSOLIDATION_RUNNING` → `API-SPEC.md` (consolidation single-flight guard not built)

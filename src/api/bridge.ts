@@ -60,6 +60,30 @@ function failWithLog(err: BridgeError): never {
   throw err;
 }
 
+/**
+ * In-process engine commands (B14 one-owner · ADR-029): a command whose authoritative
+ * owner is a webview-side engine registers here and the bridge routes to it instead of
+ * IPC — e.g. `model.inspect` is owned by the HyperFormula model engine (the cell graph
+ * lives there; ARCHITECTURE "Worker split"). Routing order in `call`: Zod arg gate →
+ * registered engine handler → Tauri IPC → dev mock. Handlers receive the parsed args and
+ * return the command's data payload; thrown errors pass through the standard
+ * BridgeError conversion + in-session error log.
+ */
+type EngineCommandHandler = (args: never) => Promise<unknown>;
+const engineHandlers = new Map<CommandName, EngineCommandHandler>();
+
+export function registerEngineCommand<C extends CommandName>(
+  command: C,
+  handler: (args: CommandInput<C>) => Promise<unknown>,
+): void {
+  engineHandlers.set(command, handler as EngineCommandHandler);
+}
+
+/** Test/HMR hygiene: drop a registered engine handler (IPC/mock answers again). */
+export function unregisterEngineCommand(command: CommandName): void {
+  engineHandlers.delete(command);
+}
+
 export async function call<C extends CommandName>(
   command: C,
   args: CommandInput<C>,
@@ -89,9 +113,14 @@ export async function call<C extends CommandName>(
    * fake handlers) is fully tree-shaken out of every shipped bundle (WS-08).
    * The real app always runs inside Tauri, where `invoke` answers.
    */
-  const data = isTauriRuntime()
-    ? await invoke(command, parsed.data as never)
-    : await invokeMock(command, parsed.data as CommandInput<C>);
+  const engineHandler = engineHandlers.get(command);
+  const data = engineHandler
+    ? await engineHandler(parsed.data as never).catch((err: unknown) => {
+        throw failWithLog(toBridgeError(err));
+      })
+    : isTauriRuntime()
+      ? await invoke(command, parsed.data as never)
+      : await invokeMock(command, parsed.data as CommandInput<C>);
 
   if (typeof data === "object" && data !== null && "error" in data) {
     throw failWithLog(toBridgeError((data as { error: unknown }).error));

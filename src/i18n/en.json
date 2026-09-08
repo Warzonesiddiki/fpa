@@ -1194,6 +1194,9 @@
       "hint": "Use the Driver Data mapping pipeline; imported rows are materialized by the native core.",
       "path": "Driver-data file path",
       "mapping": "Mapping id",
+      "scenario": "Import into scenario",
+      "scenarioPlaceholder": "Choose a scenario",
+      "scenarioLocked": "locked",
       "button": "Import headcount",
       "failed": "Headcount import could not be started.",
       "success": "Driver-data batch {{batch}} was accepted for headcount import."

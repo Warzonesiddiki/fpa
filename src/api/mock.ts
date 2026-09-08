@@ -73,6 +73,8 @@ interface MockCompany {
   license_status: "active" | "grace" | "expired" | "invalid";
 }
 
+const ARCHIVED_SRC_ID = "3f9f2c9e-9f8b-4e2d-9a1c-000000000005";
+
 const companies: MockCompany[] = [
   {
     id: DEMO_ID,
@@ -92,6 +94,16 @@ const companies: MockCompany[] = [
     base_locale: "en-IN",
     last_opened_at: "2026-01-02T00:00:00Z",
     company_file_path: "/Users/demo/Atlas Manufacturing.fpa",
+    license_status: "active",
+  },
+  {
+    id: ARCHIVED_SRC_ID,
+    name: "Vela Foods (archived_source)",
+    type: "single",
+    default_currency_code: "GBP",
+    base_locale: "en-IN",
+    last_opened_at: "2026-05-01T00:00:00Z",
+    company_file_path: "/Users/demo/Vela Foods.fpa",
     license_status: "active",
   },
 ];
@@ -1326,6 +1338,58 @@ export async function mockInvoke<C extends CommandName>(
       companies.splice(companies.indexOf(company), 1);
       return { data: { deleted: true } };
     }
+    case "company.archive_year": {
+      // WS-07 (F-001/F-037 · API-SPEC §2.1): mark + reference guard + audit, count returned.
+      const { fy_label } = args as { fy_label: string };
+      if (!fy_label || !fy_label.trim()) {
+        return {
+          error: {
+            code: "VALUE_INVALID",
+            message: "fy_label required",
+            userMessage: "Name the Fiscal Year to archive (e.g. FY2026).",
+            httpStatus: 422,
+            retryable: false,
+            retryAfterMs: null,
+            details: {},
+          },
+        };
+      }
+      // Error-path trigger for the UI: a label containing "in_use" simulates a year whose
+      // periods still have data attached (models, drivers, GL lines, or mappings).
+      if (fy_label.includes("in_use")) {
+        return {
+          error: {
+            code: "ARCHIVE_IN_USE",
+            message: "fiscal year still referenced",
+            userMessage:
+              "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first.",
+            httpStatus: 409,
+            retryable: false,
+            retryAfterMs: null,
+            details: { fy_label },
+          },
+        };
+      }
+      return { data: { affected_periods: 12 } };
+    }
+    case "company.restore_year": {
+      // WS-07 follow-up: clear the mark; count returned. Idempotent on an active label.
+      const { fy_label } = args as { fy_label: string };
+      if (!fy_label || !fy_label.trim()) {
+        return {
+          error: {
+            code: "VALUE_INVALID",
+            message: "fy_label required",
+            userMessage: "Name the Fiscal Year to restore (e.g. FY2026).",
+            httpStatus: 422,
+            retryable: false,
+            retryAfterMs: null,
+            details: {},
+          },
+        };
+      }
+      return { data: { restored_periods: 12 } };
+    }
     case "company.create": {
       const { name } = args as { name: string };
       const id = `3f9f2c9e-9f8b-4e2d-9a1c-${String(companies.length + 3).padStart(12, "0")}`;
@@ -1364,6 +1428,16 @@ export async function mockInvoke<C extends CommandName>(
           "unknown company",
           "This Company file could not be verified. Restore from Backup?",
           422,
+        );
+      }
+      // ARCHIVE_IN_USE_REF mirror (native guard, WS-07): a source carrying an archived
+      // Fiscal Year cannot be cloned. Label-based trigger for the dev-preview error path.
+      if (src.name.includes("archived_source")) {
+        return mockError(
+          "ARCHIVE_IN_USE_REF",
+          "source references an archived year",
+          "Sandbox references the archived year. Use a Year copy before cloning.",
+          409,
         );
       }
       if (companies.some((c) => c.name === trimmed)) {

@@ -1,5 +1,5 @@
 // @generated — DO NOT EDIT. Regenerate with `npm run errors:catalog`.
-// Source of truth: docs/ERROR-HANDLING.md §2 (86 codes). Sync-enforced by
+// Source of truth: docs/ERROR-HANDLING.md §2 (87 codes). Sync-enforced by
 // scripts/docs-verify.mjs (7e). Consumed by the S-076 in-app Error reference (§3 rule 5).
 
 /** One §2 catalog row: the wire contract every screen renders (B12). */
@@ -220,6 +220,14 @@ export const ERROR_CATALOG: readonly ErrorCatalogEntry[] = [
     code: "ARCHIVE_IN_USE_REF",
     cause: "reference",
     userMessage: "Sandbox references the archived year. Use a Year copy before cloning.",
+    httpStatus: 409,
+    retryable: false,
+  },
+  {
+    code: "ARCHIVE_IN_USE",
+    cause: "in use",
+    userMessage:
+      "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first.",
     httpStatus: 409,
     retryable: false,
   },

@@ -43,14 +43,14 @@ pub const BACKUP_VERSION: u8 = 1;
 pub const BACKUP_RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct BackupCreateParams {
     pub path: String,
     pub passphrase: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct BackupCreateResponse {
     pub backup_id: String,
     pub path: String,
@@ -59,7 +59,7 @@ pub struct BackupCreateResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct BackupRestoreParams {
     pub backup_id: Option<String>,
     pub path: Option<String>,
@@ -67,7 +67,7 @@ pub struct BackupRestoreParams {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct BackupRestoreResponse {
     pub restored: bool,
     pub snapshot_id: String,
@@ -172,7 +172,7 @@ pub(crate) fn compute_sha256(bytes: &[u8]) -> String {
 }
 
 /// `backup.create` — { path: String, passphrase: Option<String> }
-#[tauri::command(name = "backup.create", rename_all = "camelCase")]
+#[tauri::command(name = "backup.create", rename_all = "snake_case")]
 pub fn backup_create(
     app: AppHandle,
     path: String,
@@ -279,7 +279,7 @@ pub fn execute_backup_create(
 }
 
 /// `backup.restore` — { backup_id: Option<String>, path: Option<String>, passphrase: Option<String> }
-#[tauri::command(name = "backup.restore", rename_all = "camelCase")]
+#[tauri::command(name = "backup.restore", rename_all = "snake_case")]
 pub fn backup_restore(
     app: AppHandle,
     backup_id: Option<String>,

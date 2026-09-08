@@ -201,6 +201,95 @@ UX) stays TODO with M7-2 signing. `cargo` dependency tree shrinks (reqwest/rustl
 subtree). The B18-9 offline promise is unaffected — no telemetry, no phone-home; there never was an update check
 call. Security posture: no unsigned update path can ship by default again.
 
+### ADR-029 · `model.inspect` is served by the HyperFormula engine, not a Rust handler (WS-05)
+**Why:** D1 ordered all three mock-only commands implemented as native Rust handlers. That premise predates the M3-1/M3-2
+landing of the model engine: the cell graph — precedents, dependents, cycle paths — is owned by the HyperFormula engine in
+the webview Worker (ARCHITECTURE "Worker split"; S-042 already inspects through it). Faithful precedent extraction is
+*impossible* from persisted formula text alone: `INDIRECT`, `OFFSET` and named ranges resolve only inside the evaluating
+engine, so a Rust text-parser over `model_values` would be a second, guaranteed-divergent graph — exactly what B14 (one
+owner per concern) and WS-05's own "do not build a second graph" note forbid.
+**Decision:** the bridge gains an in-process engine-command registry (`registerEngineCommand`; routing order in `call`:
+Zod arg gate → engine handler → Tauri IPC → dev mock). `src/stores/model.ts` — the engine singleton's composition root —
+registers `model.inspect` to the shared client's `inspectCell`, returning exactly the catalogued 9-field shape. The
+command keeps its Zod schema, API-SPEC row, and dev-mock case (fallback when no engine is registered). No Rust handler
+is written; the Rust core stays the owner of everything persisted.
+**Consequences:** `model.inspect` now answers identically in the dev preview and the desktop shell, from the same graph
+S-042 shows — zero drift by construction. The command is an in-process read of session-gated data (the grid reached the
+engine only through `require_unlocked`-gated loads), so it performs no separate session check; API-SPEC marks it
+engine-served. `CommandArgs`/mock parity tests are untouched. D1's remaining half — `company.archive_year` (WS-07) —
+stays a genuine Rust handler: company lifecycle is Rust-owned, no graph involved.
+
+### ADR-030 · The Tauri wire contract is snake_case — every command declares it; a gate enforces it
+**Why:** the 2026-09-07 continuation audit found 21 of 84 `#[tauri::command]`s annotated `rename_all = "camelCase"`
+(the M1-era modules: session, company, coa, calendar, pack, security, settings, license, backup), while the entire
+frontend wire contract is strict snake_case (API-SPEC §2 rows, Zod `CommandArgs`, every `call()` site). Tauri 2
+expects camelCase invoke keys under that annotation, so `invoke("session.unlock", {company_id})` deserializes nothing —
+15 commands with multi-word args were dead in the real desktop shell, including `session.unlock`, `company.create`,
+`calendar.preview`, `coa.list`, and `company.delete`. Nothing caught it: the mock answers the dev preview, E2E runs on
+the dev server (WS-08), and CI compiles Rust but never crosses the invoke boundary.
+**Decision:** normalize all commands to `rename_all = "snake_case"` (attribute-only change; the 61 newest commands —
+`driver.import`, `model.cell.set.v1`, `assumption.waive`, … — already used it because that is what actually works), make
+the two zero-arg session commands explicit, and add `scripts/ipc-casing-check.mjs` to `npm run check` + CI: every
+`#[tauri::command]` in `src-tauri/src` must declare `rename_all = "snake_case"`.
+**Consequences:** single-word commands are unaffected by casing; multi-word commands now deserialize their arguments
+in the real shell. The gate makes the convention machine-checked, so a camelCase annotation can never land again.
+Known residual gap (recorded, not fixed here): no test executes the real invoke boundary end-to-end — tauri-driver
+E2E in release CI remains the durable closure (CI-CD §6.2).
+
+### ADR-031 · Rust formatting is verified locally by a WASM rustfmt gate (`fmt:rust`); CI `cargo fmt --check` stays the authority
+
+**Context.** The dev sandbox cannot reach rustup/crates.io, so before this gate Rust
+formatting was verified only inside the CI rust job. WS-07 shipped three consecutive
+pushes whose sole failure was `cargo fmt --check` (a collapsible `let` binding, a
+108-char import list, then `fn_call_width=60` violations on an `include_str!` migration
+path and two assert macros) — each discovered only after a ~4-minute CI round-trip,
+worse because the Actions log-download endpoint was simultaneously down (Azure blob
+EOF), leaving the actual diff invisible.
+
+**Decision.** `scripts/rust-fmt-check.mjs` runs `@scalar/rust-fmt` (rustfmt compiled to
+WebAssembly, pinned 0.2.0) over every `.rs` file under `src-tauri/src`, with the edition
+read from the workspace `Cargo.toml`. Wired into `npm run check` as `fmt:rust` and
+documented in CI-CD.md stage 6. At adoption, all 40 crate files agree with its output —
+i.e. it reproduces CI's stable `cargo fmt` on this codebase.
+
+**Consequences.** Formatting drift is caught pre-push without a toolchain. If the
+vendored rustfmt and CI's stable toolchain ever disagree (version skew on future
+style editions), CI remains the gate of record and this script gets re-pinned; a local
+false positive is an early warning, never a green light.
+
+### ADR-032 · The wire contract is gate-enforced three ways; archive is a fully restorable mark
+
+**Context.** The 2026-09-07 audit closed WS-07 (`company.archive_year`) but left three
+named follow-ups: restore, the clone guard, and the fact that `ARCHIVE_IN_USE_REF` was a
+documented-but-never-emitted code (the phantom-code sweep had just made every catalogued
+code emitter-proven — a regression of that guarantee the moment the row shipped). The
+same audit's method finding: shipped-but-undocumented handlers (`security.pin_setup`,
+`assumption.waive`) were found by hand; nothing machine-checked registry agreement.
+
+**Decision (2026-09-08).**
+1. `command:parity` (scripts/command-parity-check.mjs, in `npm run check`) enforces
+   three-way agreement: every typed command carries a Zod binding, a mock case, and a
+   native implementation (`#[tauri::command]` registered in `generate_handler![…]`, or an
+   engine command per ADR-029) — and vice versa in every direction, including
+   ownership (a handler not registered is dead code and fails the gate).
+2. `company.restore_year` mirrors `company.archive_year`: `{company_id, fy_label}` →
+   `{restored_periods}`, one transaction, one HMAC-chained audit event, idempotent on an
+   active label (count returned, no second event). **Restore carries no reference guard**
+   — re-attachment cannot orphan data (F-037: archive is a mark, nothing is moved).
+3. `company.clone_sandbox` now refuses (`ARCHIVE_IN_USE_REF`, 409) while the source
+   carries an archived FY: the clone would copy the detached mark silently. The dev mock
+   mirrors both behaviours (seeded `Vela Foods (archived_source)` demo company).
+4. `storage::db` gains `migrated_v1_schema_equals_fresh_schema`: the v1→latest migration
+   path must produce a `sqlite_master` identical to a fresh install — a lossy down
+   migration is caught before it ships to user databases, not after.
+
+**Consequences.** The command-count and error-code ground truths moved (102→103
+commands, 86→87 codes) and are claim-checked by `docs:verify`. Adding a command now
+fails `npm run check` until all three registries + the API-SPEC row agree — the
+"documented-but-unanswerable" and "shipped-but-undocumented" failure classes are
+structurally closed. Deferred with this decision: write-gating mutations into archived
+periods (WS-12 card) and F-037 compression, both recorded on the board.
+
 ## 3. SUPERSEDED DECISIONS (for the record)
 
 | Superseded by | Note |

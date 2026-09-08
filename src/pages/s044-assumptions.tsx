@@ -278,7 +278,7 @@ export function AssumptionsPage() {
         </Button>
       </div>
       {formError && (
-        <p role="alert" className="rounded-md border border-[var(--color-oneerror)] p-3 text-sm">
+        <p role="alert" className="rounded-md border border-[var(--color-onerror)] p-3 text-sm">
           {formError}
         </p>
       )}
@@ -711,7 +711,7 @@ export function AssumptionsPage() {
         {waiveError && (
           <p
             role="alert"
-            className="mt-3 rounded-md border border-[var(--color-oneerror)] p-3 text-sm"
+            className="mt-3 rounded-md border border-[var(--color-onerror)] p-3 text-sm"
           >
             {waiveError}
           </p>

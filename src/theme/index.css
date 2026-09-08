@@ -17,6 +17,7 @@
   --color-onerror: #dc2626;
   --color-onewarning: #d97706;
   --color-onefavorable: #15803d;
+  --color-onesuccess: #16a34a;
   --color-oneunfavorable: #b91c1c;
   --color-oneinfo: #0284c7;
   --color-oneneutral: #64748b;
@@ -35,6 +36,7 @@
   --color-onerror: #f87171;
   --color-onewarning: #fbbf24;
   --color-onefavorable: #4ade80;
+  --color-onesuccess: #4ade80;
   --color-oneunfavorable: #f87171;
   --color-oneinfo: #38bdf8;
   --color-oneneutral: #94a3b8;

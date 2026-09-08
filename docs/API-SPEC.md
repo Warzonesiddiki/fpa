@@ -35,6 +35,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `company.list` | session | — | `CompanyMeta[]` | — |
 | `company.clone_sandbox` | session | `{company_id, name}` | `{company_id}` | ARCHIVE_IN_USE_REF |
 | `company.archive_year` | session | `{company_id, fy_label}` | `{affected_periods}` | ARCHIVE_IN_USE |
+| `company.restore_year` | session | `{company_id, fy_label}` | `{restored_periods}` | VALUE_INVALID |
 | `company.delete` | session | `{company_id, reason}` | `{deleted}` | COMPANY_IN_USE_RECENT |
 | `coa.import` | session | `{company_id, file_path?, pack_key?}` | `{created, updated}` | COA_DUPLICATE_CODE, COA_REFERENCED |
 | `coa.list` | session | `{company_id, bu_id?}` | `AccountNode[]` | — |
@@ -46,8 +47,12 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `model.sheet.add` | session | `{model_id, name, type}` | `{sheet_id}` | SHEET_NAME_DUP |
 | `model.cell.set.v1` | session | `{line_id, scenario_id, period_id, value?, formula?, manual_override?}` | `{recalc: {dirty_cells, cycles, changed_cells[], duration_ms}}` | MODEL_CELL_LOCKED, FORMULA_CYCLE, REFERENCE_BROKEN, DRIVER_OUT_OF_BOUNDS, HARDCODED_ASSUMPTION |
 | `model.recalc` | session | `{model_id, scenario_id}` | `{duration_ms, changed_cells, issues[]}` | — |
-| `model.inspect` | session | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
+| `model.inspect` | session (engine-served¹) | `{line_id, period_id}` | `{precedents[], dependents[], cycle?}` | — |
 | `model.diff` | session | `{scenario_a, version_a?, scenario_b, version_b?}` | `{diff_rows[]}` | COMPARE_INCOMPATIBLE |
+
+¹ `model.inspect` is engine-served (ADR-029): the bridge routes it to the in-process HyperFormula engine — the single
+  cell-graph owner (precedents/dependents/cycles resolve only inside the evaluating engine: `INDIRECT`/`OFFSET`/named
+  ranges). It is an in-process read of session-gated data; no separate session check, no IPC, no Rust handler.
 | `model.dump_export` | session | `{model_id, path}` | `{file, audit_id}` | HEALTH_CHECK_BLOCKED |
 | `scenario.create` / `scenario.duplicate` / `scenario.submit` / `scenario.approve` / `scenario.lock` / `scenario.reopen` / `scenario.delete` | session | `{model_id, name?, base_id?}` / `{scenario_id}` / `{reason?}` | `{scenario_id, version_id}` | SCENARIO_NAME_DUP, SCENARIO_LOCK_CONFLICT |
 | `baseline.set` | session | `{scenario_id, reason?}` | `{baseline_version_id}` | BASELINE_REPLACE_REASON_REQUIRED |
@@ -320,9 +325,10 @@ is `VALUE_INVALID` (422, not retryable) — the Rust variant `AppError::InvalidA
 
 **NOT copied at M1:** GL lines, scenarios, model cells, and any Models beyond the source's
 first — the sandbox starts from the source's structure and calendar and the sandboxer
-imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard (source references an
-archived Fiscal Year) is structurally present but vacuously satisfied at M1, because no
-Fiscal Year can be archived yet (`company.archive_year` lands with the archive schema).
+imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard is live (WS-07
+follow-up): cloning is refused while the source still carries a Fiscal Year with
+`fiscal_years.archived_at` set — the clone would copy the detached mark silently. Restore
+the year (`company.restore_year`) or use a Year copy first.
 
 The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is recorded as
 a `company.clone_sandbox` audit event (object `company`) inside the same transaction that

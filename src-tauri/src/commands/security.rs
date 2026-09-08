@@ -22,7 +22,7 @@ const PIN_ROW_ID: &str = "default";
 /// `require_company_write` read-only residue). The Company files are NOT re-encrypted: the
 /// same vault key is re-sealed under the new PIN's derived key with a fresh salt and nonce
 /// (AUTH-SPEC §2.4). The reseal + `security.change_pin` audit event commit atomically.
-#[tauri::command(name = "security.change_pin", rename_all = "camelCase")]
+#[tauri::command(name = "security.change_pin", rename_all = "snake_case")]
 pub fn security_change_pin(
     app: AppHandle,
     session: State<'_, SessionState>,
@@ -84,7 +84,7 @@ pub fn security_change_pin(
 /// `security.pin_setup` — {pin, confirm}. First-run registration (AUTH-SPEC §2.1):
 /// policy → Argon2id hash → transactional pin_metadata insert (attempts/lockout reset)
 /// + HMAC audit marker. A second call fails closed (PIN_ALREADY_SET) — no silent overwrite.
-#[tauri::command(name = "security.pin_setup", rename_all = "camelCase")]
+#[tauri::command(name = "security.pin_setup", rename_all = "snake_case")]
 pub fn security_pin_setup(
     app: AppHandle,
     pin: String,

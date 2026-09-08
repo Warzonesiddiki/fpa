@@ -3,6 +3,20 @@
 > OneFP&A · Kept in Keep-a-Changelog format. Versions follow semver. Releases: v1.0.0+.
 
 ## [Unreleased]
+
+- **Hardening batch (2026-09-08, ADR-032 · follows the 2026-09-07 artisan audit):**
+  `company.restore_year` (103rd typed command — archive is now a fully restorable mark: one
+  transaction, HMAC-chained audit event, idempotent on active labels); `ARCHIVE_IN_USE_REF`
+  goes from documented-guard to **emitted** (`company.clone_sandbox` refuses while the source
+  carries an archived FY); **`command:parity` gate** wired into `npm run check` — three-way
+  registry agreement (Zod ↔ mock ↔ native+engine, ownership checked) closes the
+  documented-but-unanswerable / shipped-but-undocumented failure classes for good;
+  **migration-equality Rust test** (v1→latest path must equal a fresh install's
+  `sqlite_master` — lossy down-migrations caught pre-ship); `archive_year` FY resolution
+  refactored to a single COUNT query; repo hygiene: MIT `LICENSE` (+ package/Cargo fields),
+  root `SECURITY.md`/`CONTRIBUTING.md`/`CHANGELOG.md` pointers, dated artifacts → `audits/`,
+  `docs/CI-ADDITIONS.md` owner runbook (row 65), remediation board statuses + `WS-12` card
+  (archived-period write-gating). Ground truths: 103 commands, 87 error codes.
 - **Pack re-issue 2.1.1 — zero validation warnings (WS-10 · B15 · 2026-09-06):** All 12 Industry Packs now carry the
   §3/§4 pack-spec surface the validator warned about (132 legacy warnings → **0**): every KPI has an engine-line-key
   `formula` (canonical `revenue`/`cogs`/`gross_profit`/`opex`/`ebitda` + prior-year `_py` variants + the pack's own
@@ -190,7 +204,7 @@
   renders "Account code maps to multiple Accounts ()." — the fix is a new `MAP_ACCOUNT_NOT_FOUND` + core + mock + test, which
   needs `cargo`/`vitest` and therefore not this sandbox.
 - **Documentation gap closure, round 2 (2026-09-05):** suite 59 → **60 docs/ specs** (`DOCS-INDEX.md` row 61; the
-  `docs:verify` claim, `README.md`, `HANDOVER.md`, `CONTINUE-PROMPT.md`, `ARCHITECTURE.md`, `docs/CLAUDE.md` and the
+  `docs:verify` claim, `README.md`, `../audits/HANDOVER.md`, `../audits/CONTINUE-PROMPT.md`, `ARCHITECTURE.md`, `docs/CLAUDE.md` and the
   traceability note moved with it). New `PRICING-AND-ENTITLEMENTS.md` closes checklist #90 by separating what is
   settled from what is a business call: §1 records the verified truth (the license `plan` field is signed, stored and
   displayed, and **enforced nowhere** — grep-confirmed across Rust and TS), §2 the constraints any policy inherits

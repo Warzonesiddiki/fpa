@@ -27,15 +27,19 @@
     "docs:verify": "node scripts/docs-verify.mjs",
     "docs:index-gen": "node scripts/docs-index-gen.mjs",
     "money:ast": "node scripts/money-ast.mjs",
+    "tokens:check": "node scripts/token-check.mjs",
+    "ipc:casing": "node scripts/ipc-casing-check.mjs",
+    "command:parity": "node scripts/command-parity-check.mjs",
     "packs:validate": "node scripts/pack-validate.mjs",
     "security:scan": "node scripts/secret-scan.mjs && node scripts/telemetry-scan.mjs && node scripts/license-check.mjs",
     "fixtures:gen": "python3 scripts/gen-fixtures.py",
     "tauri": "tauri",
     "desktop:preflight": "node scripts/build-desktop.mjs --preflight-only",
     "desktop:build": "node scripts/build-desktop.mjs",
-    "check": "npm run lint && npm run typecheck && npm run fmt:check && npm run test:coverage && npm run test:coverage:critical && node scripts/schema-equality-check.mjs && node scripts/docs-link-check.mjs --strict && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run security:scan",
+    "check": "npm run lint && npm run typecheck && npm run fmt:check && npm run fmt:rust && npm run test:coverage && npm run test:coverage:critical && node scripts/schema-equality-check.mjs && node scripts/docs-link-check.mjs --strict && npm run docs:verify && npm run packs:validate && npm run money:ast && npm run tokens:check && npm run ipc:casing && npm run command:parity && npm run security:scan",
     "fixtures:gen:license": "node scripts/gen-license-fixtures.mjs",
-    "errors:catalog": "node scripts/gen-error-catalog.mjs"
+    "errors:catalog": "node scripts/gen-error-catalog.mjs",
+    "fmt:rust": "node scripts/rust-fmt-check.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "3.14.10",
@@ -59,6 +63,7 @@
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.62.1",
+    "@scalar/rust-fmt": "0.2.0",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2.11.4",
     "@testing-library/dom": "^10.4.1",
@@ -84,5 +89,6 @@
     "vite": "8.2.2",
     "vitest": "4.1.11",
     "vitest-axe": "0.1.0"
-  }
+  },
+  "license": "MIT"
 }

@@ -1,9 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import type { BridgeError } from "@/api/bridge";
+import { useScenarioStore } from "@/stores/scenarios";
+import type { ScenarioRow } from "@/api/schema";
 import { HeadcountPage } from "./index";
 
 const { current, loadMock, saveMock, removeMock, importMock, retryMock, setStoreState } =
@@ -82,6 +84,18 @@ function renderPage() {
   );
 }
 
+/** Driver-data imports target a concrete scenario (driver.import, API-SPEC §2). */
+const SCENARIO: ScenarioRow = {
+  id: "3f9f2c9e-9f8b-4e2d-9a1c-600000000001",
+  model_id: "3f9f2c9e-9f8b-4e2d-9a1c-400000000001",
+  name: "FY27 Budget",
+  kind: "budget",
+  state: "draft",
+  parent_scenario_id: null,
+  baseline: false,
+  versions: [],
+};
+
 describe("S-045 Headcount Plan (F-016)", () => {
   beforeEach(() => {
     setStoreState({
@@ -143,6 +157,15 @@ describe("S-045 Headcount Plan (F-016)", () => {
     expect(screen.getByText("Add roles or import headcount.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add role" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Import from Driver Data" })).toBeInTheDocument();
+  });
+
+  it("loads the scenario list on mount so the import dropdown can be populated", async () => {
+    useScenarioStore.setState({ status: "loading", error: null, models: [], scenarios: [] });
+    const loadSpy = vi.spyOn(useScenarioStore.getState(), "load");
+    renderPage();
+    // Ref-gated, empty-only (AUDIT-2026-09-07 §3 P2): without this, the dropdown
+    // stayed empty until the user happened to visit S-050 first.
+    await waitFor(() => expect(loadSpy).toHaveBeenCalled());
   });
 
   it("renders typed errors with retry semantics and keeps the schedule context", async () => {
@@ -228,12 +251,17 @@ describe("S-045 Headcount Plan (F-016)", () => {
     );
   });
 
-  it("hands a driver-data file and mapping to the import pipeline", async () => {
+  it("hands a driver-data file, mapping, and scenario to the import pipeline", async () => {
+    useScenarioStore.setState({ scenarios: [SCENARIO] });
     const user = userEvent.setup();
     renderPage();
+    // No scenario chosen yet — the core rejects driver.import without one, so the button stays gated.
+    const importButton = screen.getByRole("button", { name: "Import headcount" });
+    expect(importButton).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Import into scenario"), SCENARIO.id);
     await user.type(screen.getByLabelText("Driver-data file path"), "/tmp/headcount.csv");
-    await user.click(screen.getByRole("button", { name: "Import headcount" }));
-    expect(importMock).toHaveBeenCalledWith("/tmp/headcount.csv", "canonical");
+    await user.click(importButton);
+    expect(importMock).toHaveBeenCalledWith("/tmp/headcount.csv", "canonical", SCENARIO.id);
   });
 
   it("keeps the populated plan axe-clean", async () => {

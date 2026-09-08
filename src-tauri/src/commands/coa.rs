@@ -83,7 +83,7 @@ fn query_accounts(
 }
 
 /// `coa.list` — {company_id, bu_id?}. Flat AccountNode[] (parent_id forms the tree client-side).
-#[tauri::command(name = "coa.list", rename_all = "camelCase")]
+#[tauri::command(name = "coa.list", rename_all = "snake_case")]
 pub fn coa_list(
     app: tauri::AppHandle,
     company_id: String,
@@ -255,7 +255,7 @@ pub fn merge_accounts(
 }
 
 /// `coa.import` — {company_id, file_path?, pack_key?} → {created, updated}.
-#[tauri::command(name = "coa.import", rename_all = "camelCase")]
+#[tauri::command(name = "coa.import", rename_all = "snake_case")]
 pub fn coa_import(
     app: tauri::AppHandle,
     company_id: String,
@@ -343,7 +343,7 @@ pub fn coa_import(
 }
 
 /// `coa.merge_accounts` — {from_id, to_id} → {remapped}.
-#[tauri::command(name = "coa.merge_accounts", rename_all = "camelCase")]
+#[tauri::command(name = "coa.merge_accounts", rename_all = "snake_case")]
 pub fn coa_merge_accounts(
     app: tauri::AppHandle,
     from_id: String,

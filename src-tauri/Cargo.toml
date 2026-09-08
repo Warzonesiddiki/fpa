@@ -1,6 +1,7 @@
 [package]
 name = "onefpa"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 description = "OneFP&A local-first FP&A desktop app (Tauri 2 shell + Rust core)"
 build = "build.rs"

@@ -45,7 +45,7 @@ export function ShellPage() {
       {readOnly && (
         <div
           role="alert"
-          className="flex shrink-0 items-center gap-2 border-b border-[var(--color-oneerror)] bg-[var(--color-onesurface)] px-4 py-2 text-sm text-[var(--color-onerror)]"
+          className="flex shrink-0 items-center gap-2 border-b border-[var(--color-onerror)] bg-[var(--color-onesurface)] px-4 py-2 text-sm text-[var(--color-onerror)]"
         >
           <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span>{t("shell.auditChainBroken")}</span>

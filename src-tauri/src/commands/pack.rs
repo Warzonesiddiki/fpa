@@ -908,7 +908,7 @@ fn is_decimal_string(s: &str) -> bool {
 }
 
 /// `pack.list` — {company_id?}
-#[tauri::command(name = "pack.list", rename_all = "camelCase")]
+#[tauri::command(name = "pack.list", rename_all = "snake_case")]
 pub fn pack_list(app: AppHandle) -> AppResult<serde_json::Value> {
     let dir = crate::commands::company::app_data_dir(&app)?;
     let conn = crate::storage::db::open_at(&dir)?;

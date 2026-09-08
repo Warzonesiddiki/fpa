@@ -152,6 +152,56 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(tieOut.data.currency).toBe("EUR");
   });
 
+  it("company.restore_year round-trips the archive mark (WS-07 follow-up)", async () => {
+    const ok = (await mockInvoke("company.restore_year", {
+      company_id: "c-1",
+      fy_label: "FY2026",
+    })) as { data: { restored_periods: number } };
+    expect(ok.data.restored_periods).toBeGreaterThan(0);
+    expect(Number.isInteger(ok.data.restored_periods)).toBe(true);
+
+    const blank = (await mockInvoke("company.restore_year", {
+      company_id: "c-1",
+      fy_label: "",
+    })) as { error: { code: string; httpStatus: number } };
+    expect(blank.error.code).toBe("VALUE_INVALID");
+    expect(blank.error.httpStatus).toBe(422);
+  });
+
+  it("company.clone_sandbox refuses a source carrying an archived year (ARCHIVE_IN_USE_REF)", async () => {
+    const blocked = (await mockInvoke("company.clone_sandbox", {
+      company_id: "3f9f2c9e-9f8b-4e2d-9a1c-000000000005",
+      name: "Vela Foods Copy",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(blocked.error.code).toBe("ARCHIVE_IN_USE_REF");
+    expect(blocked.error.httpStatus).toBe(409);
+    expect(blocked.error.retryable).toBe(false);
+  });
+
+  it("company.archive_year returns the period count and guards referenced years (WS-07)", async () => {
+    const ok = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "FY2026",
+    })) as { data: { affected_periods: number } };
+    expect(ok.data.affected_periods).toBeGreaterThan(0);
+    expect(Number.isInteger(ok.data.affected_periods)).toBe(true);
+
+    const blocked = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "FY2026_in_use",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(blocked.error.code).toBe("ARCHIVE_IN_USE");
+    expect(blocked.error.httpStatus).toBe(409);
+    expect(blocked.error.retryable).toBe(false);
+
+    const blank = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "  ",
+    })) as { error: { code: string; httpStatus: number } };
+    expect(blank.error.code).toBe("VALUE_INVALID");
+    expect(blank.error.httpStatus).toBe(422);
+  });
+
   it("company.open returns a summary and company.delete honours the retention window", async () => {
     const open = (await mockInvoke("company.open", {
       path: "/Users/demo/Meridian Holdings.fpa",
