@@ -152,6 +152,30 @@ describe("dev mock — browser-preview simulation only (B18-3)", () => {
     expect(tieOut.data.currency).toBe("EUR");
   });
 
+  it("company.archive_year returns the period count and guards referenced years (WS-07)", async () => {
+    const ok = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "FY2026",
+    })) as { data: { affected_periods: number } };
+    expect(ok.data.affected_periods).toBeGreaterThan(0);
+    expect(Number.isInteger(ok.data.affected_periods)).toBe(true);
+
+    const blocked = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "FY2026_in_use",
+    })) as { error: { code: string; httpStatus: number; retryable: boolean } };
+    expect(blocked.error.code).toBe("ARCHIVE_IN_USE");
+    expect(blocked.error.httpStatus).toBe(409);
+    expect(blocked.error.retryable).toBe(false);
+
+    const blank = (await mockInvoke("company.archive_year", {
+      company_id: "c-1",
+      fy_label: "  ",
+    })) as { error: { code: string; httpStatus: number } };
+    expect(blank.error.code).toBe("VALUE_INVALID");
+    expect(blank.error.httpStatus).toBe(422);
+  });
+
   it("company.open returns a summary and company.delete honours the retention window", async () => {
     const open = (await mockInvoke("company.open", {
       path: "/Users/demo/Meridian Holdings.fpa",

@@ -325,8 +325,9 @@ is `VALUE_INVALID` (422, not retryable) — the Rust variant `AppError::InvalidA
 **NOT copied at M1:** GL lines, scenarios, model cells, and any Models beyond the source's
 first — the sandbox starts from the source's structure and calendar and the sandboxer
 imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard (source references an
-archived Fiscal Year) is structurally present but vacuously satisfied at M1, because no
-Fiscal Year can be archived yet (`company.archive_year` lands with the archive schema).
+archived Fiscal Year) remains structurally present but vacuously satisfied: `fiscal_years.archived_at`
+can now be set (`company.archive_year`, WS-07), but the clone path does not yet consult the
+mark — raising `ARCHIVE_IN_USE_REF` from `company.clone_sandbox` is a recorded follow-up.
 
 The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is recorded as
 a `company.clone_sandbox` audit event (object `company`) inside the same transaction that

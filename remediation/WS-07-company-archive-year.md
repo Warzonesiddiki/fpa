@@ -88,3 +88,35 @@ npm run build
 - `docs/DATABASE-SCHEMA.md` (+ migration) if schema changed.
 - `docs/ERROR-HANDLING.md` — `ARCHIVE_IN_USE` present.
 - PRD F-001/F-037 status in `TASKBOARD.md`; traceability; `docs/DOCS-INDEX.md`.
+
+## Delivered (this pass) — exact scope, no over-claiming
+
+- **Migration `003_fiscal_year_archived_at.sql`**: `fiscal_years.archived_at TEXT` (NULL =
+  active), registered in `db.rs` with a `down`. DATABASE-SCHEMA.md updated; schema-equality
+  green.
+- **`company.archive_year`** (`company.rs`, snake_case wire): `require_company_write` →
+  company-wide label resolution via `fiscal_years JOIN fiscal_calendars` (fails closed on
+  foreign company) → `ARCHIVE_IN_USE` (409, not retryable) if any of the 8 period-reference
+  columns is non-empty (`model_values`, `driver_values`, `assumption_values`, `gl_lines`,
+  `ic_lines`, `annotations`, `bu_calendar_map` ×2) → audit event (`company.archive_year`,
+  HMAC-chained) + `archived_at` stamp in ONE transaction → `{affected_periods}` = COUNT of
+  the year's `fiscal_periods`. Empty/unknown label → `VALUE_INVALID` (422). Idempotent:
+  re-archive returns the count without a second audit event.
+- **AppError::ArchiveInUse** → `("ARCHIVE_IN_USE", 409, false, None)`; catalogued in
+  ERROR-HANDLING §D, removed from the reserved list; `errorCatalog.ts` regenerated (87 codes).
+- **Mock**: `company.archive_year` case (label containing `in_use` → ARCHIVE_IN_USE error
+  path) + contract test in `mock.test.ts`.
+- **Tests (Rust, CI)**: mark+count+audit; IN_USE refusal with no partial write; unknown
+  label; idempotence; error-body contract.
+- **API-SPEC** line ~325 note rewritten: mark is settable; clone path still does not consult
+  it (vacuous-guard wording kept honest).
+
+## Deliberately NOT delivered (recorded follow-ups)
+
+- **UI affordance**: no screen lists persisted FYs yet (S-022 lists `calendar.preview`
+  output, which is computed); the archive button lands with that surface.
+- **Restore command** (`company.restore_year`): restore = clear `archived_at`; not exposed
+  as IPC yet.
+- **F-037 compression** of archived years; **write-gating** of other commands against
+  archived periods; **ARCHIVE_IN_USE_REF** raised from `company.clone_sandbox` (guard still
+  vacuous — the clone does not consult the mark).

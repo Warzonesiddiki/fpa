@@ -1326,6 +1326,40 @@ export async function mockInvoke<C extends CommandName>(
       companies.splice(companies.indexOf(company), 1);
       return { data: { deleted: true } };
     }
+    case "company.archive_year": {
+      // WS-07 (F-001/F-037 · API-SPEC §2.1): mark + reference guard + audit, count returned.
+      const { fy_label } = args as { fy_label: string };
+      if (!fy_label || !fy_label.trim()) {
+        return {
+          error: {
+            code: "VALUE_INVALID",
+            message: "fy_label required",
+            userMessage: "Name the Fiscal Year to archive (e.g. FY2026).",
+            httpStatus: 422,
+            retryable: false,
+            retryAfterMs: null,
+            details: {},
+          },
+        };
+      }
+      // Error-path trigger for the UI: a label containing "in_use" simulates a year whose
+      // periods still have data attached (models, drivers, GL lines, or mappings).
+      if (fy_label.includes("in_use")) {
+        return {
+          error: {
+            code: "ARCHIVE_IN_USE",
+            message: "fiscal year still referenced",
+            userMessage:
+              "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first.",
+            httpStatus: 409,
+            retryable: false,
+            retryAfterMs: null,
+            details: { fy_label },
+          },
+        };
+      }
+      return { data: { affected_periods: 12 } };
+    }
     case "company.create": {
       const { name } = args as { name: string };
       const id = `3f9f2c9e-9f8b-4e2d-9a1c-${String(companies.length + 3).padStart(12, "0")}`;

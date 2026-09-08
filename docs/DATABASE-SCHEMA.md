@@ -181,6 +181,7 @@ INSERT INTO fiscal_calendars VALUES ('cal-454','c-01','Retail NRF','454',NULL,0,
 | start_date / end_date | TEXT | NOT NULL (ISO date) |
 | week_count | INTEGER | NOT NULL CHECK (52,53) |
 | is_leap_fiscal | INTEGER | NOT NULL DEFAULT 0 |
+| archived_at | TEXT | NULL = active (WS-07 mark, 003 migration) |
 | UNIQUE | | (calendar_id, fy_label) |
 
 ```sql

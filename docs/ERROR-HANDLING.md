@@ -79,6 +79,7 @@
 | COA_REFERENCED | in use | "Account is used by {n} lines/batches. Merge or remap instead of deleting." | 409 | false |
 | COA_TYPE_MISMATCH | type differs | "Cannot merge: account types differ (Revenue vs COGS)." | 422 | false |
 | ARCHIVE_IN_USE_REF | reference | "Sandbox references the archived year. Use a Year copy before cloning." | 409 | false |
+| ARCHIVE_IN_USE | in use | "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first." | 409 | false |
 
 ### E. Model & Formulas
 | Code | Message | userMessage | httpStatus | Retry |
@@ -205,7 +206,6 @@ inventing a twenty-second. A reserved name has **no `userMessage`**: adding the 
 - `RECOVERY_PHRASE_INVALID` → `AUTH-SPEC.md`/`API-SPEC.md` (recovery-phrase unlock path not built)
 - `KEYCHAIN_UNAVAILABLE` → `SCREENS-SPEC.md` S-072 / `WIREFRAMES-ANALYTICS.md` (S-072 renders its amber banner; the OS-keychain error producer lands with the native keychain work)
 - `STORAGE_INSUFFICIENT`, `FILE_IN_USE` → `API-SPEC.md`/`AUTH-SPEC.md` (storage/single-instance guards not built)
-- `ARCHIVE_IN_USE` → `API-SPEC.md`/`USER-STORIES.md` (archive-reference guard not built)
 - `CONNECTOR_AUTH_EXPIRED`, `CONNECTOR_RATE_LIMITED`, `CONNECTOR_NETWORK`, `CONNECTOR_ALREADY_CONNECTED`, `CONNECTOR_AUTH_STATE_MISMATCH` → `API-SPEC.md`/`INTEGRATIONS.md` (connector sync error paths not built)
 - `GROUP_ROLLUP_INCOMPLETE` → `API-SPEC.md`/`INDUSTRY-PACK-SPEC.md` (consolidation rollup guard not built)
 - `CONSOLIDATION_RUNNING` → `API-SPEC.md` (consolidation single-flight guard not built)

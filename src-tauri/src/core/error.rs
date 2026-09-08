@@ -44,6 +44,9 @@ pub enum AppError {
     FileCorrupt,
     #[error("company used recently — retention window applies")]
     CompanyRecentUse { days: u16 },
+    // ── Fiscal-Year Archive (F-001/F-037 · API-SPEC §2.1 · ERROR-HANDLING §D) ──────────────
+    #[error("fiscal year still referenced: {0}")]
+    ArchiveInUse(String),
     #[error("transit mapping ambiguous: {0}")]
     TransitAmbiguous(String),
     #[error("period mapping conflict: {0}")]
@@ -275,6 +278,7 @@ impl AppError {
             AppError::CalendarConflict(_) => ("CAL_53WEEK_CONFLICT", 422, false, None),
             AppError::FileCorrupt => ("STORAGE_FILE_CORRUPT", 422, false, None),
             AppError::CompanyRecentUse { .. } => ("COMPANY_IN_USE_RECENT", 409, false, None),
+            AppError::ArchiveInUse(_) => ("ARCHIVE_IN_USE", 409, false, None),
             AppError::TransitAmbiguous(_) => ("CAL_TRANSIT_AMBIGUOUS", 422, false, None),
             AppError::PeriodMappingConflict(_) => ("CAL_PERIOD_MAPPING_CONFLICT", 409, false, None),
             AppError::AuditChainBreak { .. } => ("AUDIT_CHAIN_BREAK", 409, false, None),
