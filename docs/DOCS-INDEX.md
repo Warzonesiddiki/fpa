@@ -22,7 +22,7 @@
 | 12 | `TECH-STACK.md` | Exact packages/versions + why + rejected alternatives + version policy | 1 |
 | 13 | `ARCHITECTURE.md` | Mermaid system + data flow + exact folder tree + engine contracts | 12 |
 | 14 | `DATABASE-SCHEMA.md` | 56 tables: types/PK/FK/constraints/indexes + example row each | 13 |
-| 15 | `API-SPEC.md` | 102 typed IPC commands incl. 17 detailed specs + error code index | 14, 31 |
+| 15 | `API-SPEC.md` | 103 typed IPC commands incl. 17 detailed specs + error code index | 14, 31 |
 | 16 | `AUTH-SPEC.md` | Local auth: PIN/recovery/lock/license flows + permission matrix | 13, 14 |
 | 17 | `STATE-MANAGEMENT.md` | State table (scope/storage/invalidation) + race rules | 13, 15 |
 | 18 | `INTEGRATIONS.md` | 11 integrations: purpose/secrets/rate-limits/fallbacks | 13, 16 |

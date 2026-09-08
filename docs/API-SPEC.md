@@ -35,6 +35,7 @@ Money fields: `amount_minor: i64` (currency-scaled). IDs: `uuid`. Periods: `peri
 | `company.list` | session | — | `CompanyMeta[]` | — |
 | `company.clone_sandbox` | session | `{company_id, name}` | `{company_id}` | ARCHIVE_IN_USE_REF |
 | `company.archive_year` | session | `{company_id, fy_label}` | `{affected_periods}` | ARCHIVE_IN_USE |
+| `company.restore_year` | session | `{company_id, fy_label}` | `{restored_periods}` | VALUE_INVALID |
 | `company.delete` | session | `{company_id, reason}` | `{deleted}` | COMPANY_IN_USE_RECENT |
 | `coa.import` | session | `{company_id, file_path?, pack_key?}` | `{created, updated}` | COA_DUPLICATE_CODE, COA_REFERENCED |
 | `coa.list` | session | `{company_id, bu_id?}` | `AccountNode[]` | — |
@@ -324,10 +325,10 @@ is `VALUE_INVALID` (422, not retryable) — the Rust variant `AppError::InvalidA
 
 **NOT copied at M1:** GL lines, scenarios, model cells, and any Models beyond the source's
 first — the sandbox starts from the source's structure and calendar and the sandboxer
-imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard (source references an
-archived Fiscal Year) remains structurally present but vacuously satisfied: `fiscal_years.archived_at`
-can now be set (`company.archive_year`, WS-07), but the clone path does not yet consult the
-mark — raising `ARCHIVE_IN_USE_REF` from `company.clone_sandbox` is a recorded follow-up.
+imports its own data (TASKBOARD M1-5). The `ARCHIVE_IN_USE_REF` guard is live (WS-07
+follow-up): cloning is refused while the source still carries a Fiscal Year with
+`fiscal_years.archived_at` set — the clone would copy the detached mark silently. Restore
+the year (`company.restore_year`) or use a Year copy first.
 
 The sandbox Company gets its own genesis-rooted HMAC audit chain; the clone is recorded as
 a `company.clone_sandbox` audit event (object `company`) inside the same transaction that

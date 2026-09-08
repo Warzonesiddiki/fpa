@@ -22,7 +22,7 @@ use commands::calendar::{calendar_apply, calendar_preview};
 use commands::coa::{coa_import, coa_list, coa_merge_accounts};
 use commands::company::{
     company_archive_year, company_clone_sandbox, company_create, company_delete, company_list,
-    company_open,
+    company_open, company_restore_year,
 };
 use commands::consolidation::{consolidation_run, consolidation_status};
 use commands::cycle::{
@@ -86,6 +86,7 @@ pub fn run() {
             company_clone_sandbox,
             company_delete,
             company_archive_year,
+            company_restore_year,
             calendar_preview,
             calendar_apply,
             coa_list,

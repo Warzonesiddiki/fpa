@@ -264,9 +264,9 @@ for (const [f, t] of Object.entries(all)) {
 /* 10. Ground-truth count claims embedded in headers */
 const claims = [
   ["42 screens", /42 screens/],
-  ["102 commands", /102 typed commands/],
+  ["103 commands", /103 typed commands/],
   ["56 tables", /56 \(49 original/],
-  ["86 errors", /86 \(2026-09-07 phantom sweep/],
+  ["87 errors", /87 \(2026-09-08/],
   ["60 docs", /60 docs\/ specs/],
 ];
 for (const [label, re] of claims) {

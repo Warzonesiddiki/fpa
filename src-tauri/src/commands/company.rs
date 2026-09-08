@@ -434,9 +434,9 @@ pub fn company_open(
 /// first are NOT copied at M1 — the sandbox starts from the source's structure and calendar and
 /// the sandboxer imports its own data (TASKBOARD M1-5).
 ///
-/// `ARCHIVE_IN_USE_REF` guard: cloning is blocked while the source references an archived
-/// Fiscal Year. At M1 no Fiscal Year can be archived yet (`company.archive_year` lands with the
-/// archive schema), so the guard is structurally present but vacuously satisfied.
+/// `ARCHIVE_IN_USE_REF` guard: cloning is blocked while the source still carries an archived
+/// Fiscal Year — a sandbox would copy the archived mark silently. Restore the year (or use a
+/// Year copy) before cloning.
 #[tauri::command(name = "company.clone_sandbox", rename_all = "snake_case")]
 pub fn company_clone_sandbox(
     app: AppHandle,
@@ -449,6 +449,11 @@ pub fn company_clone_sandbox(
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::invalid("Sandbox name is required"));
+    }
+    // ARCHIVE_IN_USE_REF (ERROR-HANDLING §D): the clone copies the source's Fiscal Years;
+    // refuse while any of them is archived instead of copying the detached mark.
+    if archived_fy_count(&conn, &company_id)? > 0 {
+        return Err(AppError::archive_in_use_ref(company_id));
     }
 
     // Source Company must exist.
@@ -1073,6 +1078,19 @@ pub(crate) fn verify_company_chain(
     Ok(crate::core::audit::verify_chain(&key, &events).map(|broken_idx| rows[broken_idx].0))
 }
 
+/// Count of the Company's Fiscal Years carrying the archive mark — the `ARCHIVE_IN_USE_REF`
+/// input (a sandbox would copy the mark; restore or use a Year copy before cloning).
+pub(crate) fn archived_fy_count(conn: &rusqlite::Connection, company_id: &str) -> AppResult<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM fiscal_years fy
+         JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+         WHERE fc.company_id = ?1 AND fy.archived_at IS NOT NULL",
+        [company_id],
+        |r| r.get(0),
+    )
+    .map_err(AppError::from)
+}
+
 /// Tables that may reference a `fiscal_periods` row (001_initial.sql FK set). Anything
 /// non-empty in these blocks `company.archive_year` with ARCHIVE_IN_USE — a detached year
 /// must be genuinely unreferenced, never silently orphaning live data.
@@ -1218,6 +1236,113 @@ pub(crate) fn company_archive_year_internal(
     .map_err(AppError::from)?;
     tx.commit().map_err(AppError::from)?;
     Ok(affected)
+}
+
+/// `company.restore_year` — {company_id, fy_label} → {restored_periods} (WS-07 follow-up,
+/// F-037: archive is a restorable mark). Re-attaches a Fiscal Year: clears
+/// `fiscal_years.archived_at` on every FY carrying that label under the Company's calendars
+/// in ONE transaction with an HMAC-chained audit event. Restoring needs no reference guard —
+/// re-attachment cannot orphan data. Idempotent: restoring a label with no archived FY
+/// returns the period count without a second audit event.
+#[tauri::command(name = "company.restore_year", rename_all = "snake_case")]
+pub fn company_restore_year(
+    app: AppHandle,
+    company_id: String,
+    fy_label: String,
+    state: tauri::State<'_, crate::commands::session::SessionState>,
+) -> AppResult<serde_json::Value> {
+    let fy_label = fy_label.trim().to_string();
+    if fy_label.is_empty() {
+        return Err(AppError::invalid(
+            "FY_LABEL_REQUIRED: fy_label must name a Fiscal Year (e.g. FY2026)",
+        ));
+    }
+    // Mutation: read-only (chain-break) sessions cannot restore (AUTH-SPEC §3).
+    crate::commands::session::require_company_write(&state, &company_id)?;
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    let restored = company_restore_year_internal(&mut conn, &dir, &company_id, &fy_label)?;
+    Ok(serde_json::json!({ "data": { "restored_periods": restored } }))
+}
+
+pub(crate) fn company_restore_year_internal(
+    conn: &mut rusqlite::Connection,
+    dir: &Path,
+    company_id: &str,
+    fy_label: &str,
+) -> AppResult<i64> {
+    let tx = conn.transaction().map_err(AppError::from)?;
+
+    // Ownership fails closed: the join through fiscal_calendars only matches this Company.
+    let fy_count: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM fiscal_years fy
+             JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+             WHERE fc.company_id = ?1 AND fy.fy_label = ?2",
+            rusqlite::params![company_id, fy_label],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+    if fy_count == 0 {
+        // B20: reuse VALUE_INVALID for a row-level miss without a dedicated code.
+        return Err(AppError::invalid(format!(
+            "VALUE_INVALID: no Fiscal Year '{fy_label}' exists in this Company"
+        )));
+    }
+
+    let restored: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM fiscal_periods WHERE fiscal_year_id IN
+               (SELECT fy.id FROM fiscal_years fy
+                JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+                WHERE fc.company_id = ?1 AND fy.fy_label = ?2)",
+            rusqlite::params![company_id, fy_label],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+
+    // Idempotence: nothing archived under this label → report the count, no new event.
+    let archived_now: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM fiscal_years fy
+             JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+             WHERE fc.company_id = ?1 AND fy.fy_label = ?2 AND fy.archived_at IS NOT NULL",
+            rusqlite::params![company_id, fy_label],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+    if archived_now == 0 {
+        return Ok(restored);
+    }
+
+    // Audit first (B7), then the clear — one transaction, no partial restore.
+    let after_json = serde_json::json!({
+        "company_id": company_id,
+        "fy_label": fy_label,
+        "restored_periods": restored,
+    })
+    .to_string();
+    let key = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+    let now = Utc::now().to_rfc3339();
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id,
+                                   before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'company.restore_year', 'fiscal_year', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![company_id, fy_label, after_json, prev, hash, now],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "UPDATE fiscal_years SET archived_at = NULL WHERE id IN
+           (SELECT fy.id FROM fiscal_years fy
+            JOIN fiscal_calendars fc ON fc.id = fy.calendar_id
+            WHERE fc.company_id = ?1 AND fy.fy_label = ?2)",
+        rusqlite::params![company_id, fy_label],
+    )
+    .map_err(AppError::from)?;
+    tx.commit().map_err(AppError::from)?;
+    Ok(restored)
 }
 
 #[cfg(test)]
@@ -1574,5 +1699,97 @@ mod tests {
             !body.retryable,
             "the user must remove the reference, not retry"
         );
+    }
+
+    #[test]
+    fn restore_year_roundtrips_archive_and_audits_both_events() {
+        let dir = audit_dir("restore-roundtrip");
+        let mut conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
+
+        company_archive_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
+        let restored = company_restore_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
+        assert_eq!(restored, 12);
+
+        let marked: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM fiscal_years WHERE fy_label = 'FY2026' AND archived_at IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(marked, 0, "restore clears the mark");
+        let events: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events
+                 WHERE action IN ('company.archive_year', 'company.restore_year')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(events, 2, "archive and restore each chain one event");
+        assert_eq!(
+            verify_company_chain(&conn, &dir, COMP_A).unwrap(),
+            None,
+            "the roundtrip leaves the per-Company chain intact"
+        );
+    }
+
+    #[test]
+    fn restore_year_of_active_label_is_idempotent_noop() {
+        let dir = audit_dir("restore-noop");
+        let mut conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
+
+        let restored = company_restore_year_internal(&mut conn, &dir, COMP_A, "FY2026").unwrap();
+        assert_eq!(restored, 12, "the period count is still reported");
+        let events: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'company.restore_year'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(events, 0, "a no-op restore writes no audit event");
+    }
+
+    #[test]
+    fn restore_year_unknown_label_is_value_invalid() {
+        let dir = audit_dir("restore-unknown");
+        let mut conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
+
+        let err = company_restore_year_internal(&mut conn, &dir, COMP_A, "FY2099").unwrap_err();
+        assert_eq!(err.body().code, "VALUE_INVALID");
+        assert_eq!(err.body().http_status, 422);
+    }
+
+    #[test]
+    fn clone_guard_counts_only_the_source_companys_archived_years() {
+        let conn = db::open_in_memory().unwrap();
+        insert_company(&conn, COMP_A);
+        insert_company(&conn, COMP_B);
+        seed_fiscal_year(&conn, COMP_A, "cal-a", "fy-a1", "FY2026", 12);
+        seed_fiscal_year(&conn, COMP_B, "cal-b", "fy-b1", "FY2026", 12);
+        conn.execute(
+            "UPDATE fiscal_years SET archived_at = '2026-09-08T00:00:00Z' WHERE id = 'fy-b1'",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(archived_fy_count(&conn, COMP_A).unwrap(), 0, "A is clean");
+        assert_eq!(
+            archived_fy_count(&conn, COMP_B).unwrap(),
+            1,
+            "B carries the mark"
+        );
+        // and the error body matches the catalogued contract
+        let body = AppError::archive_in_use_ref(COMP_B).body();
+        assert_eq!(body.code, "ARCHIVE_IN_USE_REF");
+        assert_eq!(body.http_status, 409);
+        assert!(!body.retryable);
     }
 }

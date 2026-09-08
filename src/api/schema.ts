@@ -265,6 +265,20 @@ export const CompanyArchiveYearArgs = z
   .strict();
 export const CompanyArchiveYearData = z.object({ affected_periods: z.number().int().min(0) });
 
+/**
+ * `company.restore_year` — WS-07 follow-up (F-037: archive is a restorable mark). Clears
+ * `archived_at` on the label's Fiscal Years under the Company's calendars in one transaction
+ * with an HMAC-chained `company.restore_year` audit event; no reference guard (re-attachment
+ * cannot orphan data). Idempotent on an active label (count returned, no second event).
+ */
+export const CompanyRestoreYearArgs = z
+  .object({
+    company_id: Uuid,
+    fy_label: z.string().trim().min(1, "FY_LABEL_REQUIRED"),
+  })
+  .strict();
+export const CompanyRestoreYearData = z.object({ restored_periods: z.number().int().min(0) });
+
 /* ── calendar.preview ───────────────────────────────────────────── */
 
 export const CalendarPreviewArgs = z
@@ -2657,6 +2671,7 @@ export const CommandArgs = {
   "company.open": CompanyOpenArgs,
   "company.clone_sandbox": CompanyCloneArgs,
   "company.archive_year": CompanyArchiveYearArgs,
+  "company.restore_year": CompanyRestoreYearArgs,
   "company.delete": CompanyDeleteArgs,
   "calendar.preview": CalendarPreviewArgs,
   "calendar.apply": CalendarApplyArgs,

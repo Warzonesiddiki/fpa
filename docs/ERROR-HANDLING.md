@@ -2,7 +2,7 @@
 
 > OneFP&A · v1.0.0 · **Standard error shape + full taxonomy: code → internal message → user-facing text → httpStatus → retry?**
 > Every error returns JSON of the exact shape below; UI renders `userMessage` + code chip + retry when `retryable`. No silent catches anywhere (B18-5/6).
-> **Code count: 86 (2026-09-07 phantom sweep — was 99: 13 catalog rows had zero producers under `src/`/`src-tauri/` and moved to §2C as reserved names; `UPDATE_FETCH_FAILED` was deleted with the updater, ADR-028; the never-counted `MODEL/RECALC_IN_FLIGHT` row was merged into §2C's `RECALC_IN_FLIGHT`. Every §2 code is now gate-proven to be emitted by real code — docs:verify 7d. History: 97-code catalog + `HC_DATE_INVALID`/`HC_OVERLAP` by ADR-26.)**
+> **Code count: 87 (2026-09-08 — `ARCHIVE_IN_USE_REF` moved from documented-guard to emitted when the `company.clone_sandbox` source guard landed, WS-07 follow-up. 2026-09-07 phantom sweep — was 99: 13 catalog rows had zero producers under `src/`/`src-tauri/` and moved to §2C as reserved names; `UPDATE_FETCH_FAILED` was deleted with the updater, ADR-028; the never-counted `MODEL/RECALC_IN_FLIGHT` row was merged into §2C's `RECALC_IN_FLIGHT`. Every §2 code is now gate-proven to be emitted by real code — docs:verify 7d. History: 97-code catalog + `HC_DATE_INVALID`/`HC_OVERLAP` by ADR-26.)**
 > **§2B and §2C are deliberately NOT part of the 99:** §2B lists the message *prefixes* the row validators emit under an existing code, §2C lists names reserved by specs for capability that is not built. Adding a name to either is never a way to raise the count (ADR-027).
 
 ---

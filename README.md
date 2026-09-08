@@ -30,12 +30,13 @@ cargo fetch
 npm run tauri:dev
 
 # 4. Verify quality gates (what CI runs)
-npm run check            # full gate: lint + typecheck + fmt:check + fmt:rust + vitest + coverage (main ≥85/80, critical ≥95/90) + schema-equality + docs-links + docs:verify + packs + money:ast + tokens + ipc:casing + security
+npm run check            # full gate: lint + typecheck + fmt:check + fmt:rust + vitest + coverage (main ≥85/80, critical ≥95/90) + schema-equality + docs-links + docs:verify + packs + money:ast + tokens + ipc:casing + command:parity + security
 npm run docs:verify      # docs index/links/consistency checks
 npm run packs:validate   # 12 Industry Packs validate
 npm run money:ast        # money-safety ratchet (float ban check)
 npm run tokens:check     # design-token reference gate (no undefined --color-* in src/)
 npm run ipc:casing        # Tauri invoke-args casing gate (snake_case wire contract)
+npm run command:parity    # three-way command parity gate (schema ↔ mock ↔ native)
 npm run security:scan    # secret + telemetry + license scans
 cargo test               # Rust engine/storage/property tests (needs Rust toolchain; also run cargo clippy -- -D warnings and cargo fmt --check)
 ```
@@ -60,7 +61,7 @@ cargo test               # Rust engine/storage/property tests (needs Rust toolch
 | `npm run tauri:dev` | Dev desktop app (HMR) |
 | `npm run build` | Production webview bundle |
 | `npm run tauri:build` | Build installer for current OS |
-| `npm run check` | Full gate (lint + typecheck + fmt:check + fmt:rust + vitest + coverage main ≥85/80 + critical ≥95/90 + schema-equality-check + docs-link-check + docs:verify + packs:validate + money:ast + tokens:check + ipc:casing + security:scan) |
+| `npm run check` | Full gate (lint + typecheck + fmt:check + fmt:rust + vitest + coverage main ≥85/80 + critical ≥95/90 + schema-equality-check + docs-link-check + docs:verify + packs:validate + money:ast + tokens:check + ipc:casing + command:parity + security:scan) |
 | `cargo test` | Rust engine/storage/property tests (plus `cargo clippy -- -D warnings`, `cargo fmt --check`) |
 | `npm run test:e2e` | Playwright E2E (requires tauri-driver) |
 | `npm run docs:verify` | Docs index/links/consistency checks |
@@ -68,6 +69,7 @@ cargo test               # Rust engine/storage/property tests (needs Rust toolch
 | `npm run money:ast` | Money-safety ratchet (float ban check) |
 | `npm run tokens:check` | Design-token reference gate (no undefined `--color-*` in src/) |
 | `npm run ipc:casing` | Tauri invoke-args casing gate (snake_case wire contract, ADR-030) |
+| `npm run command:parity` | Three-way parity: every typed command has a Zod binding, a mock case, and a native handler (or engine) — and vice versa |
 | `npm run fmt:rust` | Rust formatting gate without a toolchain (WASM rustfmt, ADR-031) |
 | `npm run security:scan` | Secret + telemetry + license scans |
 
