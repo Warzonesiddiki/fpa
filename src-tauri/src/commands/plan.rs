@@ -68,6 +68,12 @@ pub struct SensitivityValueStep {
     pub target_impacts: std::collections::HashMap<String, String>,
 }
 
+fn format_minor_units(minor: i64) -> String {
+    let sign = if minor < 0 { "-" } else { "" };
+    let abs_minor = minor.unsigned_abs();
+    format!("{}{}.{:02}", sign, abs_minor / 100, abs_minor % 100)
+}
+
 /// `plan.whatif_overlay` — {scenario_ids[], period_scope, kpis[]} -> {series[], waterfall[]}
 /// (API-SPEC §2 row 109 · SCENARIO-VERSION-SPEC §5 · S-052).
 #[tauri::command(name = "plan.whatif_overlay", rename_all = "snake_case")]
@@ -102,7 +108,11 @@ pub fn plan_whatif_overlay(
             )
             .optional()
             .map_err(AppError::from)?
-            .ok_or_else(AppError::file_corrupt)?;
+            .ok_or_else(|| {
+                AppError::invalid(format!(
+                    "VALUE_INVALID: scenario '{sc_id}' is not a Scenario of the unlocked Company"
+                ))
+            })?;
 
         if let Some(ref m_id) = model_id {
             if m_id != &sc_mod {
@@ -172,7 +182,7 @@ pub fn plan_whatif_overlay(
             };
 
             let minor = val_res.and_then(|v| v.0).unwrap_or(0);
-            let text = format!("{}.{:02}", minor / 100, (minor % 100).abs());
+            let text = format_minor_units(minor);
 
             points.push(WhatifSeriesPoint {
                 period_id: pid.clone(),
@@ -201,9 +211,9 @@ pub fn plan_whatif_overlay(
     waterfall.push(WaterfallStep {
         step_id: "step-baseline".into(),
         label: "Baseline Budget".into(),
-        delta_text: format!("{}.{:02}", base_minor / 100, (base_minor % 100).abs()),
+        delta_text: format_minor_units(base_minor),
         delta_minor: base_minor,
-        cumulative_text: format!("{}.{:02}", cum_minor / 100, (cum_minor % 100).abs()),
+        cumulative_text: format_minor_units(cum_minor),
         cumulative_minor: cum_minor,
         kind: "baseline".into(),
         driver_id: None,
@@ -219,9 +229,9 @@ pub fn plan_whatif_overlay(
         waterfall.push(WaterfallStep {
             step_id: "step-driver-volume".into(),
             label: "Volume Growth Driver".into(),
-            delta_text: format!("{}.{:02}", driver_delta / 100, (driver_delta % 100).abs()),
+            delta_text: format_minor_units(driver_delta),
             delta_minor: driver_delta,
-            cumulative_text: format!("{}.{:02}", cum_minor / 100, (cum_minor % 100).abs()),
+            cumulative_text: format_minor_units(cum_minor),
             cumulative_minor: cum_minor,
             kind: "driver".into(),
             driver_id: Some("drv-volume".into()),
@@ -232,9 +242,9 @@ pub fn plan_whatif_overlay(
         waterfall.push(WaterfallStep {
             step_id: "step-other".into(),
             label: "other/manual".into(),
-            delta_text: format!("{}.{:02}", other_delta / 100, (other_delta % 100).abs()),
+            delta_text: format_minor_units(other_delta),
             delta_minor: other_delta,
-            cumulative_text: format!("{}.{:02}", cum_minor / 100, (cum_minor % 100).abs()),
+            cumulative_text: format_minor_units(cum_minor),
             cumulative_minor: cum_minor,
             kind: "other_manual".into(),
             driver_id: None,
@@ -243,9 +253,9 @@ pub fn plan_whatif_overlay(
         waterfall.push(WaterfallStep {
             step_id: "step-total".into(),
             label: "Scenario Total".into(),
-            delta_text: format!("{}.{:02}", compare_minor / 100, (compare_minor % 100).abs()),
+            delta_text: format_minor_units(compare_minor),
             delta_minor: compare_minor,
-            cumulative_text: format!("{}.{:02}", compare_minor / 100, (compare_minor % 100).abs()),
+            cumulative_text: format_minor_units(compare_minor),
             cumulative_minor: compare_minor,
             kind: "total".into(),
             driver_id: None,
@@ -292,8 +302,11 @@ pub fn plan_sensitivity(
     // Check bounds in assumption if present
     let bounds_opt: Option<(Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT bounds_min, bounds_max FROM assumptions WHERE id = ?1 OR name = ?1",
-            rusqlite::params![driver_id],
+            "SELECT a.bounds_low, a.bounds_high
+             FROM assumptions a
+             JOIN models m ON m.id = a.model_id
+             WHERE m.company_id = ?1 AND (a.id = ?2 OR a.name = ?2)",
+            rusqlite::params![_company_id, driver_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
@@ -333,7 +346,7 @@ pub fn plan_sensitivity(
             let factor = dec_one + (cur_val - mid) * dec_half;
             let impact_minor = (Decimal::from(base_minor) * factor).round_dp(0);
             let minor_i64 = impact_minor.to_string().parse::<i64>().unwrap_or(0);
-            let text = format!("{}.{:02}", minor_i64 / 100, (minor_i64 % 100).abs());
+            let text = format_minor_units(minor_i64);
             impacts.insert(line.clone(), text);
 
             if i == 0 {
@@ -372,14 +385,14 @@ pub fn plan_sensitivity(
         tornado.push(TornadoBar {
             target_line_id: line.clone(),
             target_line_name: line.clone(),
-            base_value: format!("{}.{:02}", base_minor / 100, (base_minor % 100).abs()),
+            base_value: format_minor_units(base_minor),
             base_minor,
-            low_value: format!("{}.{:02}", low_minor / 100, (low_minor % 100).abs()),
+            low_value: format_minor_units(low_minor),
             low_minor,
-            high_value: format!("{}.{:02}", high_minor / 100, (high_minor % 100).abs()),
+            high_value: format_minor_units(high_minor),
             high_minor,
             swing_minor,
-            swing_text: format!("{}.{:02}", swing_minor / 100, (swing_minor % 100).abs()),
+            swing_text: format_minor_units(swing_minor),
         });
     }
 
@@ -425,8 +438,11 @@ pub fn plan_goal_seek(
     // Check bounds in assumption if present
     let bounds_opt: Option<(Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT bounds_min, bounds_max FROM assumptions WHERE id = ?1 OR name = ?1",
-            rusqlite::params![driver_id],
+            "SELECT a.bounds_low, a.bounds_high
+             FROM assumptions a
+             JOIN models m ON m.id = a.model_id
+             WHERE m.company_id = ?1 AND (a.id = ?2 OR a.name = ?2)",
+            rusqlite::params![_company_id, driver_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
@@ -453,9 +469,27 @@ pub fn plan_goal_seek(
     let f_lo = evaluate(lo) - target;
     let f_hi = evaluate(hi) - target;
 
-    // If both ends have same sign, root might not exist in interval
-    if (f_lo.is_sign_positive() && f_hi.is_sign_positive())
-        || (f_lo.is_sign_negative() && f_hi.is_sign_negative())
+    // Check if bounds are already roots
+    if f_lo.is_zero() {
+        return Ok(serde_json::json!({
+            "converged": true,
+            "iterations": 0,
+            "solved_value": lo.round_dp(6).to_string(),
+            "target_achieved": evaluate(lo).round_dp(2).to_string(),
+        }));
+    }
+    if f_hi.is_zero() {
+        return Ok(serde_json::json!({
+            "converged": true,
+            "iterations": 0,
+            "solved_value": hi.round_dp(6).to_string(),
+            "target_achieved": evaluate(hi).round_dp(2).to_string(),
+        }));
+    }
+
+    // If both ends have same non-zero sign, root might not exist in interval
+    if (f_lo > Decimal::ZERO && f_hi > Decimal::ZERO)
+        || (f_lo < Decimal::ZERO && f_hi < Decimal::ZERO)
     {
         return Err(AppError::goal_seek_no_converge(
             evaluate(hi).round_dp(2).to_string(),
@@ -533,5 +567,16 @@ mod tests {
         }
         assert_eq!(mid.round_dp(2), Decimal::from(25));
         assert!(iter <= 100);
+    }
+
+    #[test]
+    fn format_minor_units_preserves_negative_signs() {
+        assert_eq!(format_minor_units(12345), "123.45");
+        assert_eq!(format_minor_units(50), "0.50");
+        assert_eq!(format_minor_units(5), "0.05");
+        assert_eq!(format_minor_units(0), "0.00");
+        assert_eq!(format_minor_units(-50), "-0.50");
+        assert_eq!(format_minor_units(-5), "-0.05");
+        assert_eq!(format_minor_units(-12345), "-123.45");
     }
 }

@@ -140,15 +140,18 @@ sequenceDiagram
 
 | Engine | Input | Output | Determinism proof |
 |---|---|---|---|
-| Calendar | `calendarConfig, fy` | periods, transitive maps | Oracle suite vs published calendars (4-5-4/52-53) |
-| Statement | accounts, values, period scope | P&L/BS/CF/SoCE | Tie-out properties (BS tie, CF ties cash) — property-tested |
-| Consolidation | BUs, ic_lines, fx_rates, rollup maps | group statements + segments | IC sum zero after elimination (property), BS tie |
-| Variance | two versions + attribution inputs | variance + decomposition | Sum of parts = total (property) |
-| FVA | forecast versions vs actuals | MAPE/bias/hit | Recomputable from stored versions |
+| Calendar | `calendarConfig, fy` | periods, transitive maps, dual-cadence weeks | Oracle suite vs published calendars (4-5-4/52-53) |
+| Statement | accounts, values, period scope | P&L/BS/CF/SoCE, vector rollups | Tie-out properties (BS tie, CF ties cash) — property-tested |
+| Consolidation | BUs, ic_lines, fx_rates, rollup maps | group statements, eliminations, CTA plug | IC sum zero after elimination; ASC 830 CTA equity tie-out |
+| Variance | two versions + attribution inputs | variance + 5-factor PVM decomposition | Sum of parts = total ($\sum \Delta = \text{Total Variance}$) |
+| Formula & Cycle | formula AST, dependencies, cyclic graph | evaluated values, converged cycles | Gauss-Seidel convergence $\le 0.0001$ minor units; cycle paths |
+| Day-Count Amortization | principal, bps, date interval, convention | exact interest minor units, amortization table | ISDA 2006 Actual/360, Actual/365, 30/360 oracle suites |
+| Rolling Forecast Cycle | cycle ID, cutoff period, horizon | sealed actuals, shifted horizon, COW snapshots | Immutable historical actuals; version snapshot hash match |
+| FVA | forecast versions vs actuals | MAPE/bias/hit rate | Recomputable from stored versions |
 | Health | model state | findings list | No auto-fix; findings reproducible |
 | Money | any decimal string | `i64` minor units | Parse/format round-trip property (proptest) |
 
-**Worker split:** HyperFormula (formula graph) runs in the webview worker; all engine-heavy work (consolidation, import, export) runs in Rust (async Tokio) — never blocking the UI.
+**Worker split:** HyperFormula (formula graph) runs in the webview worker with iterative calculation capabilities; all engine-heavy work (consolidation, import, export, statistical forecasting) runs in Rust (async Tokio) — never blocking the UI.
 
 ---
 

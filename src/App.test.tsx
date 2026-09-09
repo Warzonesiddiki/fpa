@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { useSessionStore } from "@/stores/session";
+import { call } from "@/api/bridge";
 
 /**
  * App-level flow through the real mock bridge (dev preview semantics):
@@ -9,6 +11,24 @@ import App from "./App";
  * This is the P0 acceptance path without the native shell (CI runs the Tauri e2e too).
  */
 describe("App — Unlock → Shell → Dashboard flow (P0)", () => {
+  beforeEach(async () => {
+    try {
+      await call("session.lock", {});
+    } catch {
+      // ignore in environments where bridge lock might fail
+    }
+    useSessionStore.setState({
+      unlocked: false,
+      companyId: null,
+      modelId: null,
+      companyName: null,
+      readOnly: false,
+      status: "loading",
+      error: null,
+      checking: false,
+    });
+  });
+
   it("renders populated unlock list and rejects a wrong PIN", async () => {
     render(<App />);
     expect(await screen.findByText("Enter your PIN to open your Company")).toBeInTheDocument();

@@ -18,9 +18,10 @@
  * Exit 0 = full three-way parity; exit 1 lists every offender with its registry.
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const problems = [];
 
 /** Zod contract: the `CommandArgs` map in schema.ts is the single source of truth (§2). */

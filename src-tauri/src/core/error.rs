@@ -416,6 +416,12 @@ impl AppError {
                     details: serde_json::json!({}),
                 };
             }
+            AppError::ArchiveInUse(_) => {
+                "This Fiscal Year still has data attached (models, drivers, GL lines, or mappings). Remove or re-point them first."
+            }
+            AppError::ArchiveInUseRef(_) => {
+                "Sandbox references the archived year. Use a Year copy before cloning."
+            }
             AppError::TransitAmbiguous(_) => {
                 "BU period spans two Group periods. Map both date ranges to proceed."
             }

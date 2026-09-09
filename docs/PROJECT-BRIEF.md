@@ -62,11 +62,12 @@ Everything runs on the user's machine. Financial data never leaves it (rule B18-
 |---|---|---|---|
 | Implementation time | 1–6 months | 2–4 weeks | **Hours (first-run wizard)** |
 | Works offline, data on own hardware | ❌ | ❌ | ✅ |
+| All-in-One: Plan → Consolidate → Report | Partial (requires BI/add-ins) | ❌ (Excel wrapper) | ✅ Complete end-to-end desktop suite |
 | Any industry (config, not code) | Partial | Partial | ✅ 12 packs + pack builder |
 | Multi-industry group in one model | Partial | ❌ | ✅ |
 | GL Dump from ANY ERP (Tally, SAP, Oracle, etc.) | ❌ | Partial | ✅ equal-first-class |
 | Exact money (no float in financial paths) | ❌ (SQL floats) | ❌ | ✅ integer minor units + rust_decimal |
-| Full Excel formula compatibility | Partial | ✅ (via Excel) | ✅ native HyperFormula |
+| Full Excel formula compatibility & Iterative Solve | Partial | ✅ (via Excel) | ✅ native HyperFormula + cyclic solver |
 | Complete statement suite + SoCE + Segment | Partial | Partial | ✅ |
 | Audit-chained trail + auditor export | Partial | ❌ | ✅ HMAC chain, one-click data room |
 | License: self-host/offline | ❌ | ❌ | ✅ offline Ed25519 activation |
@@ -81,6 +82,7 @@ Everything runs on the user's machine. Financial data never leaves it (rule B18-
 | Import success rate (GL Dump, real files) | ≥ 99% on mapped templates; every failure has an explicit fix path |
 | Platform parity | Identical test results on Windows / macOS / Linux |
 | Statement reconciliation | Every statement ties to the cent, every period, every BU, every currency |
+| Zero-Flaw Mathematical Integrity | 0 unhandled formula crashes, 0 float leaks, exact ISDA day-count interest, exact $-\Delta\text{NWC}$ cash flow, and immutable Copy-on-Write version snapshots |
 
 ## 8. NON-GOALS (v1.0.0) — see PRD "NOT BUILDING"
 

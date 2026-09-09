@@ -2107,6 +2107,31 @@ export async function mockInvoke<C extends CommandName>(
       mockSheetSeq += 1;
       return { data: { sheet_id: `sheet-dev-${mockSheetSeq}` } };
     }
+    case "model.year.copy": {
+      // Shape mirror only (B18-3): Rust owns model copy + lines copy + audit (API-SPEC §2 row 59).
+      const { target_fy } = args as {
+        source_model_id: string;
+        target_fy: string;
+      };
+      const trimmedFy = target_fy.trim();
+      if (trimmedFy === "FY_DUP" || trimmedFy === "FY2026_EXISTS") {
+        return mockError(
+          "MODEL_YEAR_EXISTS",
+          `model already exists for fiscal year ${trimmedFy}`,
+          "A Model already exists for this fiscal year.",
+          409,
+          false,
+          { fiscalYear: trimmedFy },
+        );
+      }
+      mockModelSeq += 1;
+      return {
+        data: {
+          target_model_id: `model-dev-${mockModelSeq}`,
+          lines_copied: 12,
+        },
+      };
+    }
     case "model.recalc": {
       const { scenario_id } = args as { scenario_id: string };
       let dirty = 0;
@@ -2150,6 +2175,30 @@ export async function mockInvoke<C extends CommandName>(
           dependents: [],
           cycle: null,
           is_cycle: false,
+        },
+      };
+    }
+    case "bootstrap.copy": {
+      // Shape mirror only (B18-3): Rust owns bootstrap copy + model_values clone + audit (API-SPEC §3 row 60).
+      const { scenario_id } = args as {
+        scenario_id: string;
+        mode: string;
+        options?: { keep_formulas?: boolean; re_drive?: boolean };
+      };
+      if (scenario_id.includes("empty") || scenario_id.includes("EMPTY")) {
+        return mockError(
+          "SOURCE_BOOTSTRAP_EMPTY",
+          "Source scenario contains no model values to bootstrap from.",
+          "The source scenario contains no cell values or actuals to bootstrap from. Enter or import data into the source first.",
+          422,
+          false,
+          { scenarioId: scenario_id },
+        );
+      }
+      return {
+        data: {
+          lines: 12,
+          warnings: [],
         },
       };
     }

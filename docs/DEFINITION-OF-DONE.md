@@ -18,6 +18,7 @@
 - [ ] **Audit & traceability:** every number drillable to source (B18-1) OR explicitly documented exception.
 - [ ] **Docs synced:** terms in GLOSSARY (used verbatim); PRD/API/ERROR updated if changed; docs-index regenerated; CHANGELOG updated (release-affecting).
 - [ ] **Localization baseline:** locale-aware formatting; English strings centralized (i18n file).
+- [ ] **Zero-flaw financial integrity:** no unhandled formula crashes (`#DIV/0!`, `#REF!`), exact ISDA day-count interest, exact change in working capital ($-\Delta\text{NWC}$) cash flow, Copy-on-Write snapshot preservation on scenario lock/reopen, and tie-out parity across all multi-entity consolidation statements.
 
 ## 2. FEATURE NOT DONE IF ANY OF THESE ARE TRUE (traps)
 
@@ -28,6 +29,8 @@
 | "UI looks fine" | screenshot + a11y + keyboard E2E evidence required |
 | "We'll add error handling later" | all states/errors in same PR (B18-5/6) |
 | "Should be fine" for numbers | oracle/tie-out tests mandatory (B18-1) |
+| "Formulas crash the screen" | unhandled formula errors (`#DIV/0!`) crash the React application or brick model reloads |
+| "Values lost on reopen" | reopening or editing a scenario mutates or clears historical frozen version snapshots |
 | "Docs will be updated" | docs updated in the same PR (B8) |
 | "Almost done — just needs X" | not done — no partial merge without visible TODO entry |
 | "Demo data proves it" | production path uses real schema/persistence (B18-3) |

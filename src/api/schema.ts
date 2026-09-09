@@ -1175,6 +1175,30 @@ export const ModelCreateData = z.object({
 });
 export type ModelCreateData = z.infer<typeof ModelCreateData>;
 
+/** `model.year.copy` (API-SPEC §2 row 59): session write; copies a template FY into target FY. */
+export const ModelYearCopyOptions = z
+  .object({
+    keep_formulas: z.boolean().optional(),
+    preserve_methods: z.boolean().optional(),
+  })
+  .strict();
+export type ModelYearCopyOptions = z.infer<typeof ModelYearCopyOptions>;
+
+export const ModelYearCopyArgs = z
+  .object({
+    source_model_id: Uuid,
+    target_fy: z.string().trim().min(1, "target_fy is required"),
+    options: ModelYearCopyOptions.optional(),
+  })
+  .strict();
+export type ModelYearCopyArgs = z.infer<typeof ModelYearCopyArgs>;
+
+export const ModelYearCopyData = z.object({
+  target_model_id: z.string().min(1),
+  lines_copied: z.number().int().nonnegative(),
+});
+export type ModelYearCopyData = z.infer<typeof ModelYearCopyData>;
+
 /** `pack.builder.save_v1` (API-SPEC §21): company write; saves a builder definition as a
  *  new pack version. Inline components ride the document; the core validates with the §8
  *  check set and enforces §9 versioning (editing is versioned, never in-place). */
@@ -1583,6 +1607,30 @@ export const ModelListArgs = z.object({ company_id: Uuid }).strict();
 export type ModelListArgs = z.infer<typeof ModelListArgs>;
 export const ModelListData = z.array(ModelSummary);
 export type ModelListData = z.infer<typeof ModelListData>;
+
+/** `bootstrap.copy` (API-SPEC §3 row 60, MODELING-METHODS-SPEC §4). */
+export const BootstrapCopyOptions = z
+  .object({
+    keep_formulas: z.boolean().optional(),
+    re_drive: z.boolean().optional(),
+  })
+  .strict();
+export type BootstrapCopyOptions = z.infer<typeof BootstrapCopyOptions>;
+
+export const BootstrapCopyArgs = z
+  .object({
+    scenario_id: Uuid,
+    mode: z.enum(["actuals_to_budget", "prior_year_to_budget"]),
+    options: BootstrapCopyOptions.optional(),
+  })
+  .strict();
+export type BootstrapCopyArgs = z.infer<typeof BootstrapCopyArgs>;
+
+export const BootstrapCopyData = z.object({
+  lines: z.number().int().nonnegative(),
+  warnings: z.array(z.string()),
+});
+export type BootstrapCopyData = z.infer<typeof BootstrapCopyData>;
 
 /* ── model.diff (F-022 · M4-3 · S-051 · SCENARIO-VERSION-SPEC §4) ─────────────────────── */
 
@@ -2693,6 +2741,7 @@ export const CommandArgs = {
   "model.recalc": ModelRecalcArgs,
   "model.create": ModelCreateArgs,
   "model.sheet.add": ModelSheetAddArgs,
+  "model.year.copy": ModelYearCopyArgs,
   "model.inspect": ModelInspectArgs,
   "model.schedule.upsert": ModelScheduleUpsertArgs,
   "driver.upsert": DriverUpsertArgs,
@@ -2711,6 +2760,7 @@ export const CommandArgs = {
   "scenario.reopen": ScenarioReopenArgs,
   "scenario.delete": ScenarioIdArgs,
   "baseline.set": BaselineSetArgs,
+  "bootstrap.copy": BootstrapCopyArgs,
   "model.diff": ModelDiffArgs,
   "plan.whatif_overlay": PlanWhatifOverlayArgs,
   "plan.sensitivity": PlanSensitivityArgs,

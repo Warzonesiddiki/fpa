@@ -14,7 +14,9 @@
 //!  * **AUTH-SPEC §2.5/§3 rule 2** — the gate is `require_session_write`, checked in Rust.
 //!  * **No invented codes.** All errors come from the locked ERROR-HANDLING taxonomy (B20).
 
-use rusqlite::OptionalExtension;
+use std::path::Path;
+
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
@@ -98,6 +100,38 @@ pub fn model_cell_set_v1(
     // AUTH-SPEC §3 rule 2: object-level gate checked in Rust, not the UI (UI gate is cosmetic).
     let company_id = require_session_write(&session)?;
 
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+
+    model_cell_set_internal(
+        &dir,
+        &mut conn,
+        &company_id,
+        &registry,
+        &line_id,
+        &scenario_id,
+        &period_id,
+        value,
+        formula,
+        manual_override,
+        currency.as_deref(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn model_cell_set_internal(
+    dir: &Path,
+    conn: &mut Connection,
+    company_id: &str,
+    registry: &ModelRegistry,
+    line_id: &str,
+    scenario_id: &str,
+    period_id: &str,
+    value: Option<String>,
+    formula: Option<String>,
+    manual_override: Option<bool>,
+    currency: Option<&str>,
+) -> AppResult<serde_json::Value> {
     if value.is_none() && formula.is_none() {
         return Err(AppError::invalid(
             "MODEL_CELL_VALUE_REQUIRED: provide a value or a formula",
@@ -108,18 +142,13 @@ pub fn model_cell_set_v1(
     }
     // The only exact money conversion point: decimal string → minor units (B18-2).
     let value_minor = match value.as_deref() {
-        Some(v) => Some(parse_value_minor(
-            v,
-            currency.as_deref().unwrap_or(DEFAULT_CURRENCY),
-        )?),
+        Some(v) => Some(parse_value_minor(v, currency.unwrap_or(DEFAULT_CURRENCY))?),
         None => None,
     };
 
-    let dir = app_data_dir(&app)?;
-    let mut conn = db::open_at(&dir)?;
-    check_scenario_unlocked(&conn, &scenario_id)?;
+    check_scenario_unlocked(conn, scenario_id)?;
 
-    let key = cell_key(&scenario_id, &line_id, &period_id);
+    let key = cell_key(scenario_id, line_id, period_id);
     let before = registry.cells.get(&key);
 
     let stored = StoredCell {
@@ -146,7 +175,7 @@ pub fn model_cell_set_v1(
     let company_exists: Option<String> = tx
         .query_row(
             "SELECT id FROM companies WHERE id = ?1",
-            [&company_id],
+            [company_id],
             |r| r.get(0),
         )
         .optional()
@@ -154,25 +183,23 @@ pub fn model_cell_set_v1(
     if company_exists.is_none() {
         return Err(AppError::file_corrupt());
     }
-    let hmac = keystore::audit_hmac_key(&dir).map_err(AppError::internal)?;
-    let prev = audited_hash(&tx, &company_id)?;
+    let hmac = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id)?;
     let hash = next_hash(&hmac, &prev, after_json.to_string().as_bytes());
     let now = chrono::Utc::now().to_rfc3339();
 
     // Persist into model_values table if line, scenario, and period exist (M3-1 persistence)
     let line_exists: Option<String> = tx
-        .query_row(
-            "SELECT id FROM model_lines WHERE id = ?1",
-            [&line_id],
-            |r| r.get(0),
-        )
+        .query_row("SELECT id FROM model_lines WHERE id = ?1", [line_id], |r| {
+            r.get(0)
+        })
         .optional()
         .map_err(AppError::from)?;
 
     let period_exists: Option<String> = tx
         .query_row(
             "SELECT id FROM fiscal_periods WHERE id = ?1",
-            [&period_id],
+            [period_id],
             |r| r.get(0),
         )
         .optional()
@@ -214,7 +241,7 @@ pub fn model_cell_set_v1(
     tx.commit().map_err(AppError::from)?;
 
     // M1 echo: a single edited cell is the dirty set; HyperFormula computes the real graph in M3-1.
-    let recalc = model::recalc_report(1, vec![], vec![line_id.clone()], 0);
+    let recalc = model::recalc_report(1, vec![], vec![line_id.to_string()], 0);
 
     Ok(serde_json::json!({
         "data": {
@@ -758,6 +785,264 @@ pub fn model_sheet_add_internal(
     Ok(serde_json::json!({ "data": { "sheet_id": sheet_id } }))
 }
 
+/// Options for `model.year.copy` (API-SPEC §2 row 59).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct ModelYearCopyOptions {
+    pub keep_formulas: Option<bool>,
+    pub preserve_methods: Option<bool>,
+}
+
+/// `model.year.copy` — {source_model_id, target_fy, options?} → {target_model_id, lines_copied}
+/// (API-SPEC §2 row 59, MODELING-METHODS-SPEC §4).
+/// Copies a template FY into the target FY with method preservation.
+/// If a Model already exists for `target_fy`, returns `MODEL_YEAR_EXISTS` (409).
+#[tauri::command(name = "model.year.copy", rename_all = "snake_case")]
+pub fn model_year_copy(
+    app: AppHandle,
+    source_model_id: String,
+    target_fy: String,
+    options: Option<ModelYearCopyOptions>,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    let opts = options.unwrap_or_default();
+    model_year_copy_internal(
+        &mut conn,
+        &dir,
+        &company_id,
+        &source_model_id,
+        &target_fy,
+        &opts,
+    )
+}
+
+/// Shared implementation of `model.year.copy` (unit-testable; caller owns connection and dir).
+pub fn model_year_copy_internal(
+    conn: &mut rusqlite::Connection,
+    dir: &std::path::Path,
+    company_id: &str,
+    source_model_id: &str,
+    target_fy: &str,
+    options: &ModelYearCopyOptions,
+) -> AppResult<serde_json::Value> {
+    let target_fy_trimmed = target_fy.trim();
+    if target_fy_trimmed.is_empty() {
+        return Err(AppError::invalid("target_fy is required"));
+    }
+
+    // 1. Source model must exist and belong to the unlocked company.
+    let src_info: Option<(String, String, String, String)> = conn
+        .query_row(
+            "SELECT company_id, name, horizon, pack_id FROM models WHERE id = ?1",
+            [source_model_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+
+    let (src_company_id, src_name, horizon, pack_id) = match src_info {
+        Some(info) => info,
+        None => return Err(AppError::invalid("source_model_id not found")),
+    };
+
+    if src_company_id != company_id {
+        return Err(AppError::invalid(
+            "source_model_id does not belong to the unlocked company",
+        ));
+    }
+
+    // 2. Check if a model already exists for target_fy in this company.
+    // Models for a year typically match target_fy in their name or target_fy is a defined Fiscal Year.
+    // If a model exists with target_fy in name or matching target_fy name, return MODEL_YEAR_EXISTS.
+    let target_model_name = format!("{} {}", target_fy_trimmed, src_name);
+    let name_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM models WHERE company_id = ?1 AND (name = ?2 OR name = ?3))",
+            rusqlite::params![company_id, target_fy_trimmed, target_model_name],
+            |r| r.get(0),
+        )
+        .optional()
+        .map(|o| o.unwrap_or(false))
+        .map_err(AppError::from)?;
+
+    if name_exists {
+        return Err(AppError::ModelYearExists {
+            fiscal_year: target_fy_trimmed.to_string(),
+        });
+    }
+
+    let tx = conn.transaction().map_err(AppError::from)?;
+
+    let target_model_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO models (id, company_id, name, horizon, status, current_scenario_id, pack_id)
+         VALUES (?1, ?2, ?3, ?4, 'active', NULL, ?5)",
+        rusqlite::params![
+            target_model_id,
+            company_id,
+            target_model_name,
+            horizon,
+            pack_id
+        ],
+    )
+    .map_err(AppError::from)?;
+
+    // 3. Create default Base scenario for target model.
+    let target_scenario_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO scenarios (id, model_id, name, kind, state, parent_scenario_id, baseline)
+         VALUES (?1, ?2, 'Base', 'budget', 'draft', NULL, 1)",
+        rusqlite::params![target_scenario_id, target_model_id],
+    )
+    .map_err(AppError::from)?;
+    tx.execute(
+        "UPDATE models SET current_scenario_id = ?1 WHERE id = ?2",
+        rusqlite::params![target_scenario_id, target_model_id],
+    )
+    .map_err(AppError::from)?;
+
+    // 4. Copy sheets and lines from source model.
+    let mut stmt = tx
+        .prepare(
+            "SELECT id, name, sheet_type, sort_order FROM model_sheets WHERE model_id = ?1 ORDER BY sort_order ASC",
+        )
+        .map_err(AppError::from)?;
+    let source_sheets = stmt
+        .query_map([source_model_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+    drop(stmt);
+
+    let mut lines_copied = 0i64;
+
+    for (old_sheet_id, sheet_name, sheet_type, sort_order) in source_sheets {
+        let new_sheet_id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO model_sheets (id, model_id, name, sheet_type, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                new_sheet_id,
+                target_model_id,
+                sheet_name,
+                sheet_type,
+                sort_order
+            ],
+        )
+        .map_err(AppError::from)?;
+
+        let mut line_stmt = tx
+            .prepare(
+                "SELECT id, account_id, driver_id, method, format, decimals, is_parent, sort_order
+                 FROM model_lines WHERE sheet_id = ?1 ORDER BY sort_order ASC",
+            )
+            .map_err(AppError::from)?;
+
+        let source_lines = line_stmt
+            .query_map([old_sheet_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, i64>(6)?,
+                    r.get::<_, i64>(7)?,
+                ))
+            })
+            .map_err(AppError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::from)?;
+        drop(line_stmt);
+
+        for (
+            _old_line_id,
+            account_id,
+            driver_id,
+            method,
+            format,
+            decimals,
+            is_parent,
+            line_sort_order,
+        ) in source_lines
+        {
+            let new_line_id = uuid::Uuid::new_v4().to_string();
+            // Per MODELING-METHODS-SPEC §4: method preservation (e.g. yoy method preserved).
+            let target_method = if options.preserve_methods.unwrap_or(true) {
+                method
+            } else {
+                "manual".to_string()
+            };
+
+            tx.execute(
+                "INSERT INTO model_lines (id, sheet_id, account_id, driver_id, method, format, decimals, is_parent, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                rusqlite::params![
+                    new_line_id,
+                    new_sheet_id,
+                    account_id,
+                    driver_id,
+                    target_method,
+                    format,
+                    decimals,
+                    is_parent,
+                    line_sort_order
+                ],
+            )
+            .map_err(AppError::from)?;
+
+            lines_copied += 1;
+        }
+    }
+
+    // 5. Append HMAC-chained audit event.
+    let after_json = serde_json::json!({
+        "action": "model.year.copy",
+        "source_model_id": source_model_id,
+        "target_model_id": target_model_id,
+        "target_fy": target_fy_trimmed,
+        "lines_copied": lines_copied,
+    })
+    .to_string();
+
+    let key = keystore::audit_hmac_key(dir).map_err(AppError::internal)?;
+    let prev = audited_hash(&tx, company_id).map_err(AppError::from)?;
+    let hash = next_hash(&key, &prev, after_json.as_bytes());
+
+    tx.execute(
+        "INSERT INTO audit_events (company_id, actor, action, object_type, object_id, before_json, after_json, prev_hash, hash, created_at)
+         VALUES (?1, 'owner', 'model.year.copy', 'model', ?2, NULL, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            company_id,
+            target_model_id,
+            after_json,
+            prev,
+            hash,
+            chrono::Utc::now().to_rfc3339()
+        ],
+    )
+    .map_err(AppError::from)?;
+
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": {
+            "target_model_id": target_model_id,
+            "lines_copied": lines_copied,
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1006,7 +1291,182 @@ mod tests {
         // company_id mismatch vs the (absent) unlocked session scope: the internal fn
         // writes the audit under the CALLER-provided company, so a foreign company id
         // would strand the audit chain — the command wrapper guards this; internal fn
-        // still succeeds for the owner path only. Verify the wrapper guard separately.
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn model_year_copy_copies_sheets_lines_and_records_audit() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        let dir = std::env::temp_dir().join(format!("onefpa-mycopy-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Add a sheet and two lines to mod-1
+        conn.execute(
+            "INSERT INTO model_sheets (id, model_id, name, sheet_type, sort_order)
+             VALUES ('sh-1', 'mod-1', 'Revenue', 'input', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_lines (id, sheet_id, account_id, driver_id, method, format, decimals, is_parent, sort_order)
+             VALUES ('ln-1', 'sh-1', NULL, NULL, 'yoy', 'money', 2, 0, 10)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_lines (id, sheet_id, account_id, driver_id, method, format, decimals, is_parent, sort_order)
+             VALUES ('ln-2', 'sh-1', NULL, NULL, 'manual', 'money', 2, 0, 20)",
+            [],
+        )
+        .unwrap();
+
+        let opts = ModelYearCopyOptions::default();
+        let res =
+            model_year_copy_internal(&mut conn, &dir, "comp-1", "mod-1", "FY2027", &opts).unwrap();
+        let target_id = res["data"]["target_model_id"].as_str().unwrap();
+        assert_eq!(res["data"]["lines_copied"].as_i64().unwrap(), 2);
+
+        // Verify target model created
+        let (name, cur_scen): (String, Option<String>) = conn
+            .query_row(
+                "SELECT name, current_scenario_id FROM models WHERE id = ?1",
+                [target_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "FY2027 Test Model");
+        assert!(cur_scen.is_some());
+
+        // Verify sheets and lines copied
+        let sheet_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM model_sheets WHERE model_id = ?1",
+                [target_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sheet_count, 1);
+
+        let line_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM model_lines ml JOIN model_sheets ms ON ml.sheet_id = ms.id WHERE ms.model_id = ?1",
+                [target_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(line_count, 2);
+
+        // Verify audit event recorded
+        let audits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'model.year.copy' AND company_id = 'comp-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audits, 1);
+
+        // Duplicate copy fails with MODEL_YEAR_EXISTS
+        let err = model_year_copy_internal(&mut conn, &dir, "comp-1", "mod-1", "FY2027", &opts)
+            .unwrap_err();
+        assert_eq!(err.body().code, "MODEL_YEAR_EXISTS");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_model_cell_set_persists_model_values_and_audits() {
+        let mut conn = db::open_in_memory().unwrap();
+        insert_test_scaffolding(&conn, "comp-1", "mod-1");
+        insert_scenario(&conn, "scen-1", "mod-1", "Base Scenario", "draft");
+
+        let dir = std::env::temp_dir().join(format!("onefpa-mcellset-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Setup calendar, year, period, sheet, line
+        conn.execute(
+            "INSERT INTO fiscal_calendars (id, company_id, name, preset, week_start_day)
+             VALUES ('cal-1', 'comp-1', 'Standard', '12month', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_years (id, calendar_id, fy_label, start_date, end_date, week_count)
+             VALUES ('fy-1', 'cal-1', 'FY2027', '2027-01-01', '2027-12-31', 52)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_periods (id, fiscal_year_id, period_no, code, start_date, end_date)
+             VALUES ('fp-1', 'fy-1', 1, 'P01', '2027-01-01', '2027-01-31')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_sheets (id, model_id, name, sheet_type, sort_order)
+             VALUES ('sh-1', 'mod-1', 'Revenue', 'input', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_lines (id, sheet_id, account_id, driver_id, method, format, decimals, is_parent, sort_order)
+             VALUES ('ln-1', 'sh-1', NULL, NULL, 'manual', 'money', 2, 0, 10)",
+            [],
+        )
+        .unwrap();
+
+        let registry = ModelRegistry::default();
+
+        // 1. Set cell value
+        let res = model_cell_set_internal(
+            &dir,
+            &mut conn,
+            "comp-1",
+            &registry,
+            "ln-1",
+            "scen-1",
+            "fp-1",
+            Some("150000.00".to_string()),
+            Some("=100*1500".to_string()),
+            Some(false),
+            Some("USD"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            res["data"]["cell"]["value_minor"].as_i64().unwrap(),
+            15000000
+        );
+        assert_eq!(
+            res["data"]["cell"]["formula"].as_str().unwrap(),
+            "=100*1500"
+        );
+
+        // 2. Verify row exists in model_values table
+        let (amount_minor, amount_text, formula, computed): (Option<i64>, Option<String>, Option<String>, i64) = conn
+            .query_row(
+                "SELECT amount_minor, amount_text, formula, computed FROM model_values WHERE scenario_id = 'scen-1' AND line_id = 'ln-1' AND period_id = 'fp-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+
+        assert_eq!(amount_minor, Some(15000000));
+        assert_eq!(amount_text.as_deref(), Some("150000.00"));
+        assert_eq!(formula.as_deref(), Some("=100*1500"));
+        assert_eq!(computed, 1);
+
+        // 3. Verify audit event is recorded
+        let audit_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'model.cell.set.v1' AND company_id = 'comp-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audit_count, 1);
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }

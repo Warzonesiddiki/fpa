@@ -74,6 +74,23 @@ Rules: all financial values already redaction-safe (values are the business data
 ## 6. BOARD PACK (F-030)
 
 Fixed template order: Cover → Executive summary → KPI dashboard → P&L → Balance Sheet → Cash Flow → Segment (group) → Variance + commentary (Reason Codes) → Waterfalls → Notes/Adjusted items → glossary page.
-Generation: `board_pack.generate` → preview (S-064) → Excel + PDF; `PACK_NO_COMMENTARY` blocks if commentary_required=1 and variance notes are empty (never ship an unexplained board pack).
+Generation: `board_pack.generate` → preview (S-064) → Excel + PDF + PowerPoint (`.pptx`); `PACK_NO_COMMENTARY` blocks if commentary_required=1 and variance notes are empty (never ship an unexplained board pack).
+
+PowerPoint (`.pptx`) decks compile natively with high-fidelity vector charts, tabular statement slides formatted to corporate presentation palettes, and dynamic data tags for 1-click refreshes.
+
+## 7. OFFICE ADD-IN & LOCALHOST LOOPBACK BRIDGE (F-031 / V-010)
+
+To provide an all-in-one corporate finance experience while serving analysts who utilize Microsoft Office:
+1. **Localhost Loopback Server:**
+   - Embedded authenticated loopback HTTP/WebSocket listener running on `127.0.0.1:<random-port>`.
+   - Strictly bound to IPv4 loopback; rejects external network requests.
+   - Guarded by ephemeral Bearer token saved in OS keychain / session memory (`bridge.lock`).
+   - CORS origin pinning and strict Host header validation (`Host: 127.0.0.1:*`) prevent browser-based DNS rebinding attacks.
+2. **Bi-Directional Excel Integration:**
+   - Connects an Office.js Excel Add-in to the local OneFP&A core.
+   - Supports live formula queries: `=ONEFPA.GET("REVENUE", "2026-M03", "ENT_US")`.
+   - Allows push-back of audited budget inputs directly into `model_values` with HMAC-chained audit event logging.
+3. **PowerPoint Dynamic Board Deck Refresh:**
+   - Linked tables and waterfall graphs in `.pptx` decks query the localhost bridge to refresh automatically on month-end close with a single "Refresh Deck" click.
 
 *Referenced by: PRD F-030/F-031/F-033, SCREENS S-060–S-064/S-070, QA F-031, MONITORING.*

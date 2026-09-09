@@ -1099,7 +1099,6 @@ const FY_ARCHIVE_REFERENCING: &[(&str, &str)] = &[
     ("driver_values", "period_id"),
     ("assumption_values", "period_id"),
     ("gl_lines", "period_id"),
-    ("ic_lines", "period_id"),
     ("annotations", "period_id"),
     ("bu_calendar_map", "group_period_id"),
     ("bu_calendar_map", "bu_period_id"),

@@ -636,7 +636,9 @@ fn committed_values(
 fn preset_section_label(preset: &StatementPreset, stored: &str) -> String {
     let key = stored.trim().to_lowercase();
     let label: &str = match (preset, key.as_str()) {
-        (StatementPreset::UsGaap, "cogs" | "cost of goods sold") => "Cost of Goods Sold",
+        (StatementPreset::UsGaap, "cogs" | "cost of goods sold" | "cost of sales") => {
+            "Cost of Goods Sold"
+        }
         (StatementPreset::Ifrs, "cogs" | "cost of goods sold" | "cost of sales") => "Cost of Sales",
         (StatementPreset::UsGaap, "opex" | "operating expenses") => "Operating Expenses",
         (StatementPreset::Ifrs, "opex" | "operating expenses") => "Operating Expenses",
@@ -794,14 +796,17 @@ fn round_sections_largest_remainder(
             let period_ids: BTreeSet<&String> =
                 section.lines.iter().flat_map(|l| l.values.keys()).collect();
             for period_id in period_ids {
-                let raw: Vec<i64> = section
-                    .lines
-                    .iter()
-                    .filter_map(|l| l.values.get(period_id).copied())
-                    .collect();
+                let mut valid_indices = Vec::new();
+                let mut raw = Vec::new();
+                for (idx, line) in section.lines.iter().enumerate() {
+                    if let Some(&val) = line.values.get(period_id) {
+                        valid_indices.push(idx);
+                        raw.push(val);
+                    }
+                }
                 let allocated = largest_remainder_allocate(&raw, display_unit);
-                for (line, value) in rounded_lines.iter_mut().zip(allocated) {
-                    if let Some(entry) = line.values.get_mut(period_id) {
+                for (&line_idx, &value) in valid_indices.iter().zip(allocated.iter()) {
+                    if let Some(entry) = rounded_lines[line_idx].values.get_mut(period_id) {
                         *entry = value;
                     }
                 }

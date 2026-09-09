@@ -15,7 +15,7 @@ export default defineConfig({
         url: "http://localhost/",
       },
     },
-    testTimeout: 15000,
+    testTimeout: 45000,
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],

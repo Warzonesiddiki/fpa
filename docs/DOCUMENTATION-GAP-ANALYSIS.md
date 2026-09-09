@@ -143,6 +143,36 @@ Until a hallucination section is added to `CODING-STANDARDS.md` §7, every revie
    `license-check.mjs`, plus `package.json` engines and `infra/ci.yml` stages.
 4. Verify the product is what the docs say: `TASKBOARD.md` dashboard vs `git ls-files` reality
    (e.g. `e2e/` file count, `.github/` absence).
-5. Re-run after any doc change: `npm run docs:verify`. Update §1, §2, §3 in the same PR that closes a row.
+## 7. MASTER ENTERPRISE FP&A AUDIT & ZERO-FLAW UPGRADE PROGRAM (AUDIT-01…AUDIT-25)
+
+To guarantee that OneFP&A functions as a true all-in-one corporate finance platform without requiring users to switch to external spreadsheets or third-party tools, 25 critical rejection vectors and architectural enhancements are documented:
+
+1. **AUDIT-01 (Grid Persistence & Empty Cell Deletion):** Model grid boot load hydrates stored values from SQLite; batch cell edits support deleting cleared cells; transactional undo stack survives restarts.
+2. **AUDIT-02 (Excel Muscle Memory & Financial Parsing):** Full Excel keyboard map (F2, F4, Ctrl+D, Ctrl+R); clipboard parser handles accounting parentheses, thousands separators, and percentages without unhandled exceptions.
+3. **AUDIT-03 (Dynamic Line Management & Formula Bar):** In-grid sub-account line creation; decoupled formula bar state preventing typing lag and preserving point-and-click cell references.
+4. **AUDIT-04 (Iterative Calculation for 3-Statement Models):** Strongly Connected Component (SCC) cyclic relaxation solver (Gauss-Seidel with dampening up to 100 iterations) resolving intentional debt-revolver loops without `#CYCLE!` crashes.
+5. **AUDIT-05 (Vector Statement Rollups & Non-GAAP):** Statement rollups preserve per-period vector integrity; Statement of Cash Flows (Direct and Indirect) and Non-GAAP bridges (EBITDA, Adjusted EBITDA).
+6. **AUDIT-06 (Dynamic Cost Allocations):** Multi-step cost allocation engine distributing shared overhead across business units by dynamic drivers (headcount, revenue, square footage).
+7. **AUDIT-07 (Ingestion Resilience & Suspense Clearing):** Calamine Excel date preservation; unmapped accounts auto-route to suspense clearing (`9999 - Suspense Clearing`) to prevent month-end close deadlocks.
+8. **AUDIT-08 (GL Line Drilldown & Streaming Ingestion):** Interactive drill-down drawer inspecting underlying GL transactions; cached statement inserts and streaming CSV parsers handling 100k+ rows sub-second.
+9. **AUDIT-09 (Container Persistence & Copy-on-Write Versioning):** Live SQLite changes sealed into `.fpa` containers; Copy-on-Write version snapshots preserving historical baselines upon scenario reopen.
+10. **AUDIT-10 (High-Fidelity Excel & Slide Deck Exports):** Real XML/zip `.xlsx` exports via `rust_xlsxwriter` with live formulas and accounting formats; automated PowerPoint board presentation decks.
+11. **AUDIT-11 (Desktop Ergonomics & Single-Instance Locking):** Native OS `.fpa` file associations; single-instance application locking; recent company jump-lists.
+12. **AUDIT-12 (Relational Treasury Modeling & Day-Count Interest):** Persistent debt facilities and capital projects; ISDA day-count conventions (Actual/360, Actual/365, 30/360); DDB-to-Straight-Line depreciation switch; 13-week cash schedules.
+13. **AUDIT-13 (Workforce Modeling Division & Staff Roster):** Base compensation annualized across fiscal frequency (not multi-year horizon length); unique employee roster identifiers; pre-horizon hiring support.
+14. **AUDIT-14 (ASC 606 RevRec & Commercial SaaS Modeling):** Ratable daily revenue schedules; Cost-to-Cost POC with EAC tracking; mathematically rigorous SaaS KPI waterfalls.
+15. **AUDIT-15 (Group Consolidation & ASC 830 FX CTA):** Multi-tier entity rollup trees; automated intercompany elimination matching; balance sheet translation with Cumulative Translation Adjustment (CTA) equity reserve plugs.
+16. **AUDIT-16 (Cash Flow Reconciliation & Working Capital Math):** Statement of Cash Flows tying directly to Balance Sheet Cash; working capital operating cash flow impact calculated as $-\Delta\text{NWC}$.
+17. **AUDIT-17 (5-Factor Price-Volume-Mix & Driver Trees):** Mathematically rigorous PVM decomposition ($\Delta\text{Vol}$, $\Delta\text{Price}$, $\Delta\text{Mix}$, $\Delta\text{FX}$); recursive KPI driver trees.
+18. **AUDIT-18 (Multi-Dimensional OLAP Cube & Pivoting):** N-dimensional coordinates (Account × Department × Entity × Product × Version × Period); dynamic matrix pivoting; hierarchical breakback spreading.
+19. **AUDIT-19 (Predictive Statistical Baseline Forecasting):** Native time-series baseline extrapolation (Triple Exponential Smoothing / Holt-Winters, seasonal indexing, L3M/L6M run rates).
+20. **AUDIT-20 (Dual-Cadence & Generalized 4-4-5 Calendars):** Synchronized dual cadences (weekly operations to monthly reporting); parameterized retail calendar anchors (January, April, October starts; Monday week starts).
+21. **AUDIT-21 (In-Grid Cell Governance & Annotation Trail):** Cell-level audit trail inspection drawer; Excel-style comment flags and author notes.
+22. **AUDIT-22 (Office Add-In Localhost Loopback Bridge):** Authenticated loopback HTTP/WebSocket bridge for live Excel formulas (`=ONEFPA.GET()`) and 1-click PowerPoint deck refreshes.
+23. **AUDIT-23 (Cell Input Validation & Visual Modeling Standards):** AG Grid input validation schemas; Wall Street visual formatting (blue inputs, black formulas, bold headers); formula error shielding.
+24. **AUDIT-24 (Automated Rolling Forecast Cadence & Cutoff Locks):** 1-click month-end rollover (`forecast.roll_period`); automated cutoff boundary shifting; hard locks on closed historical periods.
+25. **AUDIT-25 (Enterprise Security & Biometrics):** Native OS Windows Hello and Touch ID biometrics; dual-control corporate key escrow.
+
+---
 
 *Referenced by: DOCS-INDEX.md, TASKBOARD.md.*

@@ -238,6 +238,26 @@ pub fn variance_get_internal(
         return Err(AppError::variance_source_mixed());
     }
 
+    // Validate period exists for company
+    let period_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM fiscal_periods fp
+                JOIN fiscal_years fy ON fp.fiscal_year_id = fy.id
+                JOIN fiscal_calendars fc ON fy.calendar_id = fc.id
+                WHERE fp.id = ?1 AND fc.company_id = ?2
+            )",
+            rusqlite::params![period_id, company_id],
+            |r| r.get(0),
+        )
+        .map_err(AppError::from)?;
+
+    if !period_exists {
+        return Err(AppError::period_not_found(format!(
+            "period {period_id} is not in the Company calendar"
+        )));
+    }
+
     // 2. Resolve Model
     let resolved_model_id: Option<String> = if let Some(m_id) = model_id {
         Some(m_id.to_string())
@@ -361,11 +381,13 @@ pub fn variance_get_internal(
     let mut total_commit: i64 = 0;
 
     for acc in accounts {
-        // Query GL lines for actuals first
+        // Query GL lines for actuals first (committed batches only, non-excluded)
         let gl_actual_minor: Option<i64> = conn
             .query_row(
-                "SELECT SUM(amount_minor) FROM gl_lines
-                 WHERE company_id = ?1 AND period_id = ?2 AND account_id = ?3 AND is_excluded = 0",
+                "SELECT SUM(gl.amount_minor) FROM gl_lines gl
+                 JOIN import_batches ib ON ib.id = gl.batch_id
+                 WHERE gl.company_id = ?1 AND gl.period_id = ?2 AND gl.account_id = ?3
+                   AND gl.is_excluded = 0 AND ib.status = 'committed'",
                 rusqlite::params![company_id, period_id, acc.id],
                 |r| r.get(0),
             )

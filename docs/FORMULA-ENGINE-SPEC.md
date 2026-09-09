@@ -56,22 +56,28 @@
 
 | Value | Meaning | Recovery |
 |---|---|---|
-| `#CYCLE!` | Circular Reference detected — app shows full cycle path (Formula Inspection) | change a ref / mark a cell `manual_override` (audited) |
+| `#CYCLE!` | Circular Reference detected (and iterative calculation disabled/divergent) — app shows full cycle path in Formula Inspection | enable Iterative Calculation / change ref / mark cell `manual_override` (audited) |
 | `#REF!` | Reference to a deleted/renamed Sheet/Cell | auto-repair offer (Sheet rename updates refs atomically) |
-| `#VALUE!` | Wrong type (text in arithmetic) | fix cell type |
+| `#VALUE!` | Wrong type (text in arithmetic) | fix cell type / verify driver formatting |
 | `#DIV/0!` | Division by zero | add guard `IF(ISBLANK(b),0,…)` |
 | `#N/A` | Lookup not found | fix lookup key |
 | `#NAME?` | Unknown name | use Formula Inspector to resolve |
 | `#NUM!` | Numeric overflow/domain (e.g., IRR no sign change) | change inputs |
 | `#UNSUPPORTED!` | Function outside whitelist (engine converts UNSUPPORTED to this error value) | replace function |
 
-Rules: an error value **never propagates into a statement total as 0** — a cell with any error value marks its whole ancestor chain `#VALUE!`-style "unresolved" in Health Check (HARD); exports blocked until resolved or waived. Error cells are highlighted (red border) with a tooltip + "Fix" action.
+Rules: an error value **never propagates into a statement total as 0** — a cell with any error value marks its whole ancestor chain `#VALUE!`-style "unresolved" in Health Check (HARD); exports blocked until resolved or waived. Error cells are highlighted in the UI (red border, `text-[var(--color-onerror)]`) with a tooltip + "Fix" action. Error strings (`#DIV/0!`, `#REF!`, etc.) are shielded at the presentation layer (`MoneyCell`) to display as error badges without throwing unhandled exceptions.
 
-## 5. RECALCULATION & GRAPH
+## 5. RECALCULATION, DEPENDENCY GRAPH & ITERATIVE CALCULATION
 
 - Dependency graph built at load; edits mark dirty cells; **incremental recalc** only (dirty subgraph); full recalc on model/scenario switch.
 - Recalc runs in a single Web Worker; single-flight (queue, no concurrent); result returned as `recalc.dirty_cells/cycles/changed_cells` (API `model.cell.set.v1`).
-- **Cycle policy:** cycle detected at build time (before evaluation) → marked `#CYCLE!`; the app never evaluates a cycle to a number.
+- **Iterative Calculation Mode (3-Statement Debt Loops):**
+  - Intentional circular references (e.g., average debt facility balance $\leftrightarrow$ interest expense $\leftrightarrow$ net income $\leftrightarrow$ cash flow $\leftrightarrow$ revolver draw) are supported via an **Iterative Calculation Mode** matching corporate financial modeling standards.
+  - The engine detects Strongly Connected Components (SCCs) within the dependency graph using Tarjan's algorithm.
+  - Cyclic subgraphs are solved iteratively via Gauss-Seidel relaxation with dampening factor $\alpha = 0.5$ for up to 100 iterations.
+  - Convergence criteria: max absolute change between iterations $\le 0.0001$ minor units.
+  - Converged cycles resolve to valid financial values; non-converging or divergent loops (e.g. `=A1*2`) terminate at max iterations and emit `#CYCLE!`.
+  - When Iterative Calculation is disabled (default), cycles are flagged at build time and marked `#CYCLE!`.
 - **Determinism:** same model + inputs → identical values on all OS (property test; float divergence eliminated by commit-rounding).
 - **Scale contract:** engine evaluates in float (Excel parity), **then rounds to Currency Scale at commit** (MONEY-ROUNDING-SPEC §3); rust_decimal never participates in cell evaluation (I1 boundary: engine output → Money Value on commit).
 

@@ -29,6 +29,8 @@ import {
   ModelRecalcData,
   ModelSheetAddData,
   ModelCreateData,
+  ModelYearCopyData,
+  BootstrapCopyData,
   PackBuilderSaveV1Data,
   ModelListArgs,
   ModelListData,
@@ -1826,6 +1828,35 @@ describe("model.create contract (F-012 · API-SPEC §20)", () => {
   });
 });
 
+describe("model.year.copy contract (F-015 · API-SPEC §2 row 59)", () => {
+  it("requires source_model_id uuid and non-empty target_fy, strict", () => {
+    const args = CommandArgs["model.year.copy"];
+    const base = {
+      source_model_id: crypto.randomUUID(),
+      target_fy: "FY2027",
+      options: {
+        keep_formulas: true,
+        preserve_methods: true,
+      },
+    };
+    expect(args.safeParse(base).success).toBe(true);
+    expect(args.safeParse({ ...base, options: undefined }).success).toBe(true);
+    expect(args.safeParse({ ...base, target_fy: "   " }).success).toBe(false);
+    expect(args.safeParse({ ...base, source_model_id: "not-a-uuid" }).success).toBe(false);
+    expect(args.safeParse({ ...base, extra: 1 }).success).toBe(false);
+  });
+
+  it("data shape carries target_model_id + non-negative lines_copied", () => {
+    expect(
+      ModelYearCopyData.safeParse({ target_model_id: "m-target", lines_copied: 42 }).success,
+    ).toBe(true);
+    expect(
+      ModelYearCopyData.safeParse({ target_model_id: "m-target", lines_copied: -1 }).success,
+    ).toBe(false);
+    expect(ModelYearCopyData.safeParse({ target_model_id: "" }).success).toBe(false);
+  });
+});
+
 describe("pack.builder.save_v1 contract (F-005 · API-SPEC §21)", () => {
   it("requires nullable pack_id + a definition_json object, strict", () => {
     const args = CommandArgs["pack.builder.save_v1"];
@@ -1845,5 +1876,32 @@ describe("pack.builder.save_v1 contract (F-005 · API-SPEC §21)", () => {
     ).toEqual([]);
     const bad = PackBuilderSaveV1Data.safeParse({ pack_id: "p1" });
     expect(bad.success).toBe(false);
+  });
+});
+
+describe("bootstrap.copy contract (API-SPEC §3 row 60 · MODELING-METHODS-SPEC §4)", () => {
+  it("requires scenario_id uuid, mode enum, and optional options", () => {
+    const args = CommandArgs["bootstrap.copy"];
+    const validActuals = {
+      scenario_id: crypto.randomUUID(),
+      mode: "actuals_to_budget",
+      options: {
+        keep_formulas: true,
+        re_drive: false,
+      },
+    };
+    expect(args.safeParse(validActuals).success).toBe(true);
+    expect(args.safeParse({ ...validActuals, mode: "prior_year_to_budget" }).success).toBe(true);
+    expect(args.safeParse({ ...validActuals, options: undefined }).success).toBe(true);
+    expect(args.safeParse({ ...validActuals, mode: "invalid_mode" }).success).toBe(false);
+    expect(args.safeParse({ ...validActuals, scenario_id: "not-a-uuid" }).success).toBe(false);
+    expect(args.safeParse({ ...validActuals, extra: 123 }).success).toBe(false);
+  });
+
+  it("data shape carries non-negative lines and warnings array", () => {
+    expect(BootstrapCopyData.safeParse({ lines: 12, warnings: [] }).success).toBe(true);
+    expect(BootstrapCopyData.safeParse({ lines: 12, warnings: ["warning 1"] }).success).toBe(true);
+    expect(BootstrapCopyData.safeParse({ lines: -1, warnings: [] }).success).toBe(false);
+    expect(BootstrapCopyData.safeParse({ lines: 12 }).success).toBe(false);
   });
 });

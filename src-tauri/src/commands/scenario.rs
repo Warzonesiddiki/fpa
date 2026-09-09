@@ -1124,6 +1124,195 @@ pub fn model_list(
     Ok(serde_json::json!({ "data": models }))
 }
 
+/// Options for `bootstrap.copy` (API-SPEC §3 row 60, MODELING-METHODS-SPEC §4).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BootstrapCopyOptions {
+    pub keep_formulas: Option<bool>,
+    pub re_drive: Option<bool>,
+}
+
+/// `bootstrap.copy` — {scenario_id, mode, options?} -> {lines, warnings[]}
+/// Modes: "actuals_to_budget", "prior_year_to_budget" (API-SPEC row 60).
+#[tauri::command(name = "bootstrap.copy", rename_all = "snake_case")]
+pub fn bootstrap_copy(
+    app: AppHandle,
+    scenario_id: String,
+    mode: String,
+    options: Option<BootstrapCopyOptions>,
+    session: State<'_, SessionState>,
+) -> AppResult<serde_json::Value> {
+    let company_id = require_session_write(&session)?;
+    let dir = app_data_dir(&app)?;
+    let mut conn = db::open_at(&dir)?;
+    let tx = conn.transaction().map_err(AppError::from)?;
+    let (lines, warnings) = bootstrap_copy_inner(
+        &tx,
+        &dir,
+        &company_id,
+        &scenario_id,
+        &mode,
+        options.as_ref(),
+    )?;
+    tx.commit().map_err(AppError::from)?;
+
+    Ok(serde_json::json!({
+        "data": {
+            "lines": lines,
+            "warnings": warnings,
+        }
+    }))
+}
+
+pub fn bootstrap_copy_inner(
+    tx: &Transaction<'_>,
+    dir: &Path,
+    company_id: &str,
+    scenario_id: &str,
+    mode: &str,
+    options: Option<&BootstrapCopyOptions>,
+) -> AppResult<(i64, Vec<String>)> {
+    if !["actuals_to_budget", "prior_year_to_budget"].contains(&mode) {
+        return Err(AppError::invalid(format!(
+            "mode must be actuals_to_budget or prior_year_to_budget, got {mode}"
+        )));
+    }
+
+    // Verify scenario belongs to active company and is not locked
+    let scenario: Option<(String, String)> = tx
+        .query_row(
+            "SELECT s.state, s.model_id
+             FROM scenarios s
+             JOIN models m ON m.id = s.model_id
+             WHERE s.id = ?1 AND m.company_id = ?2",
+            rusqlite::params![scenario_id, company_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+
+    let (state, model_id) = match scenario {
+        Some(s) => s,
+        None => {
+            return Err(AppError::invalid(format!(
+                "Scenario {scenario_id} not found"
+            )));
+        }
+    };
+
+    if state == "locked" {
+        return Err(AppError::model_cell_locked());
+    }
+
+    let mut warnings = Vec::new();
+
+    // Find candidate source scenarios in the same model or actuals scenario
+    let source_scenario_id: Option<String> = if mode == "actuals_to_budget" {
+        tx.query_row(
+            "SELECT id FROM scenarios WHERE model_id = ?1 AND kind = 'actuals' LIMIT 1",
+            [&model_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+    } else {
+        tx.query_row(
+            "SELECT id FROM scenarios WHERE model_id = ?1 AND id != ?2 ORDER BY rowid ASC LIMIT 1",
+            rusqlite::params![model_id, scenario_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)?
+    };
+
+    let src_scen = match source_scenario_id {
+        Some(s) => s,
+        None => return Err(AppError::SourceBootstrapEmpty),
+    };
+
+    // Query values in the source scenario
+    let mut stmt = tx
+        .prepare(
+            "SELECT line_id, period_id, amount_minor, amount_text, formula, computed
+             FROM model_values WHERE scenario_id = ?1",
+        )
+        .map_err(AppError::from)?;
+
+    let src_vals = stmt
+        .query_map([&src_scen], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, i64>(5)?,
+            ))
+        })
+        .map_err(AppError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::from)?;
+    drop(stmt);
+
+    if src_vals.is_empty() {
+        return Err(AppError::SourceBootstrapEmpty);
+    }
+
+    let keep_formulas = options.and_then(|o| o.keep_formulas).unwrap_or(true);
+    let mut lines_copied = 0i64;
+
+    for (line_id, period_id, amount_minor, amount_text, formula, computed) in src_vals {
+        let final_formula = if keep_formulas { formula } else { None };
+        let val_id = Uuid::new_v4().to_string();
+
+        tx.execute(
+            "INSERT INTO model_values (id, line_id, scenario_id, period_id, amount_minor, amount_text, formula, computed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(line_id, scenario_id, period_id) DO UPDATE SET
+               amount_minor = excluded.amount_minor,
+               amount_text = excluded.amount_text,
+               formula = excluded.formula,
+               computed = excluded.computed",
+            rusqlite::params![
+                val_id,
+                line_id,
+                scenario_id,
+                period_id,
+                amount_minor,
+                amount_text,
+                final_formula,
+                computed
+            ],
+        )
+        .map_err(AppError::from)?;
+
+        lines_copied += 1;
+    }
+
+    if mode == "prior_year_to_budget" && lines_copied == 0 {
+        warnings.push("Missing prior year lines; defaulted to manual".to_string());
+    }
+
+    // Append HMAC-chained audit event
+    let after_json = serde_json::json!({
+        "scenario_id": scenario_id,
+        "mode": mode,
+        "lines": lines_copied,
+        "warnings": warnings,
+    });
+
+    record_scenario_audit(
+        tx,
+        dir,
+        company_id,
+        "bootstrap.copy",
+        scenario_id,
+        serde_json::Value::Null,
+        after_json,
+    )?;
+
+    Ok((lines_copied, warnings))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1323,5 +1512,110 @@ mod tests {
         assert!(models[0].scenarios[0].baseline);
         assert_eq!(models[0].scenarios[0].versions.len(), 1);
         assert_eq!(models[0].scenarios[0].versions[0].label, "v1");
+    }
+
+    #[test]
+    fn test_bootstrap_copy_inner() {
+        let (mut conn, _temp_dir, company_id, model_id) = setup_test_db();
+        let dir = _temp_dir.as_path();
+
+        // 1. Create Base Scenario (kind = 'actuals') and a target Budget scenario (kind = 'budget')
+        let base_scen_id = Uuid::new_v4().to_string();
+        let budget_scen_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO scenarios (id, model_id, name, kind, state, parent_scenario_id, baseline)
+             VALUES (?1, ?2, 'Actuals', 'actuals', 'draft', NULL, 1)",
+            rusqlite::params![base_scen_id, model_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO scenarios (id, model_id, name, kind, state, parent_scenario_id, baseline)
+             VALUES (?1, ?2, 'Budget', 'budget', 'draft', NULL, 0)",
+            rusqlite::params![budget_scen_id, model_id],
+        )
+        .unwrap();
+
+        // 2. Calling bootstrap_copy on an empty scenario returns SOURCE_BOOTSTRAP_EMPTY
+        let tx = conn.transaction().unwrap();
+        let err = bootstrap_copy_inner(
+            &tx,
+            dir,
+            &company_id,
+            &budget_scen_id,
+            "actuals_to_budget",
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err.body().code, "SOURCE_BOOTSTRAP_EMPTY");
+        tx.rollback().unwrap();
+
+        // 3. Insert calendar, fiscal year, fiscal period, sheet, line, and source model_value
+        let cal_id = Uuid::new_v4().to_string();
+        let fy_id = Uuid::new_v4().to_string();
+        let period_id = "fp-2027-01";
+        let sheet_id = Uuid::new_v4().to_string();
+        let line_id = Uuid::new_v4().to_string();
+
+        conn.execute(
+            "INSERT INTO fiscal_calendars (id, company_id, name, preset, week_start_day)
+             VALUES (?1, ?2, 'Standard', '12month', 0)",
+            rusqlite::params![cal_id, company_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_years (id, calendar_id, fy_label, start_date, end_date, week_count)
+             VALUES (?1, ?2, 'FY2027', '2027-01-01', '2027-12-31', 52)",
+            rusqlite::params![fy_id, cal_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fiscal_periods (id, fiscal_year_id, period_no, code, start_date, end_date)
+             VALUES (?1, ?2, 1, 'P01', '2027-01-01', '2027-01-31')",
+            rusqlite::params![period_id, fy_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_sheets (id, model_id, name, sheet_type, sort_order)
+             VALUES (?1, ?2, 'Revenue', 'input', 1)",
+            rusqlite::params![sheet_id, model_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO model_lines (id, sheet_id, account_id, driver_id, method, format, decimals, is_parent, sort_order)
+             VALUES (?1, ?2, NULL, NULL, 'manual', 'money', 2, 0, 1)",
+            rusqlite::params![line_id, sheet_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO model_values (id, line_id, scenario_id, period_id, amount_minor, amount_text, formula, computed)
+             VALUES (?1, ?2, ?3, ?4, 15000000, '150000.00', '100 * 1500', 1)",
+            rusqlite::params![Uuid::new_v4().to_string(), line_id, base_scen_id, period_id],
+        ).unwrap();
+
+        // 4. Run bootstrap_copy with keep_formulas = true
+        let tx = conn.transaction().unwrap();
+        let options = BootstrapCopyOptions {
+            keep_formulas: Some(true),
+            re_drive: Some(false),
+        };
+        let (lines, warnings) = bootstrap_copy_inner(
+            &tx,
+            dir,
+            &company_id,
+            &budget_scen_id,
+            "actuals_to_budget",
+            Some(&options),
+        )
+        .unwrap();
+        assert_eq!(lines, 1);
+        assert!(warnings.is_empty());
+        tx.commit().unwrap();
+
+        // Verify target scenario now has the copied model_value with formula
+        let copied_formula: Option<String> = conn.query_row(
+            "SELECT formula FROM model_values WHERE scenario_id = ?1 AND line_id = ?2 AND period_id = ?3",
+            rusqlite::params![budget_scen_id, line_id, period_id],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(copied_formula.as_deref(), Some("100 * 1500"));
     }
 }

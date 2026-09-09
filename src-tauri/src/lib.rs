@@ -40,12 +40,13 @@ use commands::import::{
 use commands::license::{license_apply_response, license_request_file, license_verify};
 use commands::model::{
     ModelRegistry, model_cell_set_v1, model_create, model_diff, model_recalc, model_sheet_add,
+    model_year_copy,
 };
 use commands::pack::{pack_builder_save_v1, pack_install, pack_list, pack_validate};
 use commands::plan::{plan_goal_seek, plan_sensitivity, plan_whatif_overlay};
 use commands::report::{kpi_define, report_layout_render, report_layout_save};
 use commands::scenario::{
-    baseline_set, model_list, scenario_approve, scenario_create, scenario_delete,
+    baseline_set, bootstrap_copy, model_list, scenario_approve, scenario_create, scenario_delete,
     scenario_duplicate, scenario_lock, scenario_reopen, scenario_submit,
 };
 use commands::schedule::model_schedule_upsert;
@@ -112,6 +113,7 @@ pub fn run() {
             model_cell_set_v1,
             model_sheet_add,
             model_create,
+            model_year_copy,
             model_recalc,
             model_diff,
             plan_whatif_overlay,
@@ -132,6 +134,7 @@ pub fn run() {
             scenario_reopen,
             scenario_delete,
             baseline_set,
+            bootstrap_copy,
             model_list,
             cycle_start,
             cycle_task_update,

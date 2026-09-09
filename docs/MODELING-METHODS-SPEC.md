@@ -39,11 +39,17 @@ Input: total T (Money Value), horizon periods P = [p1..pn], weights W (sum ≈ 1
 1. If method == 'equal': v_i = T / n  (rounded each period to scale; residual to the LAST period
    via Largest-Remainder so Σ v_i == T exactly)                          → ROUNDING-SPEC §4
 2. If method == 'seasonal': v_i = T × w_i  (weights from pack curve or user curve; exact decimal)
-3. If method == 'custom': user supplies per-period values; validates Σ == T (± unit) or offers
+3. If method == 'week_weighted': for week-based calendars (4-4-5, 4-5-4, 5-4-4, 13-period),
+   w_i = weeks_in_period_i / total_weeks_in_year (e.g. 4/52 or 5/52; 4/53 or 5/53 in leap fiscal years),
+   ensuring 5-week months with 25% more operating days receive proportional budget.
+4. If method == 'working_days': w_i = business_days_in_period_i / total_business_days_in_year.
+5. If method == 'custom': user supplies per-period values; validates Σ == T (± unit) or offers
    "normalize residuals" (audited choice — never silent)
-4. If method == 'lump': user-supplied map period → amount; Σ must equal T
-5. 13-period / 53-week calendars: `W53`/P13 weight optional; if excluded, weights re-normalized
+6. If method == 'lump': user-supplied map period → amount; Σ must equal T
+7. 13-period / 53-week calendars: `W53`/P13 weight optional; if excluded, weights re-normalized
    to the 12/13 periods actually planned; report flags the exclusion.
+8. Hierarchical Spreading (Breakback): Top-down adjustment applied to a consolidated line
+   is distributed proportionally down its child lines based on prior period actual weights.
 Validation: sum(weights) ≠ 1.00 ± 1e-6 → HARD SPREAD_WEIGHTS_INVALID with "normalize or fix".
 ```
 
@@ -75,15 +81,27 @@ Lines are `input` (manual/method), `formula` (HyperFormula), `parent` (subtotal 
 
 ### 6.1 Headcount schedule (F-016 / S-045)
 
-A headcount row carries `role`, `cost_center`, ISO `start_date`, nullable ISO `termination_date`,
-`base_comp_decimal`, `bonus_pct`, `benefits_pct`, `employer_load_pct`, and integer `ramp_months`.
-All compensation and percentage values cross IPC as Decimal strings. For each loaded fiscal period,
-the annual base is divided by the number of loaded periods, the percentage components are added to
-base, and the result is multiplied by inclusive `active_days / period_days` and a linear ramp when
-configured. The calculator rounds only at the explicit currency output boundary. A row whose start
-is outside the loaded horizon or whose termination precedes its start returns `HC_DATE_INVALID`;
-same-role/same-cost-center rows active in one period return `HC_OVERLAP`. The native core owns the
-authoritative calculation and SQLite write; the TS implementation is a browser-preview mirror until
-that handler is cargo-verified.
+A headcount row carries unique `employee_id`, `role`, `cost_center`, ISO `start_date`, nullable ISO `termination_date`, `base_comp_decimal`, `bonus_pct`, `benefits_pct`, `employer_load_pct`, and integer `ramp_months`. All compensation and percentage values cross IPC as Decimal strings.
 
-*Referenced by: PRD F-013/F-015/F-016, SCREENS S-041/S-043/S-045, FORMULA-ENGINE-SPEC, VARIANCE/ATTRIBUTION (PRD F-024).*
+For each loaded fiscal period:
+1. **Base Compensation Annualization:** The annual base compensation is divided by the fiscal year period frequency (`periods_per_year`: 12 for monthly, 13 for 4-week, 52 for weekly), **never** by the loaded multi-year horizon length (`periods.len()`). Multi-year models maintain exact monthly run rates across all years.
+2. **Timing Proration:** Employees active for partial periods are prorated by `active_days / period_days`. Employees hired prior to the model horizon start are active on day 1 (start dates before the model start are valid; `HC_DATE_INVALID` applies only if termination precedes start date).
+3. **Capacity vs Cost:** Quota-carrying ramp schedules adjust sales capacity without altering base salary compensation.
+4. **Multiple Roles:** Rows are identified by distinct `employee_id`; multiple employees may share the same role and cost center without collision.
+
+### 6.2 Capital, Debt & Working Capital schedule (F-017 / S-046)
+
+1. **Working Capital Operating Cash Flow Impact:**
+   - Operating cash flow impact of working capital is the change in Net Working Capital:
+     $$\Delta\text{NWC}_t = \text{NWC}_t - \text{NWC}_{t-1}, \quad \text{OCF Impact} = -\Delta\text{NWC}_t$$
+   - AR, AP, and Inventory are derived from DSO, DPO, and DIO over elapsed period days.
+2. **Institutional Debt Amortization & Day-Count Conventions:**
+   - Term loan and revolver interest accruals support exact ISDA day-count conventions:
+     - `Actual/360`: Standard US corporate debt ($\text{Rate} \times \text{Days} / 360$).
+     - `Actual/365`: Standard UK/Commonwealth debt ($\text{Rate} \times \text{Days} / 365$).
+     - `30/360`: Bond basis.
+   - Eliminates the ~1.39% interest expense understatement caused by naive annual/12 division.
+3. **Depreciation Roll-Forward:**
+   - Straight-Line (SL), Double Declining Balance (DDB) with automatic optimal switch to Straight-Line when SL exceeds DDB, and MACRS half-year convention tax depreciation schedules.
+
+*Referenced by: PRD F-013/F-015/F-016/F-017, SCREENS S-041/S-043/S-045/S-046, FORMULA-ENGINE-SPEC, VARIANCE/ATTRIBUTION (PRD F-024).*

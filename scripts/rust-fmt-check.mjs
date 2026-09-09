@@ -18,9 +18,10 @@
  */
 import { format } from "@scalar/rust-fmt";
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "src-tauri", "src");
 
 /** Edition is owned by the workspace Cargo.toml (single source of truth). */

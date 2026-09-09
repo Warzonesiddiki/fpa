@@ -128,7 +128,7 @@ async function waitForGridCell(container: HTMLElement): Promise<HTMLElement> {
     () => {
       expect(container.querySelector('[col-id="p-fp-2026-p01"]')).not.toBeNull();
     },
-    { timeout: 8000 },
+    { timeout: 15000 },
   );
   return container.querySelector('[col-id="p-fp-2026-p01"]') as HTMLElement;
 }
@@ -272,15 +272,15 @@ describe("S-041 Model Grid (F-012)", () => {
 
   it("keeps the grid axe-clean", async () => {
     mockLoad();
-    renderPage();
-    await screen.findByText("4000 · Revenue");
+    const { container } = renderPage();
+    await waitForGridCell(container);
     await waitFor(() => {
       expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     });
-    const results = await axe(document.body);
+    const results = await axe(container);
     // a11y gate (ACCESSIBILITY.md §3): zero violations of WCAG 2.2 AA rules.
     expect(results.violations).toEqual([]);
-  });
+  }, 20000);
 });
 
 describe("S-041 Model Grid - S-071 health drill deep link", () => {

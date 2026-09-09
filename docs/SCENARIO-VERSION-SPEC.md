@@ -23,13 +23,27 @@ stateDiagram-v2
 |---|---|---|---|
 | submit | owner | S-050 action | `scenario.submit` |
 | approve | owner | S-050 approve | `scenario.approve` |
-| lock | owner | S-050 lock → D-004 | `scenario.lock` (writes `scenario_versions` row) |
+| lock | owner | S-050 lock → D-004 | `scenario.lock` (writes `scenario_versions` row + snapshots cells) |
 | reopen (locked) | owner + reason | S-071 waiver-style prompt | `scenario.reopen` |
 | delete (draft only) | owner + reason | S-050 | `scenario.delete` |
 
 **Invariant:** a `Locked` Scenario has ≥ 1 Version; `Approved` without Lock is allowed (review gate), but a **Baseline** MUST be Locked (I-something: baseline implies Version). Editing a Locked scenario via grid = `MODEL_CELL_LOCKED` (no silent bypass).
 
-## 2. VERSION SEMANTICS
+### 1.1 Rolling Forecast Rollover & Cutoff Boundaries (F-021 / S-053)
+
+Modern continuous rolling forecasts (e.g., 3+9 → 4+8 → 5+7) require strict segregation between immutable closed historical actuals and open forward forecast periods:
+1. **Automated Period Rollover (`forecast.roll_period`):**
+   - At month-end close, the cycle manager seals newly closed GL actuals and updates `planning_cycles.cutoff_period_id`.
+   - The forecast horizon shifts forward automatically by 1 period, maintaining the rolling horizon (e.g. 12 or 18 continuous months).
+   - Historical periods (`period <= cutoff_period_id`) are marked `hard_locked` in `fiscal_period_locks`.
+2. **Grid Cutoff Hard-Locking (S-041):**
+   - In the model grid, periods prior to or equal to the cycle cutoff are rendered with `period-cell-actual` and enforced `editable: false`.
+   - Attempts to mutate closed historical cells in forecast scenarios return `CUTOFF_ACTUALS_IMMUTABLE` (never silent overwrite).
+   - Only periods strictly after the cutoff (`period > cutoff_period_id`) permit user edits and driver calculations.
+3. **Stage-Gate Corporate Lifecycle:**
+   - Supports enterprise budgeting stage-gates: `Working` (department draft) → `Dept Submitted` → `Finance Review` → `Executive Approved` → `Board Baseline`.
+
+## 2. VERSION SEMANTICS & COPY-ON-WRITE SNAPSHOTS
 
 | Rule | Value |
 |---|---|
@@ -38,7 +52,7 @@ stateDiagram-v2
 | Content | full snapshot of Model values + drivers + assumptions + comments referenced for the scenario (row count + checksum) |
 | Mutability | none — `scenario_versions` rows are append-only; a restatement creates vN+1, never mutates vN |
 | Comparability | two Versions compare iff same Model + same COA version + same horizon (`COMPARE_INCOMPATIBLE` otherwise) |
-| Storage | values snapshot in `model_values` (version_id) + driver values; delta-compressed when identical to previous version (V2 optimization, transparent) |
+| Storage | Copy-on-Write (COW) snapshot in `scenario_version_cells` (`version_id, line_id, period_id, amount_minor, formula`); reopening a locked scenario leaves the locked snapshot byte-identical while edits populate a new working draft |
 | Retention | all Versions retained for the Company lifetime (archived per FY with audit) |
 
 ## 3. BASELINE & COMMIT REFERENCE
