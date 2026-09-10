@@ -1,9 +1,24 @@
-# OneFP&A
+# OneFP&A — THE ALL-IN-ONE, ZERO-COMPROMISE FP&A SUITE
+
+> **Vision (v9, 2026-09-09):** A desktop-native, local-first, exact-decimal, fully-audited FP&A tool that makes every cloud EPM obsolete, every Excel workbook untrustworthy, and every analyst's job defensible. Every number has a proof. Every change has a chain. Every industry has a pack. Zero seats. Zero servers. Zero compromises.
 
 **The all-in-one FP&A suite — local-first, offline, Windows · macOS · Linux.**
 
-One app replaces Excel + BI + cloud EPM for the whole FP&A cycle:
-**import (any GL Dump / Excel / QuickBooks / Xero / NetSuite / Sage) → model (Excel-compatible formulas, drivers, assumptions) → plan (budget, forecast, rolling forecast, scenarios) → analyze (variance + attribution, what-if, FVA) → report (P&L, Balance Sheet, Cash Flow, SoCE, Segment, Board Pack) → govern (audit trail, encryption, offline license).**
+One app replaces Excel + BI + cloud EPM + close management for the whole FP&A cycle:
+**import (any GL Dump / Excel / QuickBooks / Xero / NetSuite / Sage) → model (Excel-compatible formulas, drivers, assumptions) → plan (budget, forecast, rolling forecast, scenarios, cycle) → analyze (variance + attribution, what-if, FVA, alerts) → report (P&L, Balance Sheet, Cash Flow, SoCE, Segment, Board Pack, KPI Builder) → govern (audit trail, encryption, health check, backup, license) → export (Excel / PDF / Model Dump / Data Room).**
+
+- 🖥️ Native desktop on all three OS — identical behavior verified (B18-8)
+- 🔒 Local-first: data never leaves your machine; AES-256-GCM encrypted at rest; zero telemetry; offline-capable (B18-9)
+- 🏭 Total industry coverage: 12 Industry Packs (SaaS, Manufacturing, Retail 4-5-4, Healthcare, Construction, Professional Services, Nonprofit, Government, Energy, Financial Services, Logistics, Real Estate) + Pack Builder — data only, never code (B15)
+- 🏢 Multi-industry groups: BUs with different packs, calendars (4-5-4 / 52-53wk / 3-3-3-4), currencies, consolidated with IC eliminations, FX translation, NCI, CTA equity plug
+- ✅ Audit-grade money: `rust_decimal` exact arithmetic; integer minor units; no float anywhere on a financial path (`money:ast` gate, B3/I1)
+- 📄 Deterministic Excel + PDF export: identical bytes across all 3 OS (B5)
+- ⚡ Zero per-seat billing: one license per Company File; no cloud subscription; no implementation project (F-035)
+- 🌐 GL Dump guarantee: any ERP's export imports via Manual Import; 4 connectors are convenience, never prerequisite (B19)
+
+> **Strategic vision:** See `docs/STRATEGIC-VISION.md` — the single source of truth for what "perfect" means, the 7 domains, the zero-compromise architecture, and the competitive reality.
+> **Specs:** Full documentation suite is in `docs/` — start at `docs/DOCS-INDEX.md`.
+> **Quality gates:** 14 blocking gates (lint + tsc + vitest + coverage + docs:verify + schema-equality + docs-link + packs + money:ast + tokens + ipc:casing + command:parity + security + build) — zero skips permitted (B18-7).
 
 - 🖥️ Native desktop on all three OS — identical behavior (B18-8)
 - 🔒 Local-first: data never leaves your machine; encrypted at rest; zero telemetry (B18-9)

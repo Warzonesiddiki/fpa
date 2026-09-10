@@ -1,6 +1,7 @@
 # ZERO-COMPROMISE-RULES.md
 
 > OneFP&A · v1.0.0 · **The canonical definition of the Stage-0 Zero-Compromise rules B1–B20 (including B18-1…B18-9).** These are the *product/architecture* rules referenced by DECISIONS.md ADRs, GLOSSARY, PRD, and every spec. They are NOT the per-feature QA checklist — QA uses **Q1–Q8** (QA-CHECKLIST.md §1, renamed 2026-08-30 to remove the old B1–B8 collision).
+> **Strategic mandate (v9, 2026-09-09):** These rules exist to make OneFP&A the only FP&A tool any analyst will ever need — all-in-one, zero compromise, exact decimal, fully audited, desktop-native, offline-capable, universal across all industries. See `docs/STRATEGIC-VISION.md` for the full vision and `docs/COMPETITIVE-ANALYSIS.md` for the competitive reality.
 > Any doc that cites a B-rule must cite the number as defined here; a new rule requires a Stage-0-style decision + this file update (B20).
 
 ---

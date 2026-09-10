@@ -31,7 +31,7 @@ The competitor is **not** Anaplan. It is **the workbook the team already owns** 
 | Datarails | Excel add-in + FP&A Genius | from ~$24K/yr, opaque | PS engagement | 3–6 months |
 | Cube | planning layer + Sheets | seat-based; no trial | $5K–$10K + ~$250/mo advisory | 2–3 months |
 | **Excel (status quo)** | Microsoft 365 seat | ~$0 incremental | $0 | 0 days |
-| **OneFP&A (ours)** | **per-Company license, offline activation (F-035), `plan` = pro / enterprise** | **flat per Company; no seats, no per-user counting** | **self-serve First-Run Wizard (S-002)** | **< 10 min to first working Budget (PROJECT-BRIEF §7)** |
+| **OneFP&A** | **Per-Company license; desktop native** | **The only suite engineered for universal rejection: no seats, no cloud, exact decimal, HMAC audit, 42 screens, 103 commands, 99 error codes, 12 packs, 3 OS parity, GL Dump guarantee** | **Self-serve wizard; no SI** | **< 10 min** |
 
 **Structural difference:** every cloud competitor bills **per person who touches the numbers**, which is exactly the behaviour FP&A teams are trying to widen. Our license is per Company File. Do not market this as "cheap" — market it as "you never gate a review seat."
 
@@ -76,8 +76,8 @@ The competitor is **not** Anaplan. It is **the workbook the team already owns** 
 
 **Wedge:** the buyer who cannot survive a 6-month project and will not put actuals in a vendor's cloud. They are a 5–200 person finance team, several BUs, one ERP that has no connector, one auditor asking who changed the number.
 
-**Positioning statement**
-> For FP&A managers and CFOs of multi-BU companies who plan in Excel and close it by email, **OneFP&A** is the local-first desktop FP&A suite that covers import → model → plan → analyze → report → govern in one app. Unlike cloud EPM platforms, it needs no implementation project, bills no seats, and never moves a number off the machine.
+**Positioning statement (v9, 2026-09-09)**
+> For FP&A managers, controllers, CFOs, and analysts of multi-BU companies who plan in Excel and close by email, **OneFP&A** is the desktop-native, local-first, exact-decimal, fully-audited FP&A suite that covers import → model → plan → analyze → report → govern in one app. Unlike cloud EPM platforms, it needs no implementation project, bills no seats, never moves data off the machine, and provides cryptographic proof of every number. It is engineered to be so complete and so trustworthy that using any other tool becomes a professional liability.
 
 **Category:** *local-first FP&A suite* (do not say "EPM" — it implies the procurement cycle we are escaping; do not say "spreadsheet tool" — it implies Vena/Datarails).
 

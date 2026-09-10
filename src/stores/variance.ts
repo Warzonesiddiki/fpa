@@ -19,6 +19,9 @@ import { create } from "zustand";
 import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 import type { ScreenState } from "@/components/ui/StatePanel";
 
+/** 5-FACTOR PVM ENGINE (AUDIT-17 / M5-1) — exact Decimal arithmetic, defensive invariant check */
+import { compute_pvm_factors, verify_pvm_invariant, type PVMFactors } from "@/model/varianceEngine";
+
 /** Comparison target types supported by the variance engine */
 export type VarianceCompareTarget =
   | "budget"

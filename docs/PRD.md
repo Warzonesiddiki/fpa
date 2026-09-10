@@ -1,6 +1,6 @@
 # PRD.md
 
-> Product: OneFP&A · Version 1.0.0 · Terms per GLOSSARY.md · Stage 0 **v9** scope.
+> Product: OneFP&A · Version 1.0.0 · Terms per GLOSSARY.md · Stage 0 **v9** scope. **Strategic mandate (2026-09-09):** Every feature in this PRD must serve the vision of making OneFP&A the only FP&A tool any analyst will ever need — all-in-one, zero compromise, exact decimal, fully audited, desktop-native, offline-capable, universal across all industries. See `docs/STRATEGIC-VISION.md`.
 > **Tag legend:** `[MVP]` = ships complete in v1.0.0 · `[V2]` = v1.1.0, fully specified but deferred by design · `[FUTURE]` = considered, not committed.
 > Every `[MVP]` feature: all 5 Screen States, all error paths, tests, and docs must exist (DEFINITION-OF-DONE.md).
 >
