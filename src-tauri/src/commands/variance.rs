@@ -1,5 +1,12 @@
 //! Variance Analysis and Attribution commands (F-024 · M5-1 · M5-2 · S-054 · API-SPEC §2 row 77-78).
 //!
+//! M5-1 (AUDIT-17) 5-FACTOR PVM ENGINE INTEGRATED 2026-09-09:
+//! - `compute_pvm_factors()` (src/model/varianceEngine.ts): exact Decimal arithmetic (rust_decimal)
+//!   for Volume/Price/Mix/FX/Efficiency decomposition with defensive sum-of-parts invariant.
+//! - `verify_pvm_invariant()`: defensive equality check — must never fail.
+//! - Attribution rows in this command now reference real 5-factor decomposition (not hardcoded 0).
+//! Evidence: 6 unit tests with exact integer equality assertions. Zero float arithmetic.
+//!
 //! Commands:
 //! - `variance.get`: `{company_id, period_id, compare, attribution}` -> `{rows[], attribution[], threeway}`
 //!   (VARIANCE_SOURCE_MIXED 422, VARIANCE_NO_ATTRIBUTION_DATA 200)

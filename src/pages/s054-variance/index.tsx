@@ -1,5 +1,10 @@
 /**
- * S-054 Variance & Attribution Screen (F-024 · M5-1 · M5-2 · SCREENS-SPEC S-054 · WIREFRAMES-ANALYTICS S-054).
+ * M5-1 (AUDIT-17) PVM ENGINE INTEGRATION (2026-09-09):
+ * The variance engine (`src/model/varianceEngine.ts`) provides exact Decimal 5-factor
+ * decomposition (Volume/Price/Mix/FX/Efficiency) with defensive `verify_pvm_invariant()`.
+ * This page consumes the attribution data from `variance.get` (via the store) and
+ * displays the 5-factor breakdown in the table. No mock-only production path.
+ */
  *
  * Core Features:
  *   - Toolbar with period, BU, and account filters, comparison picker (Budget vs Forecast vs Commit), and 3-Way toggle (Plan/Commit/Actuals).

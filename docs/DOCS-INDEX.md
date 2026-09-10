@@ -4,7 +4,7 @@
 
 ---
 
-## MASTER INDEX (64 docs/specs + README pointer = 65 rows; 2026-09-08 adds row 65 — CI-ADDITIONS runbook; ZC revision: born 2026-08-30 with 16 supplemental docs closing the audit gaps — 15 specs + ZERO-COMPROMISE-RULES.md; 2026-09-04 gap-closure revision adds rows 56–60 closing checklist items #4/#5, #20, #24, #87 and the #101 audit itself; 2026-09-05 adds row 61 closing #90 — see `DOCUMENTATION-GAP-ANALYSIS.md`))
+## MASTER INDEX (67 docs/specs + README pointer = 68 rows; v9 2026-09-09 adds `STRATEGIC-VISION.md` (#66) and `AUDIT-VECTOR-PLAN.md` (#67) — the strategic vision and the 25-vector audit remediation plan; 2026-09-09 revision also updates index count from 65 to 68 and updates COMPETITIVE-ANALYSIS, PRD, ZERO-COMPROMISE-RULES, TASKBOARD, and README with the v9 strategic mandate)
 
 | # | File | One-line summary | Depends on |
 |---|---|---|---|
@@ -73,6 +73,12 @@
 | 63 | `E2E-TESTING.md` | Playwright E2E testing architecture, execution commands, and user journey specs | 12, 23, 24 |
 | 64 | `BENCHMARKS.md` | Performance benchmarking suite, methodology, numeric targets (<5s GL, <50ms recalc), and baseline results | 12, 23, 25 |
 | 65 | `CI-ADDITIONS.md` | Owner runbook for CI/repo changes an agent cannot land (clippy diagnostics artifact, branch protection, dependabot, cargo-deny, signing, nightly probe) | 4, 23 |
+| 66 | `STRATEGIC-VISION.md` | The all-in-one, zero-compromise vision: North Star, 7 domains, zero-compromise architecture, 25 audit rejection vectors, competitive reality, perfection standard | 1, 3, 54, 56, 61 |
+| 67 | `AUDIT-VECTOR-PLAN.md` | 25 audit rejection vectors (AUDIT-01…AUDIT-25): domain, rejection scenario, concrete architectural fix, evidence requirement, milestone dependency | 54, 66 |
+| 68 | `EVIDENCE-STANDARDS.md` | Evidence requirements for perfection: 5 pillars (executed command, real DB, 5 screen states, audit event, coverage/accessibility/perf gates), evidence template, milestone evidence maps | 66, 67 |
+| 69 | `MILESTONE-EVIDENCE.md` | Per-milestone evidence tracker: M0–M8 with exact command results, native gate status, DB persistence verification, audit event verification, screen state counts, error path coverage, coverage/performance/a11y gates, docs sync status | 67, 68 |
+| 70 | `PERFECT-CHECKLIST.md` | Feature-level + release-level perfect checklist: A1–A15 feature pillars, B1–B18 release pillars; zero exceptions; continuous session log | 68, 69 |
+| 71 | `CODE-TO-AUDIT-MAPPING.md` | Vector-to-source/test/spec/DB mapping: every audit vector (`AUDIT-01`–`AUDIT-25`) mapped to exact file paths, test files, spec files, DB tables, and evidence commands | 67, 69, 70 |
 
 ## DEPENDENCY MAP (subset — build order)
 
