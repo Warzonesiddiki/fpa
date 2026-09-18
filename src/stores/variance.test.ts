@@ -87,6 +87,7 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
     expect(s.rows).toEqual([]);
     expect(s.attributions).toEqual([]);
     expect(s.threeWayRows).toEqual([]);
+    expect(s.pvmCheck).toBeNull();
     expect(s.reasonCodes.length).toBeGreaterThan(0);
     expect(s.filters.periodId).toBeNull();
     expect(s.filters.businessUnitId).toBeNull();
@@ -552,5 +553,108 @@ describe("useVarianceStore (S-054 · F-024 · M5-1 · M5-2)", () => {
     expect(s.rows).toEqual([]);
     expect(s.error).toBeNull();
     expect(s.showThreeWayView).toBe(false);
+    expect(s.pvmCheck).toBeNull();
+  });
+
+  /* ── 8. Defensive 5-factor sum-of-parts check (AUDIT-17) ──────── */
+  it("verifies attributable rows whose factors sum exactly to the variance", async () => {
+    // mockAttribution: 15M + 5M + 0 + 0 + 0 = 20M = row.variance_minor → ties out.
+    callMock.mockResolvedValueOnce({
+      rows: [mockVarianceRow()],
+      attribution: [mockAttribution()],
+      threeway: [],
+    });
+
+    const success = await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+
+    expect(success).toBe(true);
+    expect(useVarianceStore.getState().pvmCheck).toEqual({
+      rowsChecked: 1,
+      violations: 0,
+    });
+  });
+
+  it("counts a row as a violation when its factors do not sum to the variance", async () => {
+    // efficiency_minor shifted by 1 minor unit → 15M + 5M + 0 + 0 + 1 ≠ 20M.
+    callMock.mockResolvedValueOnce({
+      rows: [mockVarianceRow()],
+      attribution: [mockAttribution({ efficiency_minor: 1 })],
+      threeway: [],
+    });
+
+    await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+
+    expect(useVarianceStore.getState().pvmCheck).toEqual({
+      rowsChecked: 1,
+      violations: 1,
+    });
+  });
+
+  it("treats null factor contributions as 0 and skips non-attributable rows", async () => {
+    // Row 1: fx/efficiency null → 15M + 5M + 0 + 0 + 0 ties out.
+    // Row 2: not attributable → not checked at all.
+    const row2 = mockVarianceRow({
+      line_id: "ln-cogs",
+      variance_minor: -10_000_000,
+    });
+    callMock.mockResolvedValueOnce({
+      rows: [mockVarianceRow(), row2],
+      attribution: [mockAttribution({ fx_minor: null, efficiency_minor: null })],
+      threeway: [],
+    });
+
+    await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+
+    expect(useVarianceStore.getState().pvmCheck).toEqual({
+      rowsChecked: 1,
+      violations: 0,
+    });
+  });
+
+  it("clears the pvmCheck verdict on failed load and on reset", async () => {
+    callMock.mockResolvedValueOnce({
+      rows: [mockVarianceRow()],
+      attribution: [mockAttribution()],
+      threeway: [],
+    });
+    await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+    expect(useVarianceStore.getState().pvmCheck).not.toBeNull();
+
+    callMock.mockRejectedValueOnce(new Error("Network connection dropped"));
+    await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+    expect(useVarianceStore.getState().pvmCheck).toBeNull();
+
+    // After a fresh successful load the verdict is recomputed, not carried over.
+    callMock.mockResolvedValueOnce({
+      rows: [mockVarianceRow()],
+      attribution: [mockAttribution({ efficiency_minor: 7 })],
+      threeway: [],
+    });
+    await useVarianceStore.getState().loadVariance({
+      companyId: COMPANY_ID,
+      periodId: PERIOD_ID,
+    });
+    expect(useVarianceStore.getState().pvmCheck).toEqual({
+      rowsChecked: 1,
+      violations: 1,
+    });
+
+    useVarianceStore.getState().reset();
+    expect(useVarianceStore.getState().pvmCheck).toBeNull();
   });
 });

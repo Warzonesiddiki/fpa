@@ -79,6 +79,10 @@
 | 69 | `MILESTONE-EVIDENCE.md` | Per-milestone evidence tracker: M0–M8 with exact command results, native gate status, DB persistence verification, audit event verification, screen state counts, error path coverage, coverage/performance/a11y gates, docs sync status | 67, 68 |
 | 70 | `PERFECT-CHECKLIST.md` | Feature-level + release-level perfect checklist: A1–A15 feature pillars, B1–B18 release pillars; zero exceptions; continuous session log | 68, 69 |
 | 71 | `CODE-TO-AUDIT-MAPPING.md` | Vector-to-source/test/spec/DB mapping: every audit vector (`AUDIT-01`–`AUDIT-25`) mapped to exact file paths, test files, spec files, DB tables, and evidence commands | 67, 69, 70 |
+| 72 | `M2-4-DESIGN.md` | M8 design resolution (M2-4 / AUDIT-09): Source Vault architecture — compressed payload checkpoint into the `.fpa` container + atomic authenticated reseal; native work blocked on cargo toolchain | 67, 69, 71 |
+| 73 | `M3-2-DESIGN.md` | M8 design resolution (M3-2 / AUDIT-04): `model.inspect` ruled a TypeScript-only HyperFormula engine capability (B14 — no duplicate Rust inspection engine); catalog conflict closed by classification, not by an unbuilt handler | 67, 69, 71 |
+| 74 | `M4-1-DESIGN.md` | M8 design resolution (M4-1 / AUDIT-24): rolling forecast automation — automated cutoff, historical lock, scenario stage-gate workflow, and snapshot freeze architecture for `forecast.roll_period` (native handler not yet authored) | 67, 69, 71 |
+| 75 | `M6-1-DESIGN.md` | M8 design resolution (M6-1 / AUDIT-05/16): statement tie-out oracles and largest-remainder rounding per MONEY-ROUNDING-SPEC §3; native `rust_decimal` verification pending cargo availability | 67, 69, 71 |
 
 ## DEPENDENCY MAP (subset — build order)
 

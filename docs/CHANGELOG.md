@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+- **M5-1 PVM engine repaired — the tree is green again (AUDIT-17 · 2026-09-18):** The 2026-09-09
+  "PVM engine" shipped as a **Rust draft saved in a `.ts` file** — it failed the TypeScript gates
+  (eslint parse errors in `src/model/varianceEngine.ts` and the S-054 page header) and its "6 tests
+  executed" claim was false (the engine could not be parsed; the `tests/unit/*` files cited in
+  CODE-TO-AUDIT-MAPPING never existed). Repaired honestly: `src/model/varianceEngine.ts` is now real
+  TypeScript — 5-factor Price-Volume-Mix decomposition (ΔV/ΔP/ΔM/ΔFX/ΔE) in exact integer minor units
+  with decimal.js 6-decimal HALF_EVEN ratio arithmetic, HALF_UP minor-unit conversion, divisors guarded
+  (no Infinity/NaN), and the sum-of-parts invariant holding **by construction** (efficiency = explicit
+  residual). Documented degradation: missing quantity or mix data zeroes those factors exactly and the
+  residual absorbs them (`isResidualDerived` reports it); a missing FX rate is an exact zero
+  (single-currency), not degradation. New `src/model/varianceEngine.test.ts` — **12 tests executed**
+  (the six documented names + mix degradation, negative variance with FX, the 6-decimal precision
+  boundary, the degenerate zero-rate guard, the corruption message, and i64-scale exactness). The
+  variance store now runs the engine's defensive `verifyPvmInvariant` over every attributable
+  `variance.get` row (`pvmCheck: {rowsChecked, violations}`, +4 store tests) — a tamper guard on
+  attribution data, not a calculation path. The malformed S-054 header comment is repaired; the false
+  "6 tests executed" claims are corrected in TASKBOARD (M5-1 rows) and CODE-TO-AUDIT-MAPPING (AUDIT-17).
+  Gates: `npm run check` all green. Native gates (cargo, desktop round-trip) remain UNVERIFIED in
+  sandbox — no Rust toolchain, network to install it blocked.
 - **Hardening batch (2026-09-08, ADR-032 · follows the 2026-09-07 artisan audit):**
   `company.restore_year` (103rd typed command — archive is now a fully restorable mark: one
   transaction, HMAC-chained audit event, idempotent on active labels); `ARCHIVE_IN_USE_REF`

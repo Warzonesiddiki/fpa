@@ -34,6 +34,40 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — M5-1 PVM engine repaired, tree back to green (2026-09-18, `arena/01a0b379-fpa`)
+
+- **Why:** HEAD (`ecd8eaf`, PR #42) landed the M5-1 PVM slice with the tree **RED**:
+  `src/model/varianceEngine.ts` was a **Rust draft saved as a `.ts` file** (eslint parse error),
+  the S-054 page header comment was malformed (parse error at 8:1), and the store imported the
+  unparseable module (3 unused-import errors). The "6 tests executed" claim in TASKBOARD /
+  CODE-TO-AUDIT-MAPPING was **false** — the engine could not be parsed, and the cited
+  `tests/unit/varianceFiveFactor.test.ts` / `varianceSumOfParts.test.ts` files never existed.
+- **Fix (all executed, not claimed):**
+  1. `src/model/varianceEngine.ts` rewritten as real TypeScript (decimal.js; exact integer minor
+     units in/out; 6-decimal HALF_EVEN ratio intermediates; HALF_UP minor conversion; guarded
+     divisors — no Infinity/NaN). Semantics: ΔV/ΔP/ΔM/ΔFX per standard PVM; efficiency is the
+     explicit residual so the sum-of-parts invariant holds **by construction**; missing quantity or
+     mix zeroes those factors exactly (residual absorbs, `isResidualDerived=true`); missing FX is an
+     exact zero (single-currency), NOT degradation.
+  2. `src/model/varianceEngine.test.ts` — **12 tests, all pass** (the six documented names:
+     pure_volume / pure_price / complex_mixed / invariant_never_breaks / zero_quantity /
+     degraded_no_quantity, + mix degradation, negative variance with FX, 6-decimal precision
+     boundary, degenerate zero-rate guard, corruption message, i64-scale exactness).
+  3. `src/stores/variance.ts` — the engine's defensive `verifyPvmInvariant` now runs over every
+     attributable `variance.get` row as `pvmCheck: {rowsChecked, violations}` (tamper guard on
+     attribution data, not a calculation path); cleared on error/reset. +4 store tests.
+  4. `src/pages/s054-variance/index.tsx` — header comment repaired (single block, accurate claims).
+  5. Docs corrected for the false claims: TASKBOARD M5-1 rows (§5 + §15 — the §5 row also had an
+     unescaped `|` breaking its columns), CODE-TO-AUDIT-MAPPING AUDIT-17 row, MILESTONE-EVIDENCE
+     session log, docs/CHANGELOG.md entry.
+- **Gates:** `npx eslint src --max-warnings 0` clean · `npx tsc --noEmit` clean · engine+store+page
+  suites 46/46 · full `npm run check` green (see commit). **Native gates still UNVERIFIED** — no Rust
+  toolchain in this sandbox and the network to install one is blocked (verified 2026-09-18); the
+  Rust attribution engine + desktop round-trip stay named blockers (M5-1 row).
+- **Next (M8 sprint, per TASKBOARD priority order):** AUDIT-02 `parseFinancialNumber` (M3-9 —
+  accounting-format input parsing; fully specified in AUDIT-VECTOR-PLAN, TS-only), then the
+  largest-remainder oracle fixtures (M6-1, handover NEXT TASKS #1) — both sandbox-buildable.
+
 ### 2026-09-07 (same day, follow-up) — dependency CVEs cleared + migration rollback verified
 
 - **cargo audit is now clean of vulnerabilities.** calamine upgraded `0.26.1 → 0.36.1`

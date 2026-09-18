@@ -37,7 +37,7 @@ From `docs/MONEY-ROUNDING-SPEC.md` (referenced, not fabricated):
 
 ## 3. STATEMENT ENGINE CURRENT STATE (VERIFIED, NOT CLAIMED)
 
-From workspace (`src/model/statement.ts`, `docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2):
+From repository (`src/model/statement.ts`, `docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2):
 
 - `statement.get.v1` Rust handler exists (`commands/statement.rs`) with typed arguments and response.
 - `S-060` Financial Statements screen exists (`pages/s060-statements/`) with P&L, Balance Sheet, Cash Flow tabs.
@@ -93,7 +93,7 @@ The M6-1 milestone requires executed evidence across all 5 pillars:
 
 ## 6. MULTI-CURRENCY STATEMENT DISPLAY
 
-From workspace (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODELING-METHODS-SPEC.md` §7 statements):
+From repository (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODELING-METHODS-SPEC.md` §7 statements):
 
 - The S-060 screen supports multi-currency display (UI layer verified).
 - Major units mode exists (UI layer).
@@ -114,7 +114,7 @@ From workspace (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODE
 
 | Timestamp | Action | Evidence produced | Next blocker / open item |
 |---|---|---|---|
-| 2026-09-09 (this session) | `docs/M6-1-DESIGN.md` authored | Design document executed; references verified workspace files; zero fabricated native test results; design resolves largest-remainder rounding specification and tie-out oracle requirements | Native `cargo test` verification (M7-3 / M7-1 CI); full CF engine + Non-GAAP reconciliation native verification (remains open); 3-OS deterministic bytes (M7-2 / M7-3) |
+| 2026-09-09 (this session) | `docs/M6-1-DESIGN.md` authored | Design document executed; references verified repository files; zero fabricated native test results; design resolves largest-remainder rounding specification and tie-out oracle requirements | Native `cargo test` verification (M7-3 / M7-1 CI); full CF engine + Non-GAAP reconciliation native verification (remains open); 3-OS deterministic bytes (M7-2 / M7-3) |
 
 ---
 
@@ -130,4 +130,4 @@ From this design document (not hidden):
 
 ---
 
-*This is an executed design document, not a fabricated implementation claim. No `statement.rs` code was altered with unverified native behavior. No performance numbers were invented. The workspace remains in its verifiable state (`src/model/statement.ts` and `src-tauri/src/commands/statement.rs` unchanged by unverified edits). The session continues at extreme intensity with zero compromised claims.*
+*This is an executed design document, not a fabricated implementation claim. No `statement.rs` code was altered with unverified native behavior. No performance numbers were invented. The repository remains in its verifiable state (`src/model/statement.ts` and `src-tauri/src/commands/statement.rs` unchanged by unverified edits). The session continues at extreme intensity with zero compromised claims.*
