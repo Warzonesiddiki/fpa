@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+- **TASKBOARD reconciliation — stale M4/M5/M6 detailed rows fixed (2026-09-20):** The detailed
+  "M4 — Planning" / "M5 — Analysis" / "M6 — Reporting & Governance" sub-tables were a frozen
+  early-planning snapshot that contradicted the maintained, evidence-backed milestone tables —
+  e.g. M4-3 `model.diff`, M4-4 what-if, M4-5 cycle, M4-6 collection, M6-2 segment, M6-3…M6-9 were
+  still marked `❗ TODO` / `🟨 IN PROGRESS` although each feature is built and verified (Rust
+  handlers in `commands/{model,plan,cycle,consolidation,report,export,health,audit,backup,scenario,
+  fva}.rs` + TS stores + S-05x/S-06x/S-07x screens + 2026-09-07 native 264/264). Reconciled all 14
+  rows to their verified milestone status with code-cited notes; accurate PARTIALs (M5-1 PVM, M5-4
+  alerts, M6-1 tie-out) left intact. This staleness is exactly what made the line-40 "M4-3 next"
+  plan look like open work — the line-40 feature order (M4-3/4/5/6) and HANDOVER §2 "M6-2 next
+  unblocked feature" are in fact **built**; the remaining M8 work is the 25 AUDIT rejection vectors
+  (mostly native/`cargo`-blocked in the sandbox). Doc-only; `npm run check` gates unaffected (no
+  code change).
 - **M6-1 largest-remainder tie-out oracle — TS slice DONE (2026-09-20):** The statement
   tie-out rounding spec (`docs/MONEY-ROUNDING-SPEC.md` §4, F-027) is now implemented and verified in
   the TS slice as a pure, exact-decimal reference oracle — `src/model/largestRemainder.ts`
