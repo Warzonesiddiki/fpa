@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+- **AUDIT-02 Excel-parity input formats — vector DONE (M3-9 Unit W-2 · 2026-09-18):** The four
+  named rejection formats (`1,250,000.00`, `(500.00)`, `$1,000`, `15%`) now parse everywhere a
+  number enters the grid, to the exact decimal string, before any IPC/audit boundary. New
+  `src/utils/parseFinancialNumber.ts` — a string-only exact parser (no float, no locale,
+  `money:ast`-clean): plain decimals, strict 3-digit thousands grouping, accounting-negative
+  parentheses (incl. `($1,250)`), one leading currency symbol, trailing `%` as an exact string
+  ÷100, explicit `+`/`-`; 12-digit integer cap (i64-safe at any scale); zero unsigned
+  (`-0.00` → `0.00`); rejections: sci-notation, broken grouping, double/mixed signs,
+  sign-in-parens, interior whitespace, `USD 100`, `5.`/`.5`. **59 string tests** (35 accepted /
+  24 rejected + count guard) in `src/utils/parseFinancialNumber.test.ts`. Wired into paste
+  (`parsePasteCell`, `src/stores/modelHistory.ts`), the S-041 formula bar (`applyFormulaBar`
+  normalizes before `setCell`), and a typed `VALUE_INVALID` boundary guard in
+  `src/workers/modelEngine.ts` `setCell` (raw non-decimal strings throw the locked code, never a
+  raw Decimal error — defense in depth; cell writes already audit via `model.cell.set.v1`).
+  **S-041 keyboard suite: 21 key-event tests** (13 app-owned effects — Ctrl+Z undo, Ctrl+Shift+Z
+  redo, Ctrl+Y redo, F2 focus formula bar, 4× Shift+arrow selection extend/retract, formula-bar
+  Enter ×2 with normalization `(500)` → `value: "-500"` audited, formula-bar Escape cancel, 2
+  typing-guards where Ctrl+Z/F2 inside the input are left to the browser; 8 AG-Grid pass-through
+  tests asserting no history movement and no audited write) + 1 paste-dialog accounting-format
+  test (`(500)\t1,250,000.00` → cells `-500` / `1250000.00`). No new i18n strings (locked
+  `VALUE_INVALID` only). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-02 row ✅ DONE; AUDIT-17 false
+  "364 lines / 6 tests" claim corrected to 646 lines / 12 tests; summary 1 of 25),
+  CODE-TO-AUDIT-MAPPING v10 (real files — the FormulaBar/CellEditor components it named never
+  existed), SCREENS-SPEC S-041 (accepted input formats + keyboard map), TASKBOARD M3-9 rows.
+  Gates: `npm run check` all green — 106 files / **1361 tests**, coverage main 87.99/82.28/84.31/
+  87.35 + critical 98.35/95.41/98.08/98.28, schema 56 tables, docs-link 190/85, docs:verify
+  74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226, ipc:casing 88, command-parity 89,
+  secret/telemetry/license PASS; `npm run build` green. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
 - **M5-1 PVM engine repaired — the tree is green again (AUDIT-17 · 2026-09-18):** The 2026-09-09
   "PVM engine" shipped as a **Rust draft saved in a `.ts` file** — it failed the TypeScript gates
   (eslint parse errors in `src/model/varianceEngine.ts` and the S-054 page header) and its "6 tests

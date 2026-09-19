@@ -451,6 +451,40 @@ describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
     );
   }, 20000);
 
+  it("pastes Excel-style financial numbers normalized (AUDIT-02)", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    const cell = container.querySelector('[col-id="p-fp-2026-p01"]') as HTMLElement;
+    await userEvent.click(cell);
+    await userEvent.click(screen.getByRole("button", { name: /Paste/ }));
+    const textarea = await screen.findByLabelText(/Paste TSV/);
+    // (500) = accounting negative, 1,250,000.00 = strict grouping — both normalize on paste.
+    await userEvent.type(textarea, "(500)\t1,250,000.00");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9103,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Insert/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBe("-500"),
+    );
+    expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p02`].amount_text).toBe(
+      "1250000.00",
+    );
+    // The audit carries the normalized exact decimal strings, never the raw text.
+    await waitFor(() =>
+      expect(callMock).toHaveBeenCalledWith(
+        "model.cell.set.v1",
+        expect.objectContaining({ line_id: LINE, period_id: "fp-2026-p01", value: "-500" }),
+      ),
+    );
+    expect(callMock).toHaveBeenCalledWith(
+      "model.cell.set.v1",
+      expect.objectContaining({ line_id: LINE, period_id: "fp-2026-p02", value: "1250000.00" }),
+    );
+  }, 20000);
+
   it("shows VALUE_INVALID from a bad paste and keeps the dialog open", async () => {
     mockLoad();
     const { container } = renderPage();
@@ -536,4 +570,267 @@ describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
       );
     });
   }, 20000);
+});
+
+describe("S-041 Model Grid — AUDIT-02 keyboard parity (Excel key map, F-012)", () => {
+  beforeEach(() => {
+    callMock.mockReset();
+    companyIdMock.mockReturnValue(CO);
+    useModelGridStore.getState().reset();
+    useSettingsStore.setState({
+      preferences: {
+        ...createDefaultSettings("en-US"),
+        displayThousands: false,
+        displayDecimals: "2",
+      },
+    });
+  });
+
+  /** Dispatch a native keydown (bubbles) at a grid cell — the page's capture-phase handler runs. */
+  function keyAt(target: HTMLElement, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+    const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+    target.dispatchEvent(ev);
+    return ev;
+  }
+
+  async function gridReady(): Promise<HTMLElement> {
+    mockLoad();
+    const { container } = renderPage();
+    const cell = await waitForGridCell(container);
+    await userEvent.click(cell); // sets the active cell (LINE / fp-2026-p01)
+    return cell;
+  }
+
+  async function editValue(value: string, auditId = 9100): Promise<void> {
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, value);
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: auditId,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:fp-2026-p01`].amount_text).toBe(value),
+    );
+  }
+
+  const P1 = "fp-2026-p01";
+  const P2 = "fp-2026-p02";
+
+  // ── App-owned keys: the capture handler intercepts (preventDefault + stopPropagation) ──
+
+  it("Ctrl+Z on the grid undoes the last edit (Excel parity)", async () => {
+    const cell = await gridReady();
+    await editValue("182500.00");
+    expect(useModelGridStore.getState().canUndo).toBe(true);
+    const ev = keyAt(cell, "z", { ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(true); // the app pre-empts AG Grid
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBeNull(),
+    );
+    expect(useModelGridStore.getState().canUndo).toBe(false);
+    expect(useModelGridStore.getState().canRedo).toBe(true);
+  }, 20000);
+
+  it("Ctrl+Shift+Z on the grid redoes the undone edit and re-issues the audit", async () => {
+    const cell = await gridReady();
+    await editValue("182500.00");
+    keyAt(cell, "z", { ctrlKey: true });
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBeNull(),
+    );
+    const ev = keyAt(cell, "z", { ctrlKey: true, shiftKey: true });
+    expect(ev.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBe("182500.00"),
+    );
+    await waitFor(() =>
+      expect(callMock).toHaveBeenCalledWith(
+        "model.cell.set.v1",
+        expect.objectContaining({ line_id: LINE, period_id: P1, value: "182500.00" }),
+      ),
+    );
+  }, 20000);
+
+  it("Ctrl+Y on the grid redoes (Windows alias)", async () => {
+    const cell = await gridReady();
+    await editValue("182500.00");
+    keyAt(cell, "z", { ctrlKey: true });
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBeNull(),
+    );
+    const ev = keyAt(cell, "y", { ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBe("182500.00"),
+    );
+  }, 20000);
+
+  it("F2 on the grid focuses the formula bar", async () => {
+    const cell = await gridReady();
+    const ev = keyAt(cell, "F2");
+    expect(ev.defaultPrevented).toBe(true);
+    expect(screen.getByLabelText("Formula bar")).toHaveFocus();
+  }, 20000);
+
+  it("Shift+ArrowDown extends the selection one row down", async () => {
+    const cell = await gridReady();
+    const ev = keyAt(cell, "ArrowDown", { shiftKey: true });
+    expect(ev.defaultPrevented).toBe(true);
+    const s = useModelGridStore.getState();
+    expect(s.active).toEqual({ lineId: ACCOUNTS[1].id, periodId: P1 });
+    expect(s.selection).toEqual({
+      anchor: { lineId: LINE, periodId: P1 },
+      focus: { lineId: ACCOUNTS[1].id, periodId: P1 },
+    });
+  }, 20000);
+
+  it("Shift+ArrowRight extends the selection one period right from the focus", async () => {
+    const cell = await gridReady();
+    keyAt(cell, "ArrowDown", { shiftKey: true });
+    keyAt(cell, "ArrowRight", { shiftKey: true });
+    const s = useModelGridStore.getState();
+    expect(s.selection?.focus).toEqual({ lineId: ACCOUNTS[1].id, periodId: P2 });
+    expect(s.selection?.anchor).toEqual({ lineId: LINE, periodId: P1 }); // anchor pinned
+  }, 20000);
+
+  it("Shift+ArrowUp retracts the selection focus upward", async () => {
+    const cell = await gridReady();
+    keyAt(cell, "ArrowDown", { shiftKey: true });
+    keyAt(cell, "ArrowUp", { shiftKey: true });
+    const s = useModelGridStore.getState();
+    expect(s.selection?.focus).toEqual({ lineId: LINE, periodId: P1 });
+    expect(s.active).toEqual({ lineId: LINE, periodId: P1 });
+  }, 20000);
+
+  it("Shift+ArrowLeft retracts the selection focus leftward", async () => {
+    const cell = await gridReady();
+    keyAt(cell, "ArrowDown", { shiftKey: true });
+    keyAt(cell, "ArrowRight", { shiftKey: true });
+    keyAt(cell, "ArrowLeft", { shiftKey: true });
+    expect(useModelGridStore.getState().selection?.focus).toEqual({
+      lineId: ACCOUNTS[1].id,
+      periodId: P1,
+    });
+  }, 20000);
+
+  it("formula-bar Enter applies, normalizing an accounting negative (AUDIT-02)", async () => {
+    await gridReady();
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "(500)");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9101,
+    });
+    await userEvent.type(formulaBar, "{Enter}");
+    await waitFor(() =>
+      expect(callMock).toHaveBeenCalledWith(
+        "model.cell.set.v1",
+        expect.objectContaining({ line_id: LINE, period_id: P1, value: "-500", formula: null }),
+      ),
+    );
+    await waitFor(() =>
+      expect(useModelGridStore.getState().cells[`${LINE}:${P1}`].amount_text).toBe("-500"),
+    );
+  }, 20000);
+
+  it("formula-bar Enter normalizes thousands + currency (AUDIT-02)", async () => {
+    await gridReady();
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "$1,250,000.00");
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [LINE], issues: [], duration_ms: 0 },
+      audit_id: 9102,
+    });
+    await userEvent.type(formulaBar, "{Enter}");
+    await waitFor(() =>
+      expect(callMock).toHaveBeenCalledWith(
+        "model.cell.set.v1",
+        expect.objectContaining({
+          line_id: LINE,
+          period_id: P1,
+          value: "1250000.00",
+          formula: null,
+        }),
+      ),
+    );
+  }, 20000);
+
+  it("formula-bar Escape cancels the pending entry (no audited write)", async () => {
+    await gridReady();
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.type(formulaBar, "$1,250");
+    await userEvent.type(formulaBar, "{Escape}");
+    expect(formulaBar).toHaveValue("");
+    expect(callMock).not.toHaveBeenCalledWith("model.cell.set.v1", expect.anything());
+  }, 20000);
+
+  it("Ctrl+Z inside the formula-bar input is left to the browser (text edit, not grid undo)", async () => {
+    await gridReady();
+    await editValue("182500.00");
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.click(formulaBar);
+    await userEvent.clear(formulaBar); // the bar re-shows the cell value after a successful apply
+    await userEvent.type(formulaBar, "abc");
+    const ev = keyAt(formulaBar, "z", { ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(false); // capture handler must not pre-empt typing
+    const s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${P1}`].amount_text).toBe("182500.00"); // grid state untouched
+    expect(s.canUndo).toBe(true); // history untouched
+    expect(formulaBar).toHaveValue("abc");
+  }, 20000);
+
+  it("F2 inside the formula-bar input is left to the browser (no pre-emption)", async () => {
+    await gridReady();
+    const formulaBar = screen.getByLabelText("Formula bar");
+    await userEvent.click(formulaBar);
+    const ev = keyAt(formulaBar, "F2");
+    expect(ev.defaultPrevented).toBe(false);
+    expect(formulaBar).toHaveFocus();
+  }, 20000);
+
+  // ── AG-Grid-owned keys: the app must NOT own them (no history movement, no audited write) ──
+
+  /**
+   * Keys AG Grid handles natively (arrows, Tab): AG Grid's own handler legitimately
+   * preventDefaults them in the browser, so the app-level contract is that the capture
+   * handler neither touches the model nor the audit trail — navigation stays inside the grid.
+   */
+  for (const [label, key] of [
+    ["ArrowDown", "ArrowDown"],
+    ["ArrowUp", "ArrowUp"],
+    ["ArrowLeft", "ArrowLeft"],
+    ["ArrowRight", "ArrowRight"],
+    ["Tab", "Tab"],
+  ] as const) {
+    it(`plain ${label} on the grid is left to AG Grid navigation (no model/audit mutation)`, async () => {
+      const cell = await gridReady();
+      const before = useModelGridStore.getState();
+      const callsBefore = callMock.mock.calls.length;
+      keyAt(cell, key);
+      const s = useModelGridStore.getState();
+      expect(s.canUndo).toBe(before.canUndo);
+      expect(s.canRedo).toBe(before.canRedo);
+      expect(callMock.mock.calls.length).toBe(callsBefore);
+    }, 20000);
+  }
+
+  /** Keys nobody intercepts: neither the app capture handler nor AG Grid pre-empts them. */
+  for (const [label, key] of [
+    ["Enter", "Enter"],
+    ["z without modifier", "z"],
+    ["y without modifier", "y"],
+  ] as const) {
+    it(`plain ${label} on the grid is not pre-empted and mutates nothing`, async () => {
+      const cell = await gridReady();
+      const before = useModelGridStore.getState();
+      const callsBefore = callMock.mock.calls.length;
+      const ev = keyAt(cell, key);
+      expect(ev.defaultPrevented).toBe(false);
+      const s = useModelGridStore.getState();
+      expect(s.canUndo).toBe(before.canUndo);
+      expect(s.canRedo).toBe(before.canRedo);
+      expect(callMock.mock.calls.length).toBe(callsBefore);
+    }, 20000);
+  }
 });

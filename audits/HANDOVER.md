@@ -34,6 +34,67 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-02 Excel-parity input formats, vector DONE (2026-09-18, `arena/01a0b379-fpa`)
+
+- **Why:** AUDIT-02 (Excel parity) named four input formats Excel accepts and OneFP&A rejected:
+  `1,250,000.00` (thousands grouping), `(500.00)` (accounting negative), `$1,000` (currency
+  symbol), `15%` (percent). Its DONE criteria: local execution, 50+ accounting parse strings
+  tested, 20+ shortcut key-event tests, spec + TASKBOARD sync, no mock-only path.
+- **What shipped (all executed, not claimed):**
+  1. `src/utils/parseFinancialNumber.ts` — new exact-string parser (string in → exact decimal
+     string out, `null` on rejection; no float, no locale, `money:ast`-clean). Accepts: plain
+     decimals, strict 3-digit comma groups, accounting parens (incl. `($1,250)`), one leading
+     currency symbol, trailing `%` as exact string ÷100, explicit `+`/`-`. 12-digit integer cap
+     (i64-safe at any scale). Zero unsigned, digits verbatim (`-0.00` → `0.00`). Rejects:
+     sci-notation, broken grouping, double/mixed signs, sign-in-parens, interior whitespace,
+     `USD 100`, `5.`/`.5`.
+  2. **59 string tests** (`src/utils/parseFinancialNumber.test.ts`: 35 accepted / 24 rejected +
+     count guard) — all four named formats covered; expectations are exact strings.
+  3. Wire-ins: paste (`parsePasteCell` in `src/stores/modelHistory.ts` — normalized before
+     `buildPasteEdits`), S-041 formula bar (`applyFormulaBar` normalizes before `setCell`;
+     unparseable text reaches the engine guard), and a typed `VALUE_INVALID` boundary guard in
+     `src/workers/modelEngine.ts` `setCell` (raw non-decimal string throws `VALUE_INVALID: '…'
+is not a valid amount`, never a raw Decimal error). Cell writes already audit via
+     `model.cell.set.v1` — no new audit surface, no new i18n strings (locked code only).
+  4. **S-041 keyboard suite: 21 key-event tests** in
+     `src/pages/s041-model-grid/index.test.tsx` ("AUDIT-02 keyboard parity" describe):
+     13 app-owned effects — Ctrl+Z undo (cell reverts, history flips), Ctrl+Shift+Z redo
+     (re-issues the audited write), Ctrl+Y redo, F2 focuses the formula bar, 4× Shift+arrow
+     (extend/retract selection, anchor pinned), formula-bar Enter ×2 (typing `(500)` /
+     `$1,250,000.00` audits `value: "-500"` / `"1250000.00"`), formula-bar Escape (no write),
+     2 typing-guards (Ctrl+Z and F2 **inside** the input are left to the browser — no grid
+     undo, no pre-emption). 8 AG-Grid pass-through tests — plain arrows/Tab/Enter/unmodified
+     z/y mutate no history and issue no audited write (the app owns none of them). Plus 1
+     paste-dialog test (`(500)\t1,250,000.00` → cells `-500` / `1250000.00`, audit carries
+     normalized strings).
+  5. Docs synced: `docs/AUDIT-VECTOR-PLAN.md` (AUDIT-02 row → ✅ DONE with evidence; AUDIT-17
+     row corrected — the 2026-09-09 "364 lines / 6 tests executed" claim was false, real: 646
+     lines / 12 pure-TS tests, repaired in `317c9a1`; summary → 1 of 25), `docs/CODE-TO-AUDIT-
+MAPPING.md` v10 (AUDIT-02 row now names real files; AUDIT-03/23 rows fixed — the
+     `FormulaBar.tsx` / `CellEditor.tsx` components they named never existed; the formula bar
+     is inline JSX in the S-041 page), `docs/SCREENS-SPEC.md` S-041 (accepted input formats +
+     keyboard map), `TASKBOARD.md` M3-9 rows (Unit W-2), this file, CHANGELOG.
+- **Gates (pasted in CHANGELOG):** `npm run check` ALL GREEN — 106 files / **1361 tests**;
+  coverage main 87.99/82.28/84.31/87.35 + critical 98.35/95.41/98.08/98.28; schema 56 tables;
+  docs-link 190/85; docs:verify 74/42/103/87/21; packs 12/12; money:ast; tokens 16/2226;
+  ipc:casing 88; command-parity 89; secret/telemetry/license PASS. `npm run build` green
+  (2.24s). Native gates (cargo, desktop round-trip) remain UNVERIFIED — no Rust toolchain in
+  sandbox; no Rust was touched in this unit (pure TS).
+- **Pitfalls learned:** (a) `money:ast` scans text, not AST — a doc **block** comment containing
+  the literal `Number(` fails the gate (its comment exclusion only handles `//` lines); word
+  numeric-conversion bans without the call-paren token. (b) `parsePasteBlock` splits on tab
+  first, else CSV comma — a single pasted `1,250,000.00` cell only survives as one cell inside
+  a tab-delimited block; the comma-delimited path treats its commas as cell separators by
+  design. (c) In jsdom, AG Grid's own handler calls `preventDefault` for arrow/Tab navigation,
+  so "app does not own this key" is evidenced by no history movement + no audited write, not
+  by `defaultPrevented === false`. (d) The formula bar re-shows the cell value after a
+  successful Apply — clear it before typing in tests.
+- **Next (TASKBOARD M8 priority order):** M2-5b driver pipeline (TS design; native
+  `driver_values` persistence remains the named blocker) → M3-2 `model.inspect` handler
+  decision (catalog conflict — Rust handler vs engine-side-only) → M6-1 statement tie-out
+  oracles (largest-remainder fixtures). Native completion sweep stays on a Rust-equipped
+  machine (see §2).
+
 ### Latest — M5-1 PVM engine repaired, tree back to green (2026-09-18, `arena/01a0b379-fpa`)
 
 - **Why:** HEAD (`ecd8eaf`, PR #42) landed the M5-1 PVM slice with the tree **RED**:

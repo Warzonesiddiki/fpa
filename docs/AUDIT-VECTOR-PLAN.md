@@ -99,12 +99,12 @@ No vector moves to `✅ DONE` without:
 
 ---
 
-## CURRENT STATUS — ALL 25 VECTORS (2026-09-09)
+## CURRENT STATUS — ALL 25 VECTORS (2026-09-18)
 
 | Vector | Domain | Status | Milestone | Blocker / Evidence gap |
 |---|---|---|---|---|
 | AUDIT-01 | Grid persistence | ❗ TODO | M3-1 | `model.cell.set.batch.v1` not authored; `model.values.get` not authored |
-| AUDIT-02 | Excel parity | ❗ TODO | M3-9 | Full keyboard map not authored; `parseFinancialNumber` partial |
+| AUDIT-02 | Excel parity | ✅ DONE (2026-09-18) | M3-9 | `src/utils/parseFinancialNumber.ts` — exact-string parser, 59 string tests (35 accepted / 24 rejected, all four named formats: `1,250,000.00`, `(500.00)`, `$1,000`, `15%`); wired into paste (`src/stores/modelHistory.ts`), the S-041 formula bar, and the engine boundary guard (`src/workers/modelEngine.ts` `VALUE_INVALID`); S-041 keyboard suite: 21 key-event tests (13 app-owned: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, F2, 4× Shift+arrow, formula-bar Enter ×2, formula-bar Escape, 2 typing-guard; 8 AG-Grid pass-through non-mutations) + 1 paste-dialog accounting-format test — `src/pages/s041-model-grid/index.test.tsx` |
 | AUDIT-03 | Row insert / formula bar | ❗ TODO | M3-1 / M3-9 | `model.line.create` not authored; formula bar isolation partial |
 | AUDIT-04 | Formula cycles | ❗ TODO | M3-2 / M3-5 | SCC relaxation solver not authored; dependency AST expansion partial |
 | AUDIT-05 | Multi-period / CF / Non-GAAP | ❗ TODO | M6-1 / M6-2 | Per-period vector refactor not started; direct/indirect CF not authored |
@@ -114,7 +114,7 @@ No vector moves to `✅ DONE` without:
 | AUDIT-09 | Multi-user / collaboration | ❗ TODO | M1-5 / M4-3 | Checkpoint into `.fpa` not authored; `scenario_version_values` partial |
 | AUDIT-15 | Consolidation / FX / CTA | ❗ TODO | M6-3 | Multi-tier rollup partial; CTA plug (`3900`) not implemented; automated IC reconciliation not authored |
 | AUDIT-16 | Cash flow / liquidity | ❗ TODO | M6-1 / M3-7 | Direct/indirect CF partial; `cash_flow_reconciliation` not authored |
-| AUDIT-17 | Variance / PVM | ❗ TODO → PARTIAL (engine authored 2026-09-09) | M5-1 / M5-2 / M3-3 | `src/model/varianceEngine.ts` (364 lines, exact Decimal, defensive invariant, 6 tests); store + Rust command docs updated; page + full docs sync remain open |
+| AUDIT-17 | Variance / PVM | PARTIAL (engine + S-054 tree built 2026-09-11; red tree repaired 2026-09-18) | M5-1 / M5-2 / M3-3 | `src/model/varianceEngine.ts` (646 lines, exact Decimal, 5-factor PVM, `verifyPvmInvariant` sum-of-parts invariant, 12 tests incl. pinned fixture `complex_mixed` = 870,000); store `pvmCheck` tamper guard (20 tests); S-054 page wired (M5-2). The "364 lines / 6 tests executed" claim in the 2026-09-09 status was incorrect (the file was 646 lines / 12 pure-TS tests); the red tree it caused was repaired in commit `317c9a1` (2026-09-18). Constant-currency / FX-neutral mode + reason-code attribution remain unverified. |
 | AUDIT-18 | OLAP / dimensionality | ❗ TODO | M3-3 / M3-5 | Cube dimensions schema partial; pivot matrix engine not authored |
 | AUDIT-19 | Predictive baseline | ❗ TODO | M4-5 / V2 | `core/forecast.rs` not authored; statistical library selection pending |
 | AUDIT-20 | Dual-cadence calendar | ❗ TODO | M1-7 / M3-7 | Weekly/monthly linkage partial; day-count conventions partial |
@@ -129,4 +129,4 @@ No vector moves to `✅ DONE` without:
 | **AUDIT-13** | Workforce persistence | ❗ TODO | M3-6 | `workforce_roster` table not fully authored (partial in schedule); annualization fix partial |
 | **AUDIT-14** | RevRec / commercial persistence | ❗ TODO | M3-8 / M5-3 | ASC 606 engine partial; POC/EAC partial; SaaS KPI math fix partial |
 
-> **Summary:** 0 of 25 vectors claim `✅ DONE`. All 25 are `❗ TODO` — this is the honest state. No vector is hidden, no gap is fabricated. The strategic vision demands that these become the highest-priority work stream for the remaining session.
+> **Summary:** 1 of 25 vectors claim `✅ DONE` (AUDIT-02, 2026-09-18, with pasted gate evidence in CHANGELOG/HANDOVER). AUDIT-17 is PARTIAL (engine + S-054 tree built, red tree repaired 2026-09-18). The rest remain `❗ TODO` — this is the honest state. No vector is hidden, no gap is fabricated. The strategic vision demands that these become the highest-priority work stream for the remaining session.
