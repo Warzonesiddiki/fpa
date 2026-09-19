@@ -107,7 +107,7 @@ No vector moves to `✅ DONE` without:
 | AUDIT-02 | Excel parity | ✅ DONE (2026-09-18) | M3-9 | `src/utils/parseFinancialNumber.ts` — exact-string parser, 59 string tests (35 accepted / 24 rejected, all four named formats: `1,250,000.00`, `(500.00)`, `$1,000`, `15%`); wired into paste (`src/stores/modelHistory.ts`), the S-041 formula bar, and the engine boundary guard (`src/workers/modelEngine.ts` `VALUE_INVALID`); S-041 keyboard suite: 21 key-event tests (13 app-owned: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, F2, 4× Shift+arrow, formula-bar Enter ×2, formula-bar Escape, 2 typing-guard; 8 AG-Grid pass-through non-mutations) + 1 paste-dialog accounting-format test — `src/pages/s041-model-grid/index.test.tsx` |
 | AUDIT-03 | Row insert / formula bar | ❗ TODO | M3-1 / M3-9 | `model.line.create` not authored; formula bar isolation partial |
 | AUDIT-04 | Formula cycles | ❗ TODO | M3-2 / M3-5 | SCC relaxation solver not authored; dependency AST expansion partial |
-| AUDIT-05 | Multi-period / CF / Non-GAAP | ❗ TODO | M6-1 / M6-2 | Per-period vector refactor not started; direct/indirect CF not authored |
+| AUDIT-05 | Multi-period / CF / Non-GAAP | 🚧 PARTIAL | M6-1 / M6-2 | **Largest-remainder TS tie-out oracle DONE 2026-09-20** (`src/model/largestRemainder.ts`, 15 exact-decimal tests, `npm run check` green); per-period vector refactor not started (native, cargo-pending); direct/indirect CF not authored |
 | AUDIT-06 | Cost allocations / ABC | ❗ TODO | M3-3 / M3-5 | Allocation engine not authored |
 | AUDIT-07 | Ingestion gaps | ❗ TODO | M2-1 / M2-2 | Jaro-Winkler mapping not authored; `coa.create` partial; date support partial |
 | AUDIT-08 | GL drilldown + perf | ❗ TODO | M2-4 / M6-1 | `gl.lines.query` not authored; `prepare_cached` partial; stream CSV partial |

@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+- **M6-1 largest-remainder tie-out oracle — TS slice DONE (2026-09-20):** The statement
+  tie-out rounding spec (`docs/MONEY-ROUNDING-SPEC.md` §4, F-027) is now implemented and verified in
+  the TS slice as a pure, exact-decimal reference oracle — `src/model/largestRemainder.ts`
+  (+ `src/model/largestRemainder.test.ts`, **15 tests**). `largestRemainderAllocate(exactLines, unit,
+  exactTotal?)` floors each exact line to the display unit (toward −∞, remainder ∈ [0, unit)),
+  computes the integer-unit residual `k = (roundToUnit(total) − Σ floors) / unit`, and adds one unit to
+  the `k` largest-remainder lines (deterministic stable-index tie-break); the negative branch (§4 step
+  4d) subtracts from the `|k|` smallest-remainder lines when an independently computed parent sits
+  below Σ floors. All arithmetic is `decimal.js` (no float, no locale, `money:ast`-clean); the only
+  non-Decimal conversion is a line count. Pinned vectors: the §4/§7 000s all-tie case,
+  largest-remainder-first (middle line wins), stable equal-remainder tie, HALF_UP total rounding,
+  negative cost lines, sub-unit 2 dp, and a 240-case property sweep — all asserting the mandated
+  invariant **`sum(displayed children) === displayed parent`** (Δ = 0, exact-decimal equality). This is
+  the reference the native `rust_decimal` engine in `src-tauri/src/commands/statement.rs` must match.
+  **Docs corrected:** the phantom `src/model/statement.ts` ref (cited by M6-1-DESIGN §3 /
+  CODE-TO-AUDIT-MAPPING AUDIT-05) does not exist — statement math is native `statement.rs` + the B18-3
+  shape mirror in `src/api/mock.ts`; the TS oracle lives in `src/model/largestRemainder.ts`. AUDIT-05 is
+  now 🚧 PARTIAL (oracle done; per-period vector refactor + Direct/Indirect CF + Non-GAAP remain
+  native/cargo). Docs synced: M6-1-DESIGN (§8 row + §10 addendum), TASKBOARD (M6-1 row),
+  AUDIT-VECTOR-PLAN (AUDIT-05 row), CODE-TO-AUDIT-MAPPING v11 (AUDIT-05 row, phantom ref corrected).
+  Gates: `npm run check` all 14 green — 107 files / **1376 tests** (15 new), coverage main
+  88.03/82.28/84.39/89.79 + critical 98.34/95.41/98.07/98.7, schema 56, docs-link 190/85, docs:verify
+  74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226, ipc:casing 88, command-parity 89,
+  secret/telemetry/license PASS; `npm run build` green (2.85s). Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
 - **AUDIT-02 Excel-parity input formats — vector DONE (M3-9 Unit W-2 · 2026-09-18):** The four
   named rejection formats (`1,250,000.00`, `(500.00)`, `$1,000`, `15%`) now parse everywhere a
   number enters the grid, to the exact decimal string, before any IPC/audit boundary. New
