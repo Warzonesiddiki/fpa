@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+- **AUDIT-20 day-count conventions engine — TS slice DONE (2026-09-20):** The institutional debt
+  day-count spec (`docs/MODELING-METHODS-SPEC.md` §2) is now implemented and verified in the TS slice as
+  a pure, exact-decimal reference engine — `src/model/dayCount.ts` (+ `src/model/dayCount.test.ts`,
+  **77 tests**). Conventions: `ACT_360` (Actual/360, US corporate debt), `ACT_365` (Actual/365, UK),
+  `THIRTY_360_US` (30/360 Bond Basis / US-NASD), `THIRTY_360_ISDA` (30/360 Eurobond). Calendar day
+  counts are **exact integers** via the Julian-day count formula (no `Date`/float/DST — verified against
+  the J2000.0 epoch 2000-01-01 → 2451545); year fractions and interest (`principal × rate × days /
+  denom`) are exact `decimal.js` (28-digit). Dates are ISO `YYYY-MM-DD` validated as real Gregorian
+  dates (Feb 30 / month 13 / day 0·32 / malformed / unknown-convention → locked `VALUE_INVALID`).
+  Pinned vectors: full leap/century rules, every 31st-day 30/360 edge case (US Bond Basis vs ISDA
+  Eurobond — e.g. 2026-01-15 → 2026-03-31 = 76 days US vs 75 ISDA), multi-decade spans, the AUDIT's
+  **~1.39% understatement mechanism** (naive `/12` accrues 360 days; ACT/360 accrues the true 365 → a
+  365-day year accrues exactly 365/360, an excess of 5/360 over the naive 1.0), and invariants
+  (antisymmetry, additivity, sign, zero, ACT/360 ≥ ACT/365). This is the reference the native
+  `rust_decimal` engine in `core/calendar.rs` / `schedule.rs` must match. **Honest scope:** this is the
+  **day-count** slice of AUDIT-20 — the weekly/monthly dual-cadence calendar linkage and native
+  convention wiring remain open (cargo). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-20 row → PARTIAL; summary
+  lists 3 PARTIAL vectors), CODE-TO-AUDIT-MAPPING v12 (AUDIT-20 row, phantom `dayCountEngine.ts`
+  corrected to the real `src/model/dayCount.ts`). Gates: `npm run check` all 14 green — 108 files /
+  **1453 tests** (77 new), coverage main 88.10/82.39/84.48/89.86 + critical 98.34/95.41/98.07/98.70,
+  schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226,
+  ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
 - **TASKBOARD reconciliation — stale M4/M5/M6 detailed rows fixed (2026-09-20):** The detailed
   "M4 — Planning" / "M5 — Analysis" / "M6 — Reporting & Governance" sub-tables were a frozen
   early-planning snapshot that contradicted the maintained, evidence-backed milestone tables —
