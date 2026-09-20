@@ -4,6 +4,37 @@
 
 ## [Unreleased]
 
+- **AUDIT-12 depreciation + FCCR engine — TS slice DONE (2026-09-20):** The depreciation
+  roll-forward spec (`docs/MODELING-METHODS-SPEC.md` §2: "SL, DDB w/ automatic optimal switch to SL
+  when SL exceeds DDB, MACRS half-year convention") and the Fixed Charge Coverage Ratio the AUDIT
+  calls out as missing are now implemented and verified in the TS slice as a pure, exact-decimal
+  reference engine — `src/model/depreciation.ts` (+ `src/model/depreciation.test.ts`, **36 tests**).
+  `straightLineSchedule` ((cost − salvage) / life); `doubleDecliningSchedule` (200% DB with the
+  **optimal Straight-Line switch** — each year the LARGER of the DB charge `book × 2/life` and the
+  SL charge on the remaining book `(book − salvage)/remaining`, floored at the salvage line, one-way
+  DDB→SL transition — fixing the existing `capital.ts` preview, which computed DDB Year 1 only and
+  never switched, "violates ASC 360/IAS 16"); `macrsSchedule` (half-year GDS, published IRS
+  Publication 946 Table A-1 percentages for the 3/5/7/10/15/20-year classes — verified each column
+  sums to exactly 1.0000); `computeFCCR` (EBITDA / fixed charges, fixed charges = interest +
+  mandatory debt service + mandatory lease) — the missing institutional covenant. Every schedule
+  **ties out exactly**: `Σ years.depreciation_minor === total_depreciated_minor === cost − salvage`
+  (SL/DDB) or `=== cost` (MACRS), integer equality, via a final-year residual plug over the ROUNDED
+  prior years (no float drift). Money in exact integer minor units, `money:ast`-clean. Pinned
+  vectors: DDB 10000/5-yr → 4000/2400/1440/1080/1080 (switch year 4, front-loaded); MACRS 5-yr
+  100000 → 20000/32000/19200/11520/11520/5760; FCCR 10000/2000 = "5", 5000/3000 = "1.67",
+  1000/2000 = "0.5" (breach), no-charge + EBITDA > 0 = comfortably covered; salvage floor;
+  non-even-division plug; invariants (tie-out grid across costs/lives/salvages, non-increasing book
+  ≥ salvage, one-way switch, front-loading). This is the reference the native `rust_decimal`
+  schedule engine must match. **Honest scope:** this is the **depreciation + FCCR** slice of
+  AUDIT-12 — the SQLite persistence tables (`capital_assets`, `debt_facilities`, `credit_covenants`,
+  `cash_flow_13week`), the native schedule engine, the 13-week DB, SOFR curves, PIK, and undrawn
+  fees remain open (native, cargo-pending). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-12 row → PARTIAL;
+  summary now lists 4 PARTIAL vectors), CODE-TO-AUDIT-MAPPING (AUDIT-12 row: real
+  `src/model/depreciation.ts`, phantom `scheduleEngine.ts` noted as pending). Gates: `npm run check`
+  all green — 109 files / **1489 tests** (36 new), coverage main 88.20/82.53/84.52/87.56 + critical
+  98.35/95.41/98.08/98.28, schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12,
+  money:ast, tokens 16/2226, ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native
+  gates remain UNVERIFIED in sandbox (no Rust toolchain).
 - **AUDIT-20 day-count conventions engine — TS slice DONE (2026-09-20):** The institutional debt
   day-count spec (`docs/MODELING-METHODS-SPEC.md` §2) is now implemented and verified in the TS slice as
   a pure, exact-decimal reference engine — `src/model/dayCount.ts` (+ `src/model/dayCount.test.ts`,
