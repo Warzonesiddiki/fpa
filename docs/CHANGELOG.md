@@ -4,6 +4,36 @@
 
 ## [Unreleased]
 
+- **AUDIT-05 Cash Flow (Direct + Indirect) + Non-GAAP EBITDA bridge — TS slice DONE (2026-09-22):**
+  Two more of AUDIT-05's TS-verifiable statement slices, on the B18-1/B18-2 integer-money model
+  (`money:ast`-clean, no float). New `src/model/cashFlow.ts` (+ `src/model/cashFlow.test.ts`,
+  **15 tests**, every expected value hand-computed before the first run):
+  - `computeDirectCashFlow` — the **Direct** method: operating = collections − disbursements;
+    net = operating + investing + financing.
+  - `computeIndirectCashFlow` — the **Indirect** method: operating = Net Income + D&A + non-cash
+    add-backs − Δ working capital; net = operating + investing + financing.
+  - `reconcileCashFlow` — the exact **Direct↔Indirect tie-out** (the operating and net sections must
+    agree between the two methods) plus, when the cash opening/closing is supplied, the **Δ-cash
+    tie-out** against the cash statement (net CF must equal closing − opening). A 1-unit drift in
+    either is surfaced by name, never averaged.
+  - `buildEbitdaBridge` — the **Non-GAAP reconciliation** EBIT (NI + interest + tax) → EBITDA
+    (+ D&A) → Adjusted EBITDA (+ stock-based comp + one-time items), in the order the bridge is
+    presented; `isBalanced` holds by construction.
+  Pinned vectors: Direct (100,000 collections / 70,000 disbursements / −20,000 / +15,000) →
+  operating 30,000, net 25,000; Indirect (NI 25,000 + D&A 10,000 + non-cash 5,000 − ΔWC 10,000,
+  same inv/fin) → operating 30,000, net 25,000 (the two reconcile); ΔWC 20,000 → both sections
+  disagree (isBalanced false); closing 99,999 → Δ-cash tie-out fails; 1-unit net drift caught.
+  EBITDA (NI 25,000 + int 5,000 + tax 3,000 + D&A 10,000 + SBC 5,000 + one-time 2,000) → EBIT
+  33,000 / EBITDA 43,000 / Adjusted 50,000. Money in integer minor units. **Honest scope:** TS-only
+  oracle — the native per-period statement vectors and the Statement-of-Cash-Flows persistence
+  (M6-2) and the S-060 UI wiring remain cargo-pending. AUDIT-05 stays PARTIAL (now with
+  largest-remainder tie-out + Direct/Indirect CF + Non-GAAP bridge on the TS side). Gates:
+  `npm run check` all 14 green — 113 files / **1553 tests** (15 new), coverage main
+  88.46/82.78/84.69/87.86 + critical 98.35/95.41/98.08/98.28, schema 56, docs-link 190/85,
+  docs:verify 74/42/103/87/21, packs 12/12, money:ast clean, tokens 16/2226, ipc:casing 88,
+  command-parity 89, secret/telemetry/license PASS. Docs synced: AUDIT-VECTOR-PLAN (AUDIT-05 row +
+  summary), CODE-TO-AUDIT-MAPPING (AUDIT-05 row: real `src/model/cashFlow.ts` + test). Native gates
+  remain UNVERIFIED in sandbox (no Rust toolchain).
 - **AUDIT-20 dual-cadence calendar — TS slice DONE (2026-09-20):** The last sandbox-verifiable slice
   of AUDIT-20 — the "Calendar test: weekly + monthly synchronized" fractional-day mapping that links
   `weekly_periods` to `monthly_periods` — is now implemented and verified as a pure, exact reference
