@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import Decimal from "decimal.js";
 import {
   actualDaysBetween,
+  addDaysToIso,
   accrualDays,
   accrueInterest,
   daysInMonth,
@@ -357,5 +358,35 @@ describe("invariants (property)", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe("addDaysToIso — exact date arithmetic (hand-verified)", () => {
+  it("zero days is the identity; the J2000.0 epoch round-trips", () => {
+    expect(addDaysToIso("2000-01-01", 0)).toBe("2000-01-01");
+    expect(addDaysToIso("2000-01-01", 1)).toBe("2000-01-02");
+    expect(addDaysToIso("2000-01-01", -1)).toBe("1999-12-31");
+  });
+  it("month and year boundaries (common + leap)", () => {
+    expect(addDaysToIso("2023-01-01", 31)).toBe("2023-02-01");
+    expect(addDaysToIso("2023-01-01", 365)).toBe("2024-01-01"); // common year
+    expect(addDaysToIso("2024-01-01", 366)).toBe("2025-01-01"); // leap year
+    expect(addDaysToIso("2000-01-01", 366)).toBe("2001-01-01"); // century leap
+    expect(addDaysToIso("1900-01-01", 365)).toBe("1901-01-01"); // century non-leap
+  });
+  it("crosses months and tracks February's length", () => {
+    expect(addDaysToIso("2024-02-28", 1)).toBe("2024-02-29"); // leap
+    expect(addDaysToIso("2023-02-28", 1)).toBe("2023-03-01"); // common
+    expect(addDaysToIso("2026-12-31", 1)).toBe("2027-01-01");
+  });
+  it("is the exact inverse of actualDaysBetween", () => {
+    expect(actualDaysBetween("2000-01-01", addDaysToIso("2000-01-01", 366))).toBe(366);
+    expect(addDaysToIso("2026-01-01", actualDaysBetween("2026-01-01", "2026-06-15"))).toBe(
+      "2026-06-15",
+    );
+  });
+  it("rejects a malformed date or non-integer day count", () => {
+    expect(() => addDaysToIso("2026-02-30", 1)).toThrow(/VALUE_INVALID/);
+    expect(() => addDaysToIso("2026-01-01", 1.5)).toThrow(/VALUE_INVALID/);
   });
 });

@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+- **AUDIT-20 dual-cadence calendar — TS slice DONE (2026-09-20):** The last sandbox-verifiable slice
+  of AUDIT-20 — the "Calendar test: weekly + monthly synchronized" fractional-day mapping that links
+  `weekly_periods` to `monthly_periods` — is now implemented and verified as a pure, exact reference
+  engine: `src/model/calendarEngine.ts` (+ `calendarEngine.test.ts`, **17 tests**), built on a new
+  exact date-arithmetic primitive `addDaysToIso` added to the AUDIT-20 day-count engine
+  (`src/model/dayCount.ts`, + **5 tests**, now 82). `buildDualCadenceCalendar(year, fiscalYearStart)`
+  builds the 12 calendar months + the 7-day weeks over a year and the exact **week × month overlap
+  matrix** (integer days each week shares with each month, via the Julian-day engine — no `Date`, no
+  DST). The "synchronized" invariants are exact integer equalities: every month's column sum === its
+  day count; the whole matrix sums to the year's days (365/366); interior weeks row-sum to 7, the
+  spillover week to its in-year days. `allocateWeekAcrossMonths` distributes a week's value across the
+  months it spans, proportional to the overlap days, via the M6-1 largest-remainder oracle so the
+  pieces sum exactly to the week's total. This completes all four TS acceptance sub-parts of
+  AUDIT-20 (day-count conventions, Actual/360 debt interest, 3-convention-differ, weekly↔monthly
+  sync); what remains is native `core/calendar.rs`/`schedule.rs` convention wiring, the
+  `weekly_periods` linked table, and store/UI wiring (cargo-pending). Pinned vectors: year 2023 → 53
+  weeks, W5 [Jan 29, Feb 5) → Jan 3 / Feb 4, spillover W53 → 1 day, total 365; 2024 (leap) → 366;
+  allocate 1000 on W5 → Jan 429 / Feb 571. Gates: `npm run check` all green — 112 files / **1538
+  tests** (22 new), coverage main 88.41/82.75/84.66/87.79 + critical 98.35/95.41/98.08/98.28, schema
+  56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226,
+  ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
 - **AUDIT-12 + AUDIT-20: 13-week cash-flow + debt interest/amortization engines — TS slice DONE
   (2026-09-20):** Two exact-decimal reference engines close the remaining sandbox-verifiable slices of
   the treasury vectors, both composed on the AUDIT-20 day-count engine and `money:ast`-clean:

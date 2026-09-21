@@ -119,6 +119,43 @@ export function actualDaysBetween(startDate: string, endDate: string): number {
   return julianDayNumber(parseRequired(endDate)) - julianDayNumber(parseRequired(startDate));
 }
 
+/**
+ * Inverse of `julianDayNumber` (Fliegel–Van Flandern). Converts an exact Julian Day Number back to
+ * Gregorian date parts. Verified against the J2000.0 epoch: `gregorianFromJulianDayNumber(2451545)`
+ * → 2000-01-01 (the round-trip of `julianDayNumber`).
+ */
+function gregorianFromJulianDayNumber(jdn: number): DateParts {
+  const a = jdn + 32044;
+  const b = floorDiv(4 * a + 3, 146097);
+  const c = a - floorDiv(146097 * b, 4);
+  const d = floorDiv(4 * c + 3, 1461);
+  const e = c - floorDiv(1461 * d, 4);
+  const m = floorDiv(5 * e + 2, 153);
+  const day = e - floorDiv(153 * m + 2, 5) + 1;
+  const month = m + 3 - 12 * floorDiv(m, 10);
+  const year = 100 * b + d - 4800 + floorDiv(m, 10);
+  return { year, month, day };
+}
+
+/** Format validated date parts as an ISO `YYYY-MM-DD` string (zero-padded month/day). */
+function formatIso(parts: DateParts): string {
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+/**
+ * Add (or subtract) an exact integer number of calendar days to an ISO `YYYY-MM-DD` date and return
+ * the resulting ISO date. Exact via the Julian-day count — no `Date`, no float, no DST. This is the
+ * date-arithmetic primitive the dual-cadence calendar engine (AUDIT-20) builds its week/month spans
+ * from. Throws `VALUE_INVALID` on a malformed input date or a non-integer day count.
+ */
+export function addDaysToIso(isoDate: string, days: number): string {
+  if (!Number.isInteger(days)) {
+    throw new Error(`VALUE_INVALID: days must be an integer (got ${days})`);
+  }
+  const parts = parseRequired(isoDate);
+  return formatIso(gregorianFromJulianDayNumber(julianDayNumber(parts) + days));
+}
+
 /** The 30/360 adjusted day count for a (US Bond Basis or ISDA Eurobond) convention. */
 function thirty360Days(start: DateParts, end: DateParts, variant: "US" | "ISDA"): number {
   const { year: y1, month: m1 } = start;
