@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+- **AUDIT-12 + AUDIT-20: 13-week cash-flow + debt interest/amortization engines — TS slice DONE
+  (2026-09-20):** Two exact-decimal reference engines close the remaining sandbox-verifiable slices of
+  the treasury vectors, both composed on the AUDIT-20 day-count engine and `money:ast`-clean:
+  - `src/model/week13Cash.ts` (+ `week13Cash.test.ts`, **10 tests**) — the institutional 13-week
+    cash-flow model (the existing `capital.ts::generate13WeekCashFlow` was a naive roll-forward with no
+    floor): rolls exactly 13 weeks, maintains a **target (minimum) cash balance**, computes the
+    **additional borrowing** to restore the target in any breaching week, flags the breach weeks and the
+    worst (pre-borrowing) week, with a hard tie-out
+    `ending_cash = opening + Σreceipts − Σdisbursements + Σfin_in − Σfin_out + Σadditional_borrowing`.
+  - `src/model/debtSchedule.ts` (+ `debtSchedule.test.ts`, **17 tests**) — correct debt interest &
+    amortization (the existing `calculateDebtFacility` used naive `bps/10000` + `/12`, the ~1.39%
+    understatement AUDIT-20 names): `allInRateBps` (floating **SOFR** + credit spread), `periodInterest`
+    (exact one-period interest composed on the day-count engine — the AUDIT-20 "debt test: Actual/360
+    interest exact" and "convention test: 3 methods produce different results"), `levelPaymentAmortization`
+    (exact annuity, final-period residual plug, `Σ principal === principal`, `ending === 0`), and
+    `pikAccrualSchedule` (**PIK** — interest compounds into principal).
+  Pinned vectors: 1M @ 5.5% over leap-2024 → ACT/360 55,917 vs ACT/365 55,151 vs 30/360-US 55,000
+  (3 distinct); 120k @ 12% quarterly annuity → level payment 32,283, P1 interest 3,600, totals interest
+  9,133 / principal 120,000 / payment 129,133; PIK 100k @ 12% quarterly → ending 112,551; 13-week
+  week-5 dip → borrow 21,000 to restore a 50,000 target, ending 58,000. Money in integer minor units.
+  **Honest scope:** this is the TS math slice — SQLite persistence tables (`cash_flow_13week`,
+  `capital_assets`, `debt_facilities`, `credit_covenants`), the native `rust_decimal` schedule engine,
+  SOFR curve inputs, and undrawn/commitment fees remain open (native, cargo-pending); AUDIT-20's
+  weekly/monthly dual-cadence calendar linkage also remains open. Gates: `npm run check` all green —
+  111 files / **1516 tests** (27 new), coverage main 88.34/82.69/84.57/87.72 + critical
+  98.35/95.41/98.08/98.28, schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12,
+  money:ast, tokens 16/2226, ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Docs
+  synced: AUDIT-VECTOR-PLAN (AUDIT-12 + AUDIT-20 rows), CODE-TO-AUDIT-MAPPING (both rows). Native gates
+  remain UNVERIFIED in sandbox (no Rust toolchain).
 - **AUDIT-12 depreciation + FCCR engine — TS slice DONE (2026-09-20):** The depreciation
   roll-forward spec (`docs/MODELING-METHODS-SPEC.md` §2: "SL, DDB w/ automatic optimal switch to SL
   when SL exceeds DDB, MACRS half-year convention") and the Fixed Charge Coverage Ratio the AUDIT
