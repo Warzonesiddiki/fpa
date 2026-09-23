@@ -4,6 +4,227 @@
 
 ## [Unreleased]
 
+- **AUDIT-05 Cash Flow (Direct + Indirect) + Non-GAAP EBITDA bridge — TS slice DONE (2026-09-22):**
+  Two more of AUDIT-05's TS-verifiable statement slices, on the B18-1/B18-2 integer-money model
+  (`money:ast`-clean, no float). New `src/model/cashFlow.ts` (+ `src/model/cashFlow.test.ts`,
+  **15 tests**, every expected value hand-computed before the first run):
+  - `computeDirectCashFlow` — the **Direct** method: operating = collections − disbursements;
+    net = operating + investing + financing.
+  - `computeIndirectCashFlow` — the **Indirect** method: operating = Net Income + D&A + non-cash
+    add-backs − Δ working capital; net = operating + investing + financing.
+  - `reconcileCashFlow` — the exact **Direct↔Indirect tie-out** (the operating and net sections must
+    agree between the two methods) plus, when the cash opening/closing is supplied, the **Δ-cash
+    tie-out** against the cash statement (net CF must equal closing − opening). A 1-unit drift in
+    either is surfaced by name, never averaged.
+  - `buildEbitdaBridge` — the **Non-GAAP reconciliation** EBIT (NI + interest + tax) → EBITDA
+    (+ D&A) → Adjusted EBITDA (+ stock-based comp + one-time items), in the order the bridge is
+    presented; `isBalanced` holds by construction.
+  Pinned vectors: Direct (100,000 collections / 70,000 disbursements / −20,000 / +15,000) →
+  operating 30,000, net 25,000; Indirect (NI 25,000 + D&A 10,000 + non-cash 5,000 − ΔWC 10,000,
+  same inv/fin) → operating 30,000, net 25,000 (the two reconcile); ΔWC 20,000 → both sections
+  disagree (isBalanced false); closing 99,999 → Δ-cash tie-out fails; 1-unit net drift caught.
+  EBITDA (NI 25,000 + int 5,000 + tax 3,000 + D&A 10,000 + SBC 5,000 + one-time 2,000) → EBIT
+  33,000 / EBITDA 43,000 / Adjusted 50,000. Money in integer minor units. **Honest scope:** TS-only
+  oracle — the native per-period statement vectors and the Statement-of-Cash-Flows persistence
+  (M6-2) and the S-060 UI wiring remain cargo-pending. AUDIT-05 stays PARTIAL (now with
+  largest-remainder tie-out + Direct/Indirect CF + Non-GAAP bridge on the TS side). Gates:
+  `npm run check` all 14 green — 113 files / **1553 tests** (15 new), coverage main
+  88.46/82.78/84.69/87.86 + critical 98.35/95.41/98.08/98.28, schema 56, docs-link 190/85,
+  docs:verify 74/42/103/87/21, packs 12/12, money:ast clean, tokens 16/2226, ipc:casing 88,
+  command-parity 89, secret/telemetry/license PASS. Docs synced: AUDIT-VECTOR-PLAN (AUDIT-05 row +
+  summary), CODE-TO-AUDIT-MAPPING (AUDIT-05 row: real `src/model/cashFlow.ts` + test). Native gates
+  remain UNVERIFIED in sandbox (no Rust toolchain).
+- **AUDIT-20 dual-cadence calendar — TS slice DONE (2026-09-20):** The last sandbox-verifiable slice
+  of AUDIT-20 — the "Calendar test: weekly + monthly synchronized" fractional-day mapping that links
+  `weekly_periods` to `monthly_periods` — is now implemented and verified as a pure, exact reference
+  engine: `src/model/calendarEngine.ts` (+ `calendarEngine.test.ts`, **17 tests**), built on a new
+  exact date-arithmetic primitive `addDaysToIso` added to the AUDIT-20 day-count engine
+  (`src/model/dayCount.ts`, + **5 tests**, now 82). `buildDualCadenceCalendar(year, fiscalYearStart)`
+  builds the 12 calendar months + the 7-day weeks over a year and the exact **week × month overlap
+  matrix** (integer days each week shares with each month, via the Julian-day engine — no `Date`, no
+  DST). The "synchronized" invariants are exact integer equalities: every month's column sum === its
+  day count; the whole matrix sums to the year's days (365/366); interior weeks row-sum to 7, the
+  spillover week to its in-year days. `allocateWeekAcrossMonths` distributes a week's value across the
+  months it spans, proportional to the overlap days, via the M6-1 largest-remainder oracle so the
+  pieces sum exactly to the week's total. This completes all four TS acceptance sub-parts of
+  AUDIT-20 (day-count conventions, Actual/360 debt interest, 3-convention-differ, weekly↔monthly
+  sync); what remains is native `core/calendar.rs`/`schedule.rs` convention wiring, the
+  `weekly_periods` linked table, and store/UI wiring (cargo-pending). Pinned vectors: year 2023 → 53
+  weeks, W5 [Jan 29, Feb 5) → Jan 3 / Feb 4, spillover W53 → 1 day, total 365; 2024 (leap) → 366;
+  allocate 1000 on W5 → Jan 429 / Feb 571. Gates: `npm run check` all green — 112 files / **1538
+  tests** (22 new), coverage main 88.41/82.75/84.66/87.79 + critical 98.35/95.41/98.08/98.28, schema
+  56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226,
+  ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
+- **AUDIT-12 + AUDIT-20: 13-week cash-flow + debt interest/amortization engines — TS slice DONE
+  (2026-09-20):** Two exact-decimal reference engines close the remaining sandbox-verifiable slices of
+  the treasury vectors, both composed on the AUDIT-20 day-count engine and `money:ast`-clean:
+  - `src/model/week13Cash.ts` (+ `week13Cash.test.ts`, **10 tests**) — the institutional 13-week
+    cash-flow model (the existing `capital.ts::generate13WeekCashFlow` was a naive roll-forward with no
+    floor): rolls exactly 13 weeks, maintains a **target (minimum) cash balance**, computes the
+    **additional borrowing** to restore the target in any breaching week, flags the breach weeks and the
+    worst (pre-borrowing) week, with a hard tie-out
+    `ending_cash = opening + Σreceipts − Σdisbursements + Σfin_in − Σfin_out + Σadditional_borrowing`.
+  - `src/model/debtSchedule.ts` (+ `debtSchedule.test.ts`, **17 tests**) — correct debt interest &
+    amortization (the existing `calculateDebtFacility` used naive `bps/10000` + `/12`, the ~1.39%
+    understatement AUDIT-20 names): `allInRateBps` (floating **SOFR** + credit spread), `periodInterest`
+    (exact one-period interest composed on the day-count engine — the AUDIT-20 "debt test: Actual/360
+    interest exact" and "convention test: 3 methods produce different results"), `levelPaymentAmortization`
+    (exact annuity, final-period residual plug, `Σ principal === principal`, `ending === 0`), and
+    `pikAccrualSchedule` (**PIK** — interest compounds into principal).
+  Pinned vectors: 1M @ 5.5% over leap-2024 → ACT/360 55,917 vs ACT/365 55,151 vs 30/360-US 55,000
+  (3 distinct); 120k @ 12% quarterly annuity → level payment 32,283, P1 interest 3,600, totals interest
+  9,133 / principal 120,000 / payment 129,133; PIK 100k @ 12% quarterly → ending 112,551; 13-week
+  week-5 dip → borrow 21,000 to restore a 50,000 target, ending 58,000. Money in integer minor units.
+  **Honest scope:** this is the TS math slice — SQLite persistence tables (`cash_flow_13week`,
+  `capital_assets`, `debt_facilities`, `credit_covenants`), the native `rust_decimal` schedule engine,
+  SOFR curve inputs, and undrawn/commitment fees remain open (native, cargo-pending); AUDIT-20's
+  weekly/monthly dual-cadence calendar linkage also remains open. Gates: `npm run check` all green —
+  111 files / **1516 tests** (27 new), coverage main 88.34/82.69/84.57/87.72 + critical
+  98.35/95.41/98.08/98.28, schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12,
+  money:ast, tokens 16/2226, ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Docs
+  synced: AUDIT-VECTOR-PLAN (AUDIT-12 + AUDIT-20 rows), CODE-TO-AUDIT-MAPPING (both rows). Native gates
+  remain UNVERIFIED in sandbox (no Rust toolchain).
+- **AUDIT-12 depreciation + FCCR engine — TS slice DONE (2026-09-20):** The depreciation
+  roll-forward spec (`docs/MODELING-METHODS-SPEC.md` §2: "SL, DDB w/ automatic optimal switch to SL
+  when SL exceeds DDB, MACRS half-year convention") and the Fixed Charge Coverage Ratio the AUDIT
+  calls out as missing are now implemented and verified in the TS slice as a pure, exact-decimal
+  reference engine — `src/model/depreciation.ts` (+ `src/model/depreciation.test.ts`, **36 tests**).
+  `straightLineSchedule` ((cost − salvage) / life); `doubleDecliningSchedule` (200% DB with the
+  **optimal Straight-Line switch** — each year the LARGER of the DB charge `book × 2/life` and the
+  SL charge on the remaining book `(book − salvage)/remaining`, floored at the salvage line, one-way
+  DDB→SL transition — fixing the existing `capital.ts` preview, which computed DDB Year 1 only and
+  never switched, "violates ASC 360/IAS 16"); `macrsSchedule` (half-year GDS, published IRS
+  Publication 946 Table A-1 percentages for the 3/5/7/10/15/20-year classes — verified each column
+  sums to exactly 1.0000); `computeFCCR` (EBITDA / fixed charges, fixed charges = interest +
+  mandatory debt service + mandatory lease) — the missing institutional covenant. Every schedule
+  **ties out exactly**: `Σ years.depreciation_minor === total_depreciated_minor === cost − salvage`
+  (SL/DDB) or `=== cost` (MACRS), integer equality, via a final-year residual plug over the ROUNDED
+  prior years (no float drift). Money in exact integer minor units, `money:ast`-clean. Pinned
+  vectors: DDB 10000/5-yr → 4000/2400/1440/1080/1080 (switch year 4, front-loaded); MACRS 5-yr
+  100000 → 20000/32000/19200/11520/11520/5760; FCCR 10000/2000 = "5", 5000/3000 = "1.67",
+  1000/2000 = "0.5" (breach), no-charge + EBITDA > 0 = comfortably covered; salvage floor;
+  non-even-division plug; invariants (tie-out grid across costs/lives/salvages, non-increasing book
+  ≥ salvage, one-way switch, front-loading). This is the reference the native `rust_decimal`
+  schedule engine must match. **Honest scope:** this is the **depreciation + FCCR** slice of
+  AUDIT-12 — the SQLite persistence tables (`capital_assets`, `debt_facilities`, `credit_covenants`,
+  `cash_flow_13week`), the native schedule engine, the 13-week DB, SOFR curves, PIK, and undrawn
+  fees remain open (native, cargo-pending). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-12 row → PARTIAL;
+  summary now lists 4 PARTIAL vectors), CODE-TO-AUDIT-MAPPING (AUDIT-12 row: real
+  `src/model/depreciation.ts`, phantom `scheduleEngine.ts` noted as pending). Gates: `npm run check`
+  all green — 109 files / **1489 tests** (36 new), coverage main 88.20/82.53/84.52/87.56 + critical
+  98.35/95.41/98.08/98.28, schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12,
+  money:ast, tokens 16/2226, ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native
+  gates remain UNVERIFIED in sandbox (no Rust toolchain).
+- **AUDIT-20 day-count conventions engine — TS slice DONE (2026-09-20):** The institutional debt
+  day-count spec (`docs/MODELING-METHODS-SPEC.md` §2) is now implemented and verified in the TS slice as
+  a pure, exact-decimal reference engine — `src/model/dayCount.ts` (+ `src/model/dayCount.test.ts`,
+  **77 tests**). Conventions: `ACT_360` (Actual/360, US corporate debt), `ACT_365` (Actual/365, UK),
+  `THIRTY_360_US` (30/360 Bond Basis / US-NASD), `THIRTY_360_ISDA` (30/360 Eurobond). Calendar day
+  counts are **exact integers** via the Julian-day count formula (no `Date`/float/DST — verified against
+  the J2000.0 epoch 2000-01-01 → 2451545); year fractions and interest (`principal × rate × days /
+  denom`) are exact `decimal.js` (28-digit). Dates are ISO `YYYY-MM-DD` validated as real Gregorian
+  dates (Feb 30 / month 13 / day 0·32 / malformed / unknown-convention → locked `VALUE_INVALID`).
+  Pinned vectors: full leap/century rules, every 31st-day 30/360 edge case (US Bond Basis vs ISDA
+  Eurobond — e.g. 2026-01-15 → 2026-03-31 = 76 days US vs 75 ISDA), multi-decade spans, the AUDIT's
+  **~1.39% understatement mechanism** (naive `/12` accrues 360 days; ACT/360 accrues the true 365 → a
+  365-day year accrues exactly 365/360, an excess of 5/360 over the naive 1.0), and invariants
+  (antisymmetry, additivity, sign, zero, ACT/360 ≥ ACT/365). This is the reference the native
+  `rust_decimal` engine in `core/calendar.rs` / `schedule.rs` must match. **Honest scope:** this is the
+  **day-count** slice of AUDIT-20 — the weekly/monthly dual-cadence calendar linkage and native
+  convention wiring remain open (cargo). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-20 row → PARTIAL; summary
+  lists 3 PARTIAL vectors), CODE-TO-AUDIT-MAPPING v12 (AUDIT-20 row, phantom `dayCountEngine.ts`
+  corrected to the real `src/model/dayCount.ts`). Gates: `npm run check` all 14 green — 108 files /
+  **1453 tests** (77 new), coverage main 88.10/82.39/84.48/89.86 + critical 98.34/95.41/98.07/98.70,
+  schema 56, docs-link 190/85, docs:verify 74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226,
+  ipc:casing 88, command-parity 89, secret/telemetry/license PASS. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
+- **TASKBOARD reconciliation — stale M4/M5/M6 detailed rows fixed (2026-09-20):** The detailed
+  "M4 — Planning" / "M5 — Analysis" / "M6 — Reporting & Governance" sub-tables were a frozen
+  early-planning snapshot that contradicted the maintained, evidence-backed milestone tables —
+  e.g. M4-3 `model.diff`, M4-4 what-if, M4-5 cycle, M4-6 collection, M6-2 segment, M6-3…M6-9 were
+  still marked `❗ TODO` / `🟨 IN PROGRESS` although each feature is built and verified (Rust
+  handlers in `commands/{model,plan,cycle,consolidation,report,export,health,audit,backup,scenario,
+  fva}.rs` + TS stores + S-05x/S-06x/S-07x screens + 2026-09-07 native 264/264). Reconciled all 14
+  rows to their verified milestone status with code-cited notes; accurate PARTIALs (M5-1 PVM, M5-4
+  alerts, M6-1 tie-out) left intact. This staleness is exactly what made the line-40 "M4-3 next"
+  plan look like open work — the line-40 feature order (M4-3/4/5/6) and HANDOVER §2 "M6-2 next
+  unblocked feature" are in fact **built**; the remaining M8 work is the 25 AUDIT rejection vectors
+  (mostly native/`cargo`-blocked in the sandbox). Doc-only; `npm run check` gates unaffected (no
+  code change).
+- **M6-1 largest-remainder tie-out oracle — TS slice DONE (2026-09-20):** The statement
+  tie-out rounding spec (`docs/MONEY-ROUNDING-SPEC.md` §4, F-027) is now implemented and verified in
+  the TS slice as a pure, exact-decimal reference oracle — `src/model/largestRemainder.ts`
+  (+ `src/model/largestRemainder.test.ts`, **15 tests**). `largestRemainderAllocate(exactLines, unit,
+  exactTotal?)` floors each exact line to the display unit (toward −∞, remainder ∈ [0, unit)),
+  computes the integer-unit residual `k = (roundToUnit(total) − Σ floors) / unit`, and adds one unit to
+  the `k` largest-remainder lines (deterministic stable-index tie-break); the negative branch (§4 step
+  4d) subtracts from the `|k|` smallest-remainder lines when an independently computed parent sits
+  below Σ floors. All arithmetic is `decimal.js` (no float, no locale, `money:ast`-clean); the only
+  non-Decimal conversion is a line count. Pinned vectors: the §4/§7 000s all-tie case,
+  largest-remainder-first (middle line wins), stable equal-remainder tie, HALF_UP total rounding,
+  negative cost lines, sub-unit 2 dp, and a 240-case property sweep — all asserting the mandated
+  invariant **`sum(displayed children) === displayed parent`** (Δ = 0, exact-decimal equality). This is
+  the reference the native `rust_decimal` engine in `src-tauri/src/commands/statement.rs` must match.
+  **Docs corrected:** the phantom `src/model/statement.ts` ref (cited by M6-1-DESIGN §3 /
+  CODE-TO-AUDIT-MAPPING AUDIT-05) does not exist — statement math is native `statement.rs` + the B18-3
+  shape mirror in `src/api/mock.ts`; the TS oracle lives in `src/model/largestRemainder.ts`. AUDIT-05 is
+  now 🚧 PARTIAL (oracle done; per-period vector refactor + Direct/Indirect CF + Non-GAAP remain
+  native/cargo). Docs synced: M6-1-DESIGN (§8 row + §10 addendum), TASKBOARD (M6-1 row),
+  AUDIT-VECTOR-PLAN (AUDIT-05 row), CODE-TO-AUDIT-MAPPING v11 (AUDIT-05 row, phantom ref corrected).
+  Gates: `npm run check` all 14 green — 107 files / **1376 tests** (15 new), coverage main
+  88.03/82.28/84.39/89.79 + critical 98.34/95.41/98.07/98.7, schema 56, docs-link 190/85, docs:verify
+  74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226, ipc:casing 88, command-parity 89,
+  secret/telemetry/license PASS; `npm run build` green (2.85s). Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
+- **AUDIT-02 Excel-parity input formats — vector DONE (M3-9 Unit W-2 · 2026-09-18):** The four
+  named rejection formats (`1,250,000.00`, `(500.00)`, `$1,000`, `15%`) now parse everywhere a
+  number enters the grid, to the exact decimal string, before any IPC/audit boundary. New
+  `src/utils/parseFinancialNumber.ts` — a string-only exact parser (no float, no locale,
+  `money:ast`-clean): plain decimals, strict 3-digit thousands grouping, accounting-negative
+  parentheses (incl. `($1,250)`), one leading currency symbol, trailing `%` as an exact string
+  ÷100, explicit `+`/`-`; 12-digit integer cap (i64-safe at any scale); zero unsigned
+  (`-0.00` → `0.00`); rejections: sci-notation, broken grouping, double/mixed signs,
+  sign-in-parens, interior whitespace, `USD 100`, `5.`/`.5`. **59 string tests** (35 accepted /
+  24 rejected + count guard) in `src/utils/parseFinancialNumber.test.ts`. Wired into paste
+  (`parsePasteCell`, `src/stores/modelHistory.ts`), the S-041 formula bar (`applyFormulaBar`
+  normalizes before `setCell`), and a typed `VALUE_INVALID` boundary guard in
+  `src/workers/modelEngine.ts` `setCell` (raw non-decimal strings throw the locked code, never a
+  raw Decimal error — defense in depth; cell writes already audit via `model.cell.set.v1`).
+  **S-041 keyboard suite: 21 key-event tests** (13 app-owned effects — Ctrl+Z undo, Ctrl+Shift+Z
+  redo, Ctrl+Y redo, F2 focus formula bar, 4× Shift+arrow selection extend/retract, formula-bar
+  Enter ×2 with normalization `(500)` → `value: "-500"` audited, formula-bar Escape cancel, 2
+  typing-guards where Ctrl+Z/F2 inside the input are left to the browser; 8 AG-Grid pass-through
+  tests asserting no history movement and no audited write) + 1 paste-dialog accounting-format
+  test (`(500)\t1,250,000.00` → cells `-500` / `1250000.00`). No new i18n strings (locked
+  `VALUE_INVALID` only). Docs synced: AUDIT-VECTOR-PLAN (AUDIT-02 row ✅ DONE; AUDIT-17 false
+  "364 lines / 6 tests" claim corrected to 646 lines / 12 tests; summary 1 of 25),
+  CODE-TO-AUDIT-MAPPING v10 (real files — the FormulaBar/CellEditor components it named never
+  existed), SCREENS-SPEC S-041 (accepted input formats + keyboard map), TASKBOARD M3-9 rows.
+  Gates: `npm run check` all green — 106 files / **1361 tests**, coverage main 87.99/82.28/84.31/
+  87.35 + critical 98.35/95.41/98.08/98.28, schema 56 tables, docs-link 190/85, docs:verify
+  74/42/103/87/21, packs 12/12, money:ast, tokens 16/2226, ipc:casing 88, command-parity 89,
+  secret/telemetry/license PASS; `npm run build` green. Native gates remain UNVERIFIED in
+  sandbox (no Rust toolchain).
+- **M5-1 PVM engine repaired — the tree is green again (AUDIT-17 · 2026-09-18):** The 2026-09-09
+  "PVM engine" shipped as a **Rust draft saved in a `.ts` file** — it failed the TypeScript gates
+  (eslint parse errors in `src/model/varianceEngine.ts` and the S-054 page header) and its "6 tests
+  executed" claim was false (the engine could not be parsed; the `tests/unit/*` files cited in
+  CODE-TO-AUDIT-MAPPING never existed). Repaired honestly: `src/model/varianceEngine.ts` is now real
+  TypeScript — 5-factor Price-Volume-Mix decomposition (ΔV/ΔP/ΔM/ΔFX/ΔE) in exact integer minor units
+  with decimal.js 6-decimal HALF_EVEN ratio arithmetic, HALF_UP minor-unit conversion, divisors guarded
+  (no Infinity/NaN), and the sum-of-parts invariant holding **by construction** (efficiency = explicit
+  residual). Documented degradation: missing quantity or mix data zeroes those factors exactly and the
+  residual absorbs them (`isResidualDerived` reports it); a missing FX rate is an exact zero
+  (single-currency), not degradation. New `src/model/varianceEngine.test.ts` — **12 tests executed**
+  (the six documented names + mix degradation, negative variance with FX, the 6-decimal precision
+  boundary, the degenerate zero-rate guard, the corruption message, and i64-scale exactness). The
+  variance store now runs the engine's defensive `verifyPvmInvariant` over every attributable
+  `variance.get` row (`pvmCheck: {rowsChecked, violations}`, +4 store tests) — a tamper guard on
+  attribution data, not a calculation path. The malformed S-054 header comment is repaired; the false
+  "6 tests executed" claims are corrected in TASKBOARD (M5-1 rows) and CODE-TO-AUDIT-MAPPING (AUDIT-17).
+  Gates: `npm run check` all green. Native gates (cargo, desktop round-trip) remain UNVERIFIED in
+  sandbox — no Rust toolchain, network to install it blocked.
 - **Hardening batch (2026-09-08, ADR-032 · follows the 2026-09-07 artisan audit):**
   `company.restore_year` (103rd typed command — archive is now a fully restorable mark: one
   transaction, HMAC-chained audit event, idempotent on active labels); `ARCHIVE_IN_USE_REF`

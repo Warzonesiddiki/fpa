@@ -34,6 +34,101 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-02 Excel-parity input formats, vector DONE (2026-09-18, `arena/01a0b379-fpa`)
+
+- **Why:** AUDIT-02 (Excel parity) named four input formats Excel accepts and OneFP&A rejected:
+  `1,250,000.00` (thousands grouping), `(500.00)` (accounting negative), `$1,000` (currency
+  symbol), `15%` (percent). Its DONE criteria: local execution, 50+ accounting parse strings
+  tested, 20+ shortcut key-event tests, spec + TASKBOARD sync, no mock-only path.
+- **What shipped (all executed, not claimed):**
+  1. `src/utils/parseFinancialNumber.ts` — new exact-string parser (string in → exact decimal
+     string out, `null` on rejection; no float, no locale, `money:ast`-clean). Accepts: plain
+     decimals, strict 3-digit comma groups, accounting parens (incl. `($1,250)`), one leading
+     currency symbol, trailing `%` as exact string ÷100, explicit `+`/`-`. 12-digit integer cap
+     (i64-safe at any scale). Zero unsigned, digits verbatim (`-0.00` → `0.00`). Rejects:
+     sci-notation, broken grouping, double/mixed signs, sign-in-parens, interior whitespace,
+     `USD 100`, `5.`/`.5`.
+  2. **59 string tests** (`src/utils/parseFinancialNumber.test.ts`: 35 accepted / 24 rejected +
+     count guard) — all four named formats covered; expectations are exact strings.
+  3. Wire-ins: paste (`parsePasteCell` in `src/stores/modelHistory.ts` — normalized before
+     `buildPasteEdits`), S-041 formula bar (`applyFormulaBar` normalizes before `setCell`;
+     unparseable text reaches the engine guard), and a typed `VALUE_INVALID` boundary guard in
+     `src/workers/modelEngine.ts` `setCell` (raw non-decimal string throws `VALUE_INVALID: '…'
+is not a valid amount`, never a raw Decimal error). Cell writes already audit via
+     `model.cell.set.v1` — no new audit surface, no new i18n strings (locked code only).
+  4. **S-041 keyboard suite: 21 key-event tests** in
+     `src/pages/s041-model-grid/index.test.tsx` ("AUDIT-02 keyboard parity" describe):
+     13 app-owned effects — Ctrl+Z undo (cell reverts, history flips), Ctrl+Shift+Z redo
+     (re-issues the audited write), Ctrl+Y redo, F2 focuses the formula bar, 4× Shift+arrow
+     (extend/retract selection, anchor pinned), formula-bar Enter ×2 (typing `(500)` /
+     `$1,250,000.00` audits `value: "-500"` / `"1250000.00"`), formula-bar Escape (no write),
+     2 typing-guards (Ctrl+Z and F2 **inside** the input are left to the browser — no grid
+     undo, no pre-emption). 8 AG-Grid pass-through tests — plain arrows/Tab/Enter/unmodified
+     z/y mutate no history and issue no audited write (the app owns none of them). Plus 1
+     paste-dialog test (`(500)\t1,250,000.00` → cells `-500` / `1250000.00`, audit carries
+     normalized strings).
+  5. Docs synced: `docs/AUDIT-VECTOR-PLAN.md` (AUDIT-02 row → ✅ DONE with evidence; AUDIT-17
+     row corrected — the 2026-09-09 "364 lines / 6 tests executed" claim was false, real: 646
+     lines / 12 pure-TS tests, repaired in `317c9a1`; summary → 1 of 25), `docs/CODE-TO-AUDIT-
+MAPPING.md` v10 (AUDIT-02 row now names real files; AUDIT-03/23 rows fixed — the
+     `FormulaBar.tsx` / `CellEditor.tsx` components they named never existed; the formula bar
+     is inline JSX in the S-041 page), `docs/SCREENS-SPEC.md` S-041 (accepted input formats +
+     keyboard map), `TASKBOARD.md` M3-9 rows (Unit W-2), this file, CHANGELOG.
+- **Gates (pasted in CHANGELOG):** `npm run check` ALL GREEN — 106 files / **1361 tests**;
+  coverage main 87.99/82.28/84.31/87.35 + critical 98.35/95.41/98.08/98.28; schema 56 tables;
+  docs-link 190/85; docs:verify 74/42/103/87/21; packs 12/12; money:ast; tokens 16/2226;
+  ipc:casing 88; command-parity 89; secret/telemetry/license PASS. `npm run build` green
+  (2.24s). Native gates (cargo, desktop round-trip) remain UNVERIFIED — no Rust toolchain in
+  sandbox; no Rust was touched in this unit (pure TS).
+- **Pitfalls learned:** (a) `money:ast` scans text, not AST — a doc **block** comment containing
+  the literal `Number(` fails the gate (its comment exclusion only handles `//` lines); word
+  numeric-conversion bans without the call-paren token. (b) `parsePasteBlock` splits on tab
+  first, else CSV comma — a single pasted `1,250,000.00` cell only survives as one cell inside
+  a tab-delimited block; the comma-delimited path treats its commas as cell separators by
+  design. (c) In jsdom, AG Grid's own handler calls `preventDefault` for arrow/Tab navigation,
+  so "app does not own this key" is evidenced by no history movement + no audited write, not
+  by `defaultPrevented === false`. (d) The formula bar re-shows the cell value after a
+  successful Apply — clear it before typing in tests.
+- **Next (TASKBOARD M8 priority order):** M2-5b driver pipeline (TS design; native
+  `driver_values` persistence remains the named blocker) → M3-2 `model.inspect` handler
+  decision (catalog conflict — Rust handler vs engine-side-only) → M6-1 statement tie-out
+  oracles (largest-remainder fixtures). Native completion sweep stays on a Rust-equipped
+  machine (see §2).
+
+### Latest — M5-1 PVM engine repaired, tree back to green (2026-09-18, `arena/01a0b379-fpa`)
+
+- **Why:** HEAD (`ecd8eaf`, PR #42) landed the M5-1 PVM slice with the tree **RED**:
+  `src/model/varianceEngine.ts` was a **Rust draft saved as a `.ts` file** (eslint parse error),
+  the S-054 page header comment was malformed (parse error at 8:1), and the store imported the
+  unparseable module (3 unused-import errors). The "6 tests executed" claim in TASKBOARD /
+  CODE-TO-AUDIT-MAPPING was **false** — the engine could not be parsed, and the cited
+  `tests/unit/varianceFiveFactor.test.ts` / `varianceSumOfParts.test.ts` files never existed.
+- **Fix (all executed, not claimed):**
+  1. `src/model/varianceEngine.ts` rewritten as real TypeScript (decimal.js; exact integer minor
+     units in/out; 6-decimal HALF_EVEN ratio intermediates; HALF_UP minor conversion; guarded
+     divisors — no Infinity/NaN). Semantics: ΔV/ΔP/ΔM/ΔFX per standard PVM; efficiency is the
+     explicit residual so the sum-of-parts invariant holds **by construction**; missing quantity or
+     mix zeroes those factors exactly (residual absorbs, `isResidualDerived=true`); missing FX is an
+     exact zero (single-currency), NOT degradation.
+  2. `src/model/varianceEngine.test.ts` — **12 tests, all pass** (the six documented names:
+     pure_volume / pure_price / complex_mixed / invariant_never_breaks / zero_quantity /
+     degraded_no_quantity, + mix degradation, negative variance with FX, 6-decimal precision
+     boundary, degenerate zero-rate guard, corruption message, i64-scale exactness).
+  3. `src/stores/variance.ts` — the engine's defensive `verifyPvmInvariant` now runs over every
+     attributable `variance.get` row as `pvmCheck: {rowsChecked, violations}` (tamper guard on
+     attribution data, not a calculation path); cleared on error/reset. +4 store tests.
+  4. `src/pages/s054-variance/index.tsx` — header comment repaired (single block, accurate claims).
+  5. Docs corrected for the false claims: TASKBOARD M5-1 rows (§5 + §15 — the §5 row also had an
+     unescaped `|` breaking its columns), CODE-TO-AUDIT-MAPPING AUDIT-17 row, MILESTONE-EVIDENCE
+     session log, docs/CHANGELOG.md entry.
+- **Gates:** `npx eslint src --max-warnings 0` clean · `npx tsc --noEmit` clean · engine+store+page
+  suites 46/46 · full `npm run check` green (see commit). **Native gates still UNVERIFIED** — no Rust
+  toolchain in this sandbox and the network to install one is blocked (verified 2026-09-18); the
+  Rust attribution engine + desktop round-trip stay named blockers (M5-1 row).
+- **Next (M8 sprint, per TASKBOARD priority order):** AUDIT-02 `parseFinancialNumber` (M3-9 —
+  accounting-format input parsing; fully specified in AUDIT-VECTOR-PLAN, TS-only), then the
+  largest-remainder oracle fixtures (M6-1, handover NEXT TASKS #1) — both sandbox-buildable.
+
 ### 2026-09-07 (same day, follow-up) — dependency CVEs cleared + migration rollback verified
 
 - **cargo audit is now clean of vulnerabilities.** calamine upgraded `0.26.1 → 0.36.1`

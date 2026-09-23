@@ -496,6 +496,31 @@ describe("ModelEngine.clearCell (M3-9 undo-to-empty)", () => {
   });
 });
 
+describe("ModelEngine.setCell value boundary (AUDIT-02)", () => {
+  it("accepts normalized exact decimal strings", () => {
+    const e = engineWithLayout();
+    const { cell } = e.setCell({
+      line_id: LINES[0].id,
+      period_id: PERIODS[0].id,
+      value: "1250000.00",
+    });
+    expect(cell.error_code).toBeNull();
+    expect(cell.amount_text).toBe("1250000.00");
+  });
+
+  it("rejects raw accounting formats with the locked VALUE_INVALID code (entry points normalize first)", () => {
+    const e = engineWithLayout();
+    for (const raw of ["(500)", "1,250,000", "$1,000", "15%", "1,25", "1e3", "USD 100", "abc"]) {
+      expect(
+        () => e.setCell({ line_id: LINES[0].id, period_id: PERIODS[0].id, value: raw }),
+        `expected '${raw}' to be rejected`,
+      ).toThrow(/VALUE_INVALID/);
+    }
+    // The guard threw before touching the graph — the cell is still empty.
+    expect(e.getCell(LINES[0].id, PERIODS[0].id).amount_text).toBeNull();
+  });
+});
+
 describe("analysis functions", () => {
   it("computes exact CAGR", () => {
     expect(computeAnalysisFunction("CAGR", ["100", "121"], "2")[0]).toBe("0.1");

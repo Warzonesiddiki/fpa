@@ -182,6 +182,32 @@ describe("parsePasteBlock (VALUE_INVALID, no silent cast)", () => {
     expect(() => parsePasteBlock("1.2.3")).toThrow(/VALUE_INVALID/);
     expect(() => parsePasteBlock("1.2e3")).toThrow(/VALUE_INVALID/);
     expect(() => parsePasteBlock("abc")).toThrow(/VALUE_INVALID/);
+    expect(() => parsePasteBlock("1e3")).toThrow(/VALUE_INVALID/); // scientific stays banned
+  });
+
+  it("rejects broken thousands grouping inside a single tab-delimited cell (AUDIT-02)", () => {
+    // Tab-delimited keeps "1,25" one cell — the comma grouping is invalid there.
+    expect(() => parsePasteBlock("1,25\t2")).toThrow(/VALUE_INVALID/);
+    expect(() => parsePasteBlock("12,50\t2")).toThrow(/VALUE_INVALID/); // 2-digit group
+  });
+
+  it("accepts Excel-style financial numbers and normalizes them (AUDIT-02)", () => {
+    // Tab-delimited block (Excel paste): the named AUDIT-02 formats all parse to
+    // the plain exact decimal string before crossing any boundary.
+    const m = parsePasteBlock("(500)\t1,250,000.00\t$1,000\t15%");
+    expect(m).toEqual([
+      [
+        { kind: "value", value: "-500", formula: null },
+        { kind: "value", value: "1250000.00", formula: null },
+        { kind: "value", value: "1000", formula: null },
+        { kind: "value", value: "0.15", formula: null },
+      ],
+    ]);
+  });
+
+  it("normalizes accounting parentheses in a comma-delimited single cell (AUDIT-02)", () => {
+    const m = parsePasteBlock("(500.00)");
+    expect(m).toEqual([[{ kind: "value", value: "-500.00", formula: null }]]);
   });
 
   it("parses a single empty cell (no-op paste) without throwing", () => {

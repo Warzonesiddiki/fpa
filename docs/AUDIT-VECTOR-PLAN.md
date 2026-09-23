@@ -99,25 +99,25 @@ No vector moves to `✅ DONE` without:
 
 ---
 
-## CURRENT STATUS — ALL 25 VECTORS (2026-09-09)
+## CURRENT STATUS — ALL 25 VECTORS (2026-09-18)
 
 | Vector | Domain | Status | Milestone | Blocker / Evidence gap |
 |---|---|---|---|---|
 | AUDIT-01 | Grid persistence | ❗ TODO | M3-1 | `model.cell.set.batch.v1` not authored; `model.values.get` not authored |
-| AUDIT-02 | Excel parity | ❗ TODO | M3-9 | Full keyboard map not authored; `parseFinancialNumber` partial |
+| AUDIT-02 | Excel parity | ✅ DONE (2026-09-18) | M3-9 | `src/utils/parseFinancialNumber.ts` — exact-string parser, 59 string tests (35 accepted / 24 rejected, all four named formats: `1,250,000.00`, `(500.00)`, `$1,000`, `15%`); wired into paste (`src/stores/modelHistory.ts`), the S-041 formula bar, and the engine boundary guard (`src/workers/modelEngine.ts` `VALUE_INVALID`); S-041 keyboard suite: 21 key-event tests (13 app-owned: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, F2, 4× Shift+arrow, formula-bar Enter ×2, formula-bar Escape, 2 typing-guard; 8 AG-Grid pass-through non-mutations) + 1 paste-dialog accounting-format test — `src/pages/s041-model-grid/index.test.tsx` |
 | AUDIT-03 | Row insert / formula bar | ❗ TODO | M3-1 / M3-9 | `model.line.create` not authored; formula bar isolation partial |
 | AUDIT-04 | Formula cycles | ❗ TODO | M3-2 / M3-5 | SCC relaxation solver not authored; dependency AST expansion partial |
-| AUDIT-05 | Multi-period / CF / Non-GAAP | ❗ TODO | M6-1 / M6-2 | Per-period vector refactor not started; direct/indirect CF not authored |
+| AUDIT-05 | Multi-period / CF / Non-GAAP | 🚧 PARTIAL | M6-1 / M6-2 | **Largest-remainder TS tie-out oracle DONE 2026-09-20** (`src/model/largestRemainder.ts`, 15 exact-decimal tests) **+ Direct & Indirect Cash Flow + Non-GAAP EBITDA bridge TS engine DONE 2026-09-22** (`src/model/cashFlow.ts`, 15 exact-integer tests: Direct from collections/disbursements, Indirect = NI + D&A + non-cash − ΔWC, Direct↔Indirect tie-out + Δ-cash vs cash-statement tie-out, EBIT→EBITDA→Adjusted-EBITDA bridge, `npm run check` green); per-period vector refactor not started (native, cargo-pending); SoCE not authored |
 | AUDIT-06 | Cost allocations / ABC | ❗ TODO | M3-3 / M3-5 | Allocation engine not authored |
 | AUDIT-07 | Ingestion gaps | ❗ TODO | M2-1 / M2-2 | Jaro-Winkler mapping not authored; `coa.create` partial; date support partial |
 | AUDIT-08 | GL drilldown + perf | ❗ TODO | M2-4 / M6-1 | `gl.lines.query` not authored; `prepare_cached` partial; stream CSV partial |
 | AUDIT-09 | Multi-user / collaboration | ❗ TODO | M1-5 / M4-3 | Checkpoint into `.fpa` not authored; `scenario_version_values` partial |
 | AUDIT-15 | Consolidation / FX / CTA | ❗ TODO | M6-3 | Multi-tier rollup partial; CTA plug (`3900`) not implemented; automated IC reconciliation not authored |
 | AUDIT-16 | Cash flow / liquidity | ❗ TODO | M6-1 / M3-7 | Direct/indirect CF partial; `cash_flow_reconciliation` not authored |
-| AUDIT-17 | Variance / PVM | ❗ TODO → PARTIAL (engine authored 2026-09-09) | M5-1 / M5-2 / M3-3 | `src/model/varianceEngine.ts` (364 lines, exact Decimal, defensive invariant, 6 tests); store + Rust command docs updated; page + full docs sync remain open |
+| AUDIT-17 | Variance / PVM | PARTIAL (engine + S-054 tree built 2026-09-11; red tree repaired 2026-09-18) | M5-1 / M5-2 / M3-3 | `src/model/varianceEngine.ts` (646 lines, exact Decimal, 5-factor PVM, `verifyPvmInvariant` sum-of-parts invariant, 12 tests incl. pinned fixture `complex_mixed` = 870,000); store `pvmCheck` tamper guard (20 tests); S-054 page wired (M5-2). The "364 lines / 6 tests executed" claim in the 2026-09-09 status was incorrect (the file was 646 lines / 12 pure-TS tests); the red tree it caused was repaired in commit `317c9a1` (2026-09-18). Constant-currency / FX-neutral mode + reason-code attribution remain unverified. |
 | AUDIT-18 | OLAP / dimensionality | ❗ TODO | M3-3 / M3-5 | Cube dimensions schema partial; pivot matrix engine not authored |
 | AUDIT-19 | Predictive baseline | ❗ TODO | M4-5 / V2 | `core/forecast.rs` not authored; statistical library selection pending |
-| AUDIT-20 | Dual-cadence calendar | ❗ TODO | M1-7 / M3-7 | Weekly/monthly linkage partial; day-count conventions partial |
+| AUDIT-20 | Dual-cadence calendar | 🚧 PARTIAL (TS-complete) | M1-7 / M3-7 | **All four TS acceptance sub-parts DONE 2026-09-20:** day-count conventions (`src/model/dayCount.ts`, 82 tests incl. `addDaysToIso`), Actual/360 debt interest + 3-conventions-differ (`src/model/debtSchedule.ts` `periodInterest`), and the weekly↔monthly fractional-day overlap matrix / "weekly + monthly synchronized" calendar test (`src/model/calendarEngine.ts`, 17 tests — month column sums === day counts, year total 365/366, largest-remainder allocation). Remaining (native, cargo-pending): `core/calendar.rs`/`schedule.rs` convention wiring, the `weekly_periods` linked table, store/UI wiring |
 | AUDIT-21 | Cell governance | ❗ TODO | M3-9 / M6-8 | Annotation popovers not authored; `model.cell.history` partial |
 | AUDIT-22 | Office bridge | ❗ TODO | M6-6 / M7-5 | Localhost server not authored; Office.js add-in not authored |
 | AUDIT-23 | Cell validation | ❗ TODO | M3-3 / S-041 | Validation schema partial; visual conventions partial |
@@ -125,8 +125,8 @@ No vector moves to `✅ DONE` without:
 | AUDIT-25 | Biometrics / escrow | ❗ TODO | M1-3 / M7-2 | Biometric plugin partial; escrow mechanism partial |
 | **AUDIT-10** | Reporting export / corruption | ❗ TODO | M6-6 / M6-5 / M6-1 | `rust_xlsxwriter` integration partial; `.pptx` compiler not authored; injection guard authored |
 | **AUDIT-11** | Platform / file association | ❗ TODO | M1-2 / M7-2 | OS association partial; single-instance lock defined; recent files partial |
-| **AUDIT-12** | Treasury / capex persistence | ❗ TODO | M3-7 / M6-1 | SQLite tables (`capital_assets`, etc.) not authored; FCCR missing; DDB-SL switch missing |
+| **AUDIT-12** | Treasury / capex persistence | 🚧 PARTIAL | M3-7 / M6-1 | **TS math slices DONE 2026-09-20:** `src/model/depreciation.ts` (36 tests: SL, DDB w/ optimal SL switch, MACRS half-year [IRS Pub 946 A-1], FCCR) + `src/model/week13Cash.ts` (10 tests: target-cash 13-week, borrowing, exact tie-out) + `src/model/debtSchedule.ts` (17 tests: SOFR all-in rate, day-count period interest, annuity amortization, PIK — exact tie-outs). Remaining: SQLite persistence tables (`capital_assets`, `debt_facilities`, `credit_covenants`, `cash_flow_13week`), native `rust_decimal` schedule engine, SOFR curve inputs, undrawn/commitment fees (native, cargo-pending) |
 | **AUDIT-13** | Workforce persistence | ❗ TODO | M3-6 | `workforce_roster` table not fully authored (partial in schedule); annualization fix partial |
 | **AUDIT-14** | RevRec / commercial persistence | ❗ TODO | M3-8 / M5-3 | ASC 606 engine partial; POC/EAC partial; SaaS KPI math fix partial |
 
-> **Summary:** 0 of 25 vectors claim `✅ DONE`. All 25 are `❗ TODO` — this is the honest state. No vector is hidden, no gap is fabricated. The strategic vision demands that these become the highest-priority work stream for the remaining session.
+> **Summary:** 1 of 25 vectors claim `✅ DONE` (AUDIT-02, 2026-09-18, with pasted gate evidence in CHANGELOG/HANDOVER). Four are PARTIAL: AUDIT-05 (M6-1 largest-remainder TS tie-out oracle, 2026-09-20, plus Direct/Indirect Cash Flow + Non-GAAP EBITDA bridge TS engine, 2026-09-22), AUDIT-12 (depreciation + FCCR TS engine, 2026-09-20), AUDIT-17 (PVM engine + S-054 tree, red tree repaired 2026-09-18), and AUDIT-20 (day-count conventions TS engine, 2026-09-20). The rest remain `❗ TODO` — this is the honest state. No vector is hidden, no gap is fabricated. The strategic vision demands that these become the highest-priority work stream for the remaining session.

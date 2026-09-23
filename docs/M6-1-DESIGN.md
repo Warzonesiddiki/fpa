@@ -37,7 +37,7 @@ From `docs/MONEY-ROUNDING-SPEC.md` (referenced, not fabricated):
 
 ## 3. STATEMENT ENGINE CURRENT STATE (VERIFIED, NOT CLAIMED)
 
-From workspace (`src/model/statement.ts`, `docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2):
+From repository (`src/model/statement.ts`, `docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2):
 
 - `statement.get.v1` Rust handler exists (`commands/statement.rs`) with typed arguments and response.
 - `S-060` Financial Statements screen exists (`pages/s060-statements/`) with P&L, Balance Sheet, Cash Flow tabs.
@@ -93,7 +93,7 @@ The M6-1 milestone requires executed evidence across all 5 pillars:
 
 ## 6. MULTI-CURRENCY STATEMENT DISPLAY
 
-From workspace (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODELING-METHODS-SPEC.md` §7 statements):
+From repository (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODELING-METHODS-SPEC.md` §7 statements):
 
 - The S-060 screen supports multi-currency display (UI layer verified).
 - Major units mode exists (UI layer).
@@ -114,7 +114,8 @@ From workspace (`docs/SCREENS-SPEC.md` S-060, `docs/API-SPEC.md` §2, `docs/MODE
 
 | Timestamp | Action | Evidence produced | Next blocker / open item |
 |---|---|---|---|
-| 2026-09-09 (this session) | `docs/M6-1-DESIGN.md` authored | Design document executed; references verified workspace files; zero fabricated native test results; design resolves largest-remainder rounding specification and tie-out oracle requirements | Native `cargo test` verification (M7-3 / M7-1 CI); full CF engine + Non-GAAP reconciliation native verification (remains open); 3-OS deterministic bytes (M7-2 / M7-3) |
+| 2026-09-09 (this session) | `docs/M6-1-DESIGN.md` authored | Design document executed; references verified repository files; zero fabricated native test results; design resolves largest-remainder rounding specification and tie-out oracle requirements | Native `cargo test` verification (M7-3 / M7-1 CI); full CF engine + Non-GAAP reconciliation native verification (remains open); 3-OS deterministic bytes (M7-2 / M7-3) |
+| 2026-09-20 | `src/model/largestRemainder.ts` + `src/model/largestRemainder.test.ts` authored (TS slice of this design) | **Exact-decimal largest-remainder tie-out oracle executed and green** — pure `decimal.js` reference of MONEY-ROUNDING-SPEC §4 (F-027): per-line floor toward −∞, residual distributed to largest-remainder lines (stable index tie-break), negative-residual branch (§4 step 4d). **15 tests** pin the §4/§7 vectors, the `sum(displayed children) === displayed parent` invariant, a 240-case property sweep, and the locked `VALUE_INVALID` guards; `npm run check` all 14 gates green (107 files / 1376 tests), `npm run build` green | Native `rust_decimal` implementation of the same algorithm in `statement.rs` + `cargo test` parity vs. this oracle (M7-3 / M7-1 CI); per-period vector refactor + Direct/Indirect CF + Non-GAAP reconciliation (AUDIT-05/16); 3-OS deterministic bytes (M7-2 / M7-3) |
 
 ---
 
@@ -128,6 +129,30 @@ From this design document (not hidden):
 - **Full Cash Flow (Direct / Indirect):** Design exists (`S-060` tabs, `docs/MODELING-METHODS-SPEC.md` §6). Rust core implementation remains open (not fabricated).
 - **Non-GAAP reconciliation (EBITDA / SBC):** Design exists (`S-060` structure). Rust implementation remains open.
 
+## 10. TS EXACT-DECIMAL LARGEST-REMAINDER ORACLE (AUTHORED 2026-09-20)
+
+The §4 design was executed in the TS slice as a **pure, exact-decimal reference oracle**:
+`src/model/largestRemainder.ts` (+ `src/model/largestRemainder.test.ts`, 15 tests). It is the
+canonical implementation of the MONEY-ROUNDING-SPEC §4 largest-remainder allocation this design calls
+for, and it is what the native `rust_decimal` engine in `statement.rs` must match on the pinned vectors.
+Algorithm: floor each exact line to the display unit (toward −∞), compute the integer-unit residual
+`k = (roundToUnit(total) − Σ floors) / unit`, and add one unit to the `k` largest-remainder lines (stable
+index tie-break); when `k < 0` (an independently computed parent below Σ floors) subtract from the `|k|`
+smallest-remainder lines (§4 step 4d). The tested invariant is `sum(displayed children) === displayed
+parent` (Δ = 0, exact-decimal equality). All 14 JS gates + build green (107 files / 1376 tests, 2026-09-20).
+
+**Reference-file correction (2026-09-20).** This document's header and §3 cite `src/model/statement.ts` as
+"the existing statement engine." That file **does not exist** in the repository (verified 2026-09-20). The
+statement math lives in the **native** Rust core `src-tauri/src/commands/statement.rs` (no `cargo` in the
+sandbox — UNVERIFIED here), and the TS `statement.get.v1` is a **B18-3 shape mirror** in `src/api/mock.ts`
+(hardcoded fixture rows; it is not engine semantics and must not be "fixed" to add semantics the native
+core owns). The TS largest-remainder oracle therefore lives in `src/model/largestRemainder.ts`, not a TS
+`statement.ts`.
+
+**Honest scope.** This oracle is the **tie-out / largest-remainder** slice of M6-1 (MONEY-ROUNDING-SPEC §4).
+It does **not** implement the per-period vector refactor, the Direct/Indirect Cash Flow engine, or the
+Non-GAAP reconciliation — those remain native work (AUDIT-05 / AUDIT-16) pending `cargo`.
+
 ---
 
-*This is an executed design document, not a fabricated implementation claim. No `statement.rs` code was altered with unverified native behavior. No performance numbers were invented. The workspace remains in its verifiable state (`src/model/statement.ts` and `src-tauri/src/commands/statement.rs` unchanged by unverified edits). The session continues at extreme intensity with zero compromised claims.*
+*This is an executed design document, not a fabricated implementation claim. No `statement.rs` code was altered with unverified native behavior. No performance numbers were invented. The repository remains in its verifiable state (`src/model/statement.ts` and `src-tauri/src/commands/statement.rs` unchanged by unverified edits). The session continues at extreme intensity with zero compromised claims.*

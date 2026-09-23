@@ -32,6 +32,7 @@ import { SpreadDialog } from "./SpreadDialog";
 import { useModelGridStore } from "@/stores/model";
 import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
+import { parseFinancialNumber } from "@/utils/parseFinancialNumber";
 import { tokens } from "@/theme/tokens";
 import type { GridCellView } from "@/workers/modelEngine";
 import {
@@ -480,10 +481,25 @@ export function ModelGridPage() {
     if (!active) return;
     const text = formulaBar.trim();
     if (!text) return;
-    const input = text.startsWith("=")
-      ? { line_id: active.lineId, period_id: active.periodId, formula: text }
-      : { line_id: active.lineId, period_id: active.periodId, value: text };
-    const ok = await setCell(input);
+    if (text.startsWith("=")) {
+      const ok = await setCell({
+        line_id: active.lineId,
+        period_id: active.periodId,
+        formula: text,
+      });
+      if (ok) setFormulaEdited(null);
+      return;
+    }
+    // AUDIT-02: normalize Excel-style financial text (thousands, (negative),
+    // $, %) to the exact decimal string before it crosses the engine/IPC
+    // boundary. Text the parser rejects reaches the engine guard and surfaces
+    // the locked VALUE_INVALID error.
+    const normalized = parseFinancialNumber(text);
+    const ok = await setCell({
+      line_id: active.lineId,
+      period_id: active.periodId,
+      value: normalized ?? text,
+    });
     if (ok) setFormulaEdited(null);
   }
 

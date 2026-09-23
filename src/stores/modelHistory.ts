@@ -11,6 +11,7 @@
  */
 
 import Decimal from "decimal.js";
+import { parseFinancialNumber } from "@/utils/parseFinancialNumber";
 import type { GridCellView, SetCellInput } from "@/workers/modelEngine";
 
 /** A grid rectangle defined by its anchor and focus corners (both inclusive). */
@@ -208,13 +209,17 @@ function parsePasteCell(raw: string): ParsedPasteCell {
   if (raw === "") return { kind: "empty", value: null, formula: null };
   // A pasted formula is applied verbatim; the engine whitelist still gates it downstream.
   if (raw.startsWith("=")) return { kind: "formula", value: null, formula: raw };
-  if (DECIMAL_RE.test(raw)) {
+  // Plain exact decimal, or an Excel-style financial number (AUDIT-02): strict
+  // thousands grouping, accounting parentheses, currency symbol, percent —
+  // normalized to the plain decimal string before it crosses any boundary.
+  const normalized = DECIMAL_RE.test(raw) ? raw : parseFinancialNumber(raw);
+  if (normalized !== null) {
     // Finiteness check only — the string stays the source of truth (no float crossing).
-    const d = new Decimal(raw);
+    const d = new Decimal(normalized);
     if (!d.isFinite()) throw new Error("VALUE_INVALID: amount is not a finite decimal.");
-    return { kind: "value", value: raw, formula: null };
+    return { kind: "value", value: normalized, formula: null };
   }
-  // Anything else (money text "USD 100", thousands "1,000", scientific "1e3", junk) is rejected.
+  // Anything else (money text "USD 100", scientific "1e3", junk) is rejected.
   throw new Error(`VALUE_INVALID: '${raw}' is not a valid decimal or formula.`);
 }
 

@@ -19,8 +19,13 @@ import { create } from "zustand";
 import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 import type { ScreenState } from "@/components/ui/StatePanel";
 
-/** 5-FACTOR PVM ENGINE (AUDIT-17 / M5-1) — exact Decimal arithmetic, defensive invariant check */
-import { compute_pvm_factors, verify_pvm_invariant, type PVMFactors } from "@/model/varianceEngine";
+/**
+ * 5-factor PVM engine (AUDIT-17 / M5-1) — exact decimal arithmetic and the
+ * defensive sum-of-parts invariant, run over every attributable row the
+ * engine returns (see `pvmCheck`). The UI never recomputes money; this check
+ * is a tamper guard on the attribution data, not a calculation path.
+ */
+import { verifyPvmInvariant } from "@/model/varianceEngine";
 
 /** Comparison target types supported by the variance engine */
 export type VarianceCompareTarget =
@@ -136,6 +141,13 @@ export interface VarianceStoreState {
   attributions: VarianceAttribution[];
   threeWayRows: ThreeWayRow[];
 
+  /**
+   * Defensive 5-factor sum-of-parts verdict over the loaded attributable rows
+   * (AUDIT-17). `null` until the first successful load; `violations === 0`
+   * means every attributable row's factors sum exactly to its variance.
+   */
+  pvmCheck: PvmCheckResult | null;
+
   /* ── Available reason codes catalog ────────────────────────────── */
   reasonCodes: ReasonCodeItem[];
 
@@ -235,6 +247,40 @@ const DEFAULT_FILTERS: VarianceFilters = {
   onlyWithReasonCode: false,
 };
 
+/** Verdict of the defensive 5-factor sum-of-parts check (AUDIT-17). */
+export interface PvmCheckResult {
+  /** Attributable rows the invariant was applied to. */
+  rowsChecked: number;
+  /** Rows whose Volume/Price/Mix/FX/Efficiency do NOT sum exactly to their variance. */
+  violations: number;
+}
+
+/**
+ * Run the engine's defensive sum-of-parts invariant over attributable rows
+ * (AUDIT-17: exact sum-of-parts equality). Null factor contributions count as
+ * 0; non-attributable rows are skipped (they carry no factor data by contract).
+ */
+function verifyAttributionSumOfParts(rows: VarianceRow[]): PvmCheckResult {
+  let rowsChecked = 0;
+  let violations = 0;
+  for (const row of rows) {
+    const a = row.attribution;
+    if (!a || !a.is_attributable) continue;
+    rowsChecked += 1;
+    const violation = verifyPvmInvariant({
+      volumeMinor: a.volume_minor ?? 0,
+      priceMinor: a.price_minor ?? 0,
+      mixMinor: a.mix_minor ?? 0,
+      fxMinor: a.fx_minor ?? 0,
+      efficiencyMinor: a.efficiency_minor ?? 0,
+      totalVarianceMinor: row.variance_minor,
+      isResidualDerived: true,
+    });
+    if (violation !== null) violations += 1;
+  }
+  return { rowsChecked, violations };
+}
+
 export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
   status: "empty",
   error: null,
@@ -246,6 +292,7 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
   rows: [],
   attributions: [],
   threeWayRows: [],
+  pvmCheck: null,
   reasonCodes: DEFAULT_REASON_CODES,
   filters: { ...DEFAULT_FILTERS },
 
@@ -362,6 +409,7 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
         rows: enrichedRows,
         attributions,
         threeWayRows,
+        pvmCheck: verifyAttributionSumOfParts(enrichedRows),
         error: null,
       });
       return true;
@@ -373,6 +421,7 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
         rows: [],
         attributions: [],
         threeWayRows: [],
+        pvmCheck: null,
       });
       return false;
     }
@@ -513,6 +562,7 @@ export const useVarianceStore = create<VarianceStoreState>((set, get) => ({
       rows: [],
       attributions: [],
       threeWayRows: [],
+      pvmCheck: null,
       reasonCodes: DEFAULT_REASON_CODES,
       filters: { ...DEFAULT_FILTERS },
     });

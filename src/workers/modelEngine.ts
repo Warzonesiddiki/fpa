@@ -857,6 +857,13 @@ export class ModelEngine {
       this.hf.setCellContents(address, input.formula);
       this.manualAmounts.delete(cellKey);
     } else if (input.value != null) {
+      // Boundary guard: values must arrive as plain exact decimal strings — the
+      // entry points (S-041 formula bar, paste) normalize Excel-style financial
+      // text via parseFinancialNumber (AUDIT-02). A raw malformed string fails
+      // with the locked code, never a raw Decimal error.
+      if (!/^-?\d+(\.\d+)?$/.test(input.value)) {
+        throw new Error(`VALUE_INVALID: '${input.value}' is not a valid amount`);
+      }
       // HF's numeric cells are float-based (Excel parity), so this is the ONLY float crossing —
       // and it is not a money boundary: the exact decimal string stays authoritative in
       // `manualAmounts` (surfaced as `amount_text` verbatim), and any float result is
