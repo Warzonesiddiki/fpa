@@ -661,6 +661,32 @@ autonomous mission; each row lists the exact missing native gates):
   Calamine support, `CURRENCY_MIXED` gate removal, `9999 - Suspense Clearing`
   auto-seed.
 
+### Session units — 2026-09-26 (AUDIT-16 working capital drivers + revolver sweep, TS slice)
+
+- **AUDIT-16 (cash flow / liquidity) — the remaining TS-verifiable slice is DONE;
+  the vector moves to 🚧 PARTIAL (TS engines complete).**
+- `src/model/workingCapital.ts` — new pure module (decimal.js, `money:ast`-clean):
+  1. **Working capital drivers** — DSO = AR ÷ Revenue × days, DIO = Inventory ÷ COGS ×
+     days, DPO = AP ÷ COGS × days, CCC = DSO + DIO − DPO. Exact decimal committed to
+     2 places HALF_UP; a zero/negative flow denominator returns `null` + reason
+     (never `-Infinity`, never a fabricated 0).
+  2. **Auto-revolver sweep (closed form)** — the exact integer minor-unit counterpart
+     of the grid cycle documented in `cycleSolver.ts` (debt ↔ interest ↔ cash ↔ draw):
+     solves `cash + d − round(d·r) ≥ minCash` (HALF_UP start from the real-valued
+     fixed point, bounded one-unit walk for the rounded interest), respects the
+     facility floor + limit, and reports `minimumCashMet = false` when the limit caps
+     the draw short of the minimum (honest refusal of the assumption). Excess-cash
+     sweep repays above a target cash, capped by the outstanding balance.
+  - **13 tests**, hand-computed fixed points (90-day driver set 15.00/22.50/31.50/
+    6.00; 50 bps draw 5,025.13 with 25.13 interest landing exactly on the minimum;
+    capped draw → `minimumCashMet` false; sweep cap at the balance).
+- Docs: AUDIT-VECTOR-PLAN status → PARTIAL + CODE-TO-AUDIT-MAPPING row +
+  CHANGELOG + HANDOVER.
+- **Honest scope / follow-ups (Tier-3/native):** `cash_flow_reconciliation` command +
+  `cash_flow_statements`/`working_capital_drivers` tables, S-060 `type="cf"` + S-046
+  13-week UI wiring, native `statement.rs`/`schedule.rs` parity. The 13-week cash
+  schedule engine already exists (`src/model/week13Cash.ts`, AUDIT-12).
+
 ### NEXT-UP v2 — the 18 no-handler commands, classified from live code (not the audit)
 
 **Tier-2 buildable next (Rust-owned, worker-free, contract-first):**

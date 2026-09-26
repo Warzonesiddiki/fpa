@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+- **AUDIT-16 working capital drivers + auto-revolver sweep — TS engines DONE
+  (2026-09-26):** the last TS-verifiable slice of AUDIT-16 (cash flow / liquidity),
+  completing the exact-decimal engine family (`cashFlow.ts` 2026-09-22,
+  `largestRemainder.ts`, `week13Cash.ts`).
+  - `src/model/workingCapital.ts` — new pure module (decimal.js, `money:ast`-clean):
+    - **Working capital drivers** — DSO (AR ÷ Revenue × days), DIO (Inventory ÷
+      COGS × days), DPO (AP ÷ COGS × days) and the Cash Conversion Cycle (DSO + DIO
+      − DPO), exact decimal committed to 2 places HALF_UP. A zero/negative flow
+      denominator is reported (`null` + reason), never divided into.
+    - **Auto-revolver sweep (closed form)** — solves the minimum-cash draw in exact
+      integer minor units (`cash + d − round(d·r) ≥ minCash`, HALF_UP start from the
+      real-valued fixed point plus a bounded one-unit walk for the rounded
+      interest), respecting the facility floor and limit; when the limit caps the
+      draw short of the minimum the result says so (`minimumCashMet: false`)
+      instead of assuming the minimum held. Excess-cash sweep repays above a target
+      cash, capped by the outstanding balance. This is the closed-form oracle for
+      the debt ↔ interest ↔ cash ↔ draw grid cycle that the AUDIT-04 iterative
+      solver relaxes in-grid.
+  - 13 tests, hand-computed fixed points (90-day driver set 15.00 / 22.50 / 31.50 /
+    CCC 6.00; 50 bps draw 5,025.13 + interest 25.13 landing exactly on the
+    10,000.00 minimum; limit-capped draw → `minimumCashMet` false; sweep capped by
+    the outstanding balance).
+  **Honest scope:** `cash_flow_reconciliation` command + persistence tables (Tier-3),
+  S-060 `type="cf"` + S-046 13-week UI wiring, and native `statement.rs` /
+  `schedule.rs` parity remain. AUDIT-16 moves ❗ TODO → 🚧 PARTIAL (all TS engines
+  now DONE).
 - **AUDIT-07 Jaro-Winkler mapping suggestions — TS slice DONE (2026-09-26):**
   When a GL import fails validation because a source account code is missing from
   the Company's COA (hard `MAP_ACCOUNT_AMBIGUOUS` / `ACCOUNT_MISSING`,

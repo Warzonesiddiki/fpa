@@ -34,6 +34,35 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-16 working capital drivers + revolver sweep, TS engines DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-16 (cash flow / liquidity) named, beyond the Direct/Indirect cash
+  flow (done 2026-09-22 in `cashFlow.ts`): "working capital drivers (DSO/DPO/DIO);
+  auto-revolver sweep". Those were the last TS-verifiable pieces; the rest
+  (`cash_flow_reconciliation` command + tables, S-060/S-046 UI wiring, native
+  parity) is Tier-3 or native.
+- **What shipped (all executed, not claimed):** `src/model/workingCapital.ts` —
+  new pure module, 13 tests with hand-computed fixed points:
+  1. **Drivers** — DSO = AR ÷ Revenue × days, DIO = Inventory ÷ COGS × days,
+     DPO = AP ÷ COGS × days, CCC = DSO + DIO − DPO; exact decimal (decimal.js)
+     committed to 2 places HALF_UP; zero/negative flow → `null` + reason (never a
+     fabricated ratio).
+  2. **Auto-revolver sweep (closed form)** — exact integer minor units:
+     `cash + d − round(d·r) ≥ minCash` solved by HALF_UP start from the
+     real-valued fixed point `(min − cash)/(1 − r)` + bounded one-unit walk for the
+     rounded interest; floor/limit respected; `minimumCashMet: false` when the
+     limit caps the draw short (honest flag, not an assumption); excess-cash sweep
+     repays above a target cash capped by the outstanding balance.
+- **Key decision (do not re-derive):** the sweep is the **closed-form oracle** for
+  the grid cycle `cycleSolver.ts` documents (debt ↔ interest ↔ cash ↔ draw) — the
+  AUDIT-04 iterative solver relaxes the in-grid formula version; both must agree.
+  Keep the module pure (no engine, no store) so it stays the native reference.
+- **Gates:** `npm run check` green, `npm run build` green, 13/13 new tests.
+- **Follow-ups (Tier-3/native):** `cash_flow_reconciliation` command +
+  `cash_flow_statements`/`working_capital_drivers` tables; S-060 `type="cf"` +
+  S-046 13-week UI wiring; `statement.rs`/`schedule.rs` parity. (The 13-week
+  schedule engine already exists — `src/model/week13Cash.ts`, AUDIT-12.)
+
 ### Latest — AUDIT-07 Jaro-Winkler mapping suggestions, TS slice DONE (2026-09-26, `arena/01a0ce5b-fpa`)
 
 - **Why:** AUDIT-07 (ingestion gaps) — the top analyst-rejection case is a new ERP
