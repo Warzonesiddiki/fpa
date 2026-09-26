@@ -34,6 +34,41 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — M1 acceptance sweep, TS-verifiable parts DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** ROADMAP §M1 exit criteria: "unlock → create company → wizard → calendar
+  preview → grid opens; money/calendar property tests green; a11y gates on 4 screens;
+  migration suite green." The six E2E specs covered unlock, the wizard steps (heading
+  only), and grid editing on the _pre-seeded_ demo company — but nothing asserted the
+  calendar preview content, and nothing followed a _freshly created_ company into the
+  grid. The 4 flow screens also lacked axe gates on S-002/S-020.
+- **What shipped (all executed, not claimed):**
+  1. `e2e/company-lifecycle.spec.ts` — the journey now asserts (a) the wizard's Fiscal
+     Calendar step renders the **live preview periods** (P01…P12, 12-month default —
+     `previewFiscalYears` in the dev mock; the heading alone no longer passes) and
+     (b) after landing on the Dashboard, SPA-navigation to the **Model Grid** for the
+     fresh Company (route, "Model Grid" heading, `data-testid="model-grid"`, first
+     `[role="gridcell"][col-id^="p-"]` visible). SPA-style navigation only (page.goto
+     resets the in-memory session — M7-5 lesson).
+  2. `src/pages/s002-wizard/index.test.tsx` — new axe gate on the **fiscal-calendar
+     preview step** (waits for the preview period rows, then `axe(document.body)` →
+     0 violations).
+  3. `src/pages/s020-companies/index.test.tsx` — new axe gate on the **populated
+     company list**; the shared `renderPage` now wraps Routes in `<main>` mirroring the
+     app shell's content landmark (identical pattern to S-041's tests) — this surfaced
+     the real `region` (landmark) gap that the shell provides in production.
+  - Result: 4/4 M1 flow screens axe-gated (S-001, S-002, S-020, S-041); 6/6 E2E specs
+    green; `npm run check` + `npm run build` green.
+- **Cargo-pending (honest scope):** money/calendar `proptest` property tests + the
+  migration suite (Rust-runner work, §14 of TASKBOARD). §2 item 5 stays open for those.
+- **Sandbox note (learned this session):** the sandbox also wipes `~/.cache/ms-playwright`
+  and `cdn.playwright.dev` is network-blocked. Working E2E run: install npm-bundled
+  `@sparticuz/chromium` (v153) into a scratch dir, `Chromium.executablePath()` (extracts
+  to `/tmp/chromium`), de-brotli its `bin/al2023.tar.br` (node:zlib) for the shared
+  libs, run with `LD_LIBRARY_PATH=<lib dir> npx playwright test -c
+playwright.local.config.ts` (local-only config with `launchOptions.executablePath`,
+  git-excluded via `.git/info/exclude`).
+
 ### Latest — AUDIT-04 formula cycle solver, engine scope DONE (2026-09-23, `arena/01a0ce5b-fpa`)
 
 - **Why:** AUDIT-04 is the credibility vector for 3-statement models: debt revolver →
@@ -617,9 +652,12 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
    rows (S-056 ships the buttons disabled until then); `model.inspect`/`driver.import` handlers (B3).
 4. ~~**M3-6 native completion**~~ — DONE 2026-09-04 on the Windows desktop (see TASKBOARD §12);
    M3-1 DB persistence likewise landed via `model_schedule_upsert`'s `model_values` writes.
-5. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
-   grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
-   454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
+5. **M1 acceptance sweep** (ROADMAP §M1) — **TS-verifiable parts DONE 2026-09-26**
+   (E2E chain now asserts calendar preview periods + grid opens for the fresh company;
+   a11y gates complete on the 4 flow screens S-001/S-002/S-020/S-041 — see §1).
+   Remaining: money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
+   454 / 445 / 544 / 3334, NRF 2024–2028, W53) and the migration suite — both Rust-runner
+   work.
 6. **AUDIT-04 completion (native + UI)** — the TS/engine solver is DONE 2026-09-23
    (see §1). Remaining: port the solver contract to native Rust (same parameters, same
    dual-probe validation — the `src/model/cycleSolver.ts` tests are the oracle), add a

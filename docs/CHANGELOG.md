@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+- **M1 acceptance sweep — TS-verifiable parts DONE (2026-09-26):**
+  ROADMAP §M1 exit criteria: "unlock → create company → wizard → calendar preview →
+  grid opens; money/calendar property tests green; a11y gates on 4 screens; migration
+  suite green."
+  - **E2E chain completed** (`e2e/company-lifecycle.spec.ts`): the wizard's Fiscal
+    Calendar step now asserts the live **calendar preview renders the actual periods**
+    (P01…P12 for the 12-month default) — the heading alone is no longer sufficient —
+    and the journey continues from the S-010 Dashboard into the **Model Grid** (route
+    `/app/model/grid`, page heading, `data-testid="model-grid"`, first period cell
+    visible) for the freshly created Company. All 6 E2E specs green.
+  - **a11y gates on the 4 flow screens:** S-001 unlock (existing) + S-041 model grid
+    (existing) + **new S-002 wizard gate** (axe on the fiscal-calendar preview step,
+    the M1 "calendar preview" surface) + **new S-020 Companies gate** (axe on the
+    populated company list; the test render mirrors the app shell's `<main>` content
+    landmark, the same pattern S-041's tests use).
+  **Honest scope:** the money/calendar `proptest` property tests and the migration
+  suite remain Rust-runner work (no toolchain in-sandbox, §14).
 - **AUDIT-04 formula cycle solver — engine scope DONE (2026-09-23):**
   Iterative calculation for the intentional cycles three-statement models require
   (debt revolver → interest → debt), where HyperFormula's DAG-only engine hard-fails
