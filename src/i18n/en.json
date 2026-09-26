@@ -455,6 +455,12 @@
         "batch": "Batch scope",
         "more": "{{count}} more findings are not rendered here to keep the screen responsive. The summary count includes them."
       },
+      "suggestions": {
+        "title": "Closest COA matches",
+        "hint": "Similarity suggestions for the missing account code — verify before correcting the source or mapping.",
+        "none": "No close match in this Company's COA — the source may need a new account.",
+        "similarity": "{{score}}% similar"
+      },
       "preview": {
         "title": "Valid mapped row preview",
         "description": "Showing {{shown}} of up to the first 50 valid mapped rows ({{rows}} valid rows total). Invalid source rows appear only as HARD findings.",

@@ -34,6 +34,36 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-07 Jaro-Winkler mapping suggestions, TS slice DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-07 (ingestion gaps) — the top analyst-rejection case is a new ERP
+  account code that isn't in the Company's COA: hard `MAP_ACCOUNT_AMBIGUOUS` /
+  `ACCOUNT_MISSING` blocks the import and S-031 offered no way forward. The vector's
+  fix = Jaro-Winkler suggestions + `account_mappings` table + `coa.create` +
+  `Data::DateTime` + `CURRENCY_MIXED` removal. Everything but the suggestion
+  mechanism is Tier-3 (new IPC/table/catalog changes) or native — so this unit
+  ships the **pure-TS slice** with zero new IPC and zero behavior change.
+- **What shipped (all executed, not claimed):**
+  1. `src/model/jaroWinkler.ts` — pure module (no money/storage/engine): Jaro,
+     Jaro-Winkler (prefix cap 4, p = 0.1), `suggestAccounts` (max(code, name)
+     similarity, case-insensitive names, threshold 0.85, top 3, deterministic).
+     14 tests — every value cross-checked against an independent O(n²) reference
+     before pinning.
+  2. `src/pages/s031-mapping/ValidationPanel.tsx` — advisory "Closest COA matches"
+     under each `ACCOUNT_MISSING` finding (single `coa.list` read per panel; "no
+     close match" line when nothing clears the threshold). **Advisory only** —
+     never auto-applied; the hard gate, the finding payload, and the remediation
+     surface are unchanged (GL-TEMPLATE-SPEC §6 + API-SPEC updated to say exactly
+     that, incl. the `details.list` core-owned slot semantics).
+  3. Tests: 16/16 S-031 (new: suggestion rendering with 96% candidate, no-match
+     line, advisory-only assertions, axe-clean); `npm run check` + build green.
+- **Key decision (do not re-derive):** the suggestion is computed **client-side from
+  catalogued `coa.list` data** rather than populating `details.list` in the mock —
+  a mock-only fill would be local-fake persistence (B18-3); the native side owns
+  `list` and filling it is a documented follow-up alongside the `account_mappings`
+  table + `coa.create` (Tier-3) + `Data::DateTime` + `CURRENCY_MIXED` removal.
+- **Follow-ups (Tier-3/native):** as above — AUDIT-07 is now 🚧 PARTIAL.
+
 ### Latest — M1 acceptance sweep, TS-verifiable parts DONE (2026-09-26, `arena/01a0ce5b-fpa`)
 
 - **Why:** ROADMAP §M1 exit criteria: "unlock → create company → wizard → calendar

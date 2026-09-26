@@ -481,6 +481,16 @@ rejects a second one (batch-scope `OPENING_ALREADY_SET`). The currently implemen
 non-empty posting reference on another valid row. Missing account names are not currently a
 WARNING and are not fabricated by the mock or S-031.
 
+The `MAP_ACCOUNT_AMBIGUOUS` row finding carries `details: { accountCode: string, list: [] }`:
+`accountCode` is the unresolved source account code verbatim, and `list` is a core-owned
+candidate slot that is **currently always empty** (a native Jaro-Winkler candidate list is a
+documented follow-up, AUDIT-07). Independent of that slot, S-031 renders, under each
+`ACCOUNT_MISSING` row, the *closest COA matches* it computes client-side from the catalogued
+`coa.list` data (Jaro-Winkler similarity, `src/model/jaroWinkler.ts`; top 3, default threshold
+0.85). The suggestions are advisory only: they are never auto-applied, they do not alter the
+finding or the hard gate, and the remediation surface remains source/mapping correction and
+re-validation (GL-TEMPLATE-SPEC §6).
+
 HARD and WARNING arrays remain separate and preserve row-versus-batch scope. S-031 reports their
 full returned counts but renders only the first 50 items in each list to keep the webview responsive;
 it says when more returned findings are not rendered. It does not expose row exclusion, account

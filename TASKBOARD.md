@@ -631,6 +631,36 @@ autonomous mission; each row lists the exact missing native gates):
   3. **Cargo-pending (honest scope):** money/calendar `proptest` property tests + the
      migration suite remain Rust-runner work (no toolchain in-sandbox — §14).
 
+### Session units — 2026-09-26 (AUDIT-07 Jaro-Winkler mapping suggestions, TS slice)
+
+- **AUDIT-07 (ingestion gaps) — the TS-verifiable slice of "Jaro-Winkler mapping
+  suggestions" is DONE; the vector moves to PARTIAL.**
+- `src/model/jaroWinkler.ts` — new pure module (no money, no storage, no engine):
+  classic Jaro similarity, Jaro-Winkler prefix boost (cap 4, p=0.1), and
+  `suggestAccounts` (score = max(code, name) similarity, case-insensitive names,
+  threshold 0.85 "probably identical" band, top 3, deterministic code-ascending
+  tie-break). **14 tests**, every expected value cross-checked against an
+  independent O(n²) reference implementation before pinning (classic vectors:
+  MARTHA/MARHTA = 17/18, DWAYNE/DUANE = 37/45, LONG/LION = 5/6; JW MARTHA/MARHTA =
+  173/180).
+- `src/pages/s031-mapping/ValidationPanel.tsx` — under each HARD
+  `MAP_ACCOUNT_AMBIGUOUS` finding carrying an `ACCOUNT_MISSING` detail, the panel
+  now renders **Closest COA matches**: one `coa.list` read per panel (not per
+  finding), top-3 candidates with similarity %, or an explicit "No close match in
+  this Company's COA — the source may need a new account" line. **Advisory only:**
+  computed client-side from catalogued data, never auto-applied, never changes
+  validation behaviour — GL-TEMPLATE-SPEC §6 keeps the hard gate and the
+  source/mapping-correction remediation. A failed or non-array COA read renders
+  nothing (advisory reads must never block the panel).
+- Docs: GL-TEMPLATE-SPEC §6 row + API-SPEC `import.validate` finding-details
+  contract (`details.list` = core-owned slot, currently always `[]`; native
+  population = follow-up) + CODE-TO-AUDIT-MAPPING + AUDIT-VECTOR-PLAN status →
+  PARTIAL.
+- **Honest scope / follow-ups (Tier-3 or native, not shipped):** `account_mappings`
+  table + native candidate `list`, `coa.create` command, `Data::DateTime`
+  Calamine support, `CURRENCY_MIXED` gate removal, `9999 - Suspense Clearing`
+  auto-seed.
+
 ### NEXT-UP v2 — the 18 no-handler commands, classified from live code (not the audit)
 
 **Tier-2 buildable next (Rust-owned, worker-free, contract-first):**

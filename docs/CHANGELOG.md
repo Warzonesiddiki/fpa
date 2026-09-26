@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+- **AUDIT-07 Jaro-Winkler mapping suggestions — TS slice DONE (2026-09-26):**
+  When a GL import fails validation because a source account code is missing from
+  the Company's COA (hard `MAP_ACCOUNT_AMBIGUOUS` / `ACCOUNT_MISSING`,
+  GL-TEMPLATE-SPEC §6), S-031 now shows the analyst the **closest COA matches**
+  instead of a dead end.
+  - `src/model/jaroWinkler.ts` — new pure module: classic Jaro similarity +
+    Jaro-Winkler prefix boost (cap 4, p = 0.1) + `suggestAccounts` (score =
+    max(code, name) similarity with case-insensitive names, 0.85
+    "probably identical" threshold, top 3, deterministic tie-break). 14 tests,
+    every expected value cross-checked against an independent reference
+    implementation before pinning.
+  - `src/pages/s031-mapping/ValidationPanel.tsx` — advisory "Closest COA matches"
+    block under each `ACCOUNT_MISSING` finding (one `coa.list` read per panel;
+    similarity % per candidate; explicit "no close match — the source may need a
+    new account" line). **Advisory only**: computed client-side from the
+    catalogued `coa.list` data, never auto-applied, never changes the hard gate
+    or the remediation surface; a failed COA read renders nothing.
+  - Docs: GL-TEMPLATE-SPEC §6, API-SPEC `import.validate` finding-details
+    contract (`details.list` is the core-owned candidate slot — currently always
+    `[]`; native population is a documented follow-up), CODE-TO-AUDIT-MAPPING.
+  **Honest scope:** Tier-3/native follow-ups remain — `account_mappings` table +
+  native candidate list, `coa.create`, `Data::DateTime` (Calamine), `CURRENCY_MIXED`
+  removal, `9999 - Suspense Clearing` auto-seed. AUDIT-07 moves ❗ TODO → 🚧
+  PARTIAL.
 - **M1 acceptance sweep — TS-verifiable parts DONE (2026-09-26):**
   ROADMAP §M1 exit criteria: "unlock → create company → wizard → calendar preview →
   grid opens; money/calendar property tests green; a11y gates on 4 screens; migration
