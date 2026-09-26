@@ -4,6 +4,43 @@
 
 ## [Unreleased]
 
+- **AUDIT-04 formula cycle solver — engine scope DONE (2026-09-23):**
+  Iterative calculation for the intentional cycles three-statement models require
+  (debt revolver → interest → debt), where HyperFormula's DAG-only engine hard-fails
+  with `#CYCLE!`. Implements the FORMULA-ENGINE-SPEC §5 contract exactly:
+  - `src/model/cycleSolver.ts` — new **pure** solver (no HyperFormula, `money:ast`-clean
+    float-only on non-money solver internals): Tarjan SCC detection, damped Gauss–Seidel
+    (α=0.5), ≤100 iterations, convergence at max|Δ| ≤ 0.0001 minor units, and
+    **dual-probe validation** — the system is solved from a zero seed and from a unit
+    seed, and the result is accepted only if both converge to the same value at the
+    model's committed currency precision (identical decimal, HALF_UP). A zero seed alone
+    would accept `x = 0.5x` at 0 (the wrong root); a unit seed alone would accept
+    divergent loops that wander.
+  - `src/workers/modelEngine.ts` — engine wiring behind an **additive, opt-in**
+    `loadGrid` option `iterativeCalculation` (default OFF — zero behavior change for
+    existing callers; no new IPC command, no new error code → no Tier-3 RFC). On every
+    mutation the engine re-detects SCCs over the **logical** (pre-pointer) formulas,
+    solves each SCC in reverse-topological order on a private `CycleSolver` sheet
+    (members rewired to `=CycleSolver!A{row}` pointers so derived columns and YTD/FY
+    sums stay exact), and restores original formulas whenever a loop breaks.
+  - **Honest refusal** — any rewrite shape that cannot be guaranteed safe (mixed
+    member/constant ranges, multi-column member ranges, references into a not-yet-solved
+    SCC, in-SCC formula errors) leaves the SCC at `FORMULA_CYCLE`. Never a guessed value.
+  - `src/model/cycleSolver.test.ts` — 34 tests (hand-computed fixed points incl. the
+    3-node debt loop, scale-0 vs scale-2 divergence of `x = 0.8x + 1`, the
+    divergent `=A1*2` family, and a **100-trial random cyclic graph property test**
+    where every converged answer is checked against a direct matrix solve).
+  - `src/workers/modelEngine.cycles.test.ts` — 20 engine-level tests: default-OFF
+    unchanged (`FORMULA_CYCLE` + `cycles` report), self-loop, 3-node debt loop,
+    dependent cells + `getDerived`, divergent loop + report path, `inspectCell.is_cycle`
+    + precedents from the original formula, cycle-break restore, driver values as
+    constants, cross-SCC dependency order, same-column range rewrite, the three
+    refusal shapes, in-SCC error, named-range inputs, scale-0 commit, raw-float guard.
+  **Honest scope:** TS/engine side only. Native Rust parity (native-side cycle solving)
+  and a store/UI toggle remain documented follow-ups — the feature is deliberately
+  behind an explicit load option until both sides agree. Gates: `npm run check` green
+  (all test + coverage + schema + docs + parity + `money:ast` + security gates),
+  `npm run build` green.
 - **AUDIT-05 Cash Flow (Direct + Indirect) + Non-GAAP EBITDA bridge — TS slice DONE (2026-09-22):**
   Two more of AUDIT-05's TS-verifiable statement slices, on the B18-1/B18-2 integer-money model
   (`money:ast`-clean, no float). New `src/model/cashFlow.ts` (+ `src/model/cashFlow.test.ts`,

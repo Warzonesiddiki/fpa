@@ -28,9 +28,31 @@ import {
 } from "hyperformula";
 import Decimal from "decimal.js";
 import { findUnsupportedFunction } from "@/api/schema";
+import {
+  findFormulaReferences,
+  findSCCs,
+  isCyclicScc,
+  rewriteFormulaReferences,
+  solveCyclicScc,
+  type CycleSolveRuntime,
+  type FormulaReference,
+} from "@/model/cycleSolver";
 
 /** Max formula length — mirrors the Rust `MAX_FORMULA_LEN` guard (FORMULA-ENGINE-SPEC §1). */
 export const MAX_FORMULA_LEN = 2048;
+
+/**
+ * Optional load behavior (FORMULA-ENGINE-SPEC §5 — Iterative Calculation Mode, AUDIT-04).
+ * Additive: omitting the option (or passing nothing) keeps the historical behavior exactly.
+ */
+export interface LoadGridOptions {
+  /**
+   * Enable Iterative Calculation Mode: cyclic SCCs are relaxed to a dual-probe-validated fixed
+   * point (α=0.5, ≤100 sweeps, 0.0001 minor-unit tolerance) instead of reporting `#CYCLE!`.
+   * Default `false` — cycles keep emitting `FORMULA_CYCLE` exactly as before.
+   */
+  iterativeCalculation?: boolean;
+}
 
 /** A Model line row in the grid (GLOSSARY: Model / Line; a line is account-scoped). */
 export interface ModelGridLine {
@@ -201,6 +223,9 @@ export interface GridLayout {
 }
 
 const SHEET_NAME = "Model";
+/** The permanent scratch sheet for Iterative Calculation Mode (AUDIT-04) — A = solved-value
+ *  inputs the rewired Model cells point at, B = the rewritten SCC formulas (audit trail). */
+const CYCLE_SHEET_NAME = "CycleSolver";
 
 /* ── Analysis Functions Plugin (M3-10 · FORMULA-ENGINE-SPEC §2/§3) ─────────────────────
  * Registers the 8 OneFP&A-declared Analysis Functions as native HyperFormula functions so they
@@ -654,6 +679,32 @@ export class ModelEngine {
    * consumed by the fiscal-aware date functions FPERIOD/FQTR/FYEAR/FPERIODSTART/PERIODLEN (I5). */
   private _periodMeta: PeriodMeta[] = [];
 
+  /* ── Iterative Calculation Mode (AUDIT-04 · FORMULA-ENGINE-SPEC §5) ─────────────────────
+   * Opt-in per load (default OFF — `#CYCLE!` exactly as before). Cyclic SCCs are relaxed to a
+   * dual-probe-validated fixed point by `src/model/cycleSolver.ts` (Tarjan + damped
+   * Gauss–Seidel, α=0.5, ≤100 sweeps, 0.0001 minor-unit tolerance). Solved members are rewired
+   * to the permanent "CycleSolver" scratch sheet, so every dependent cell — including the
+   * YTD/FY derived columns — picks the solved value up through HyperFormula's own propagation.
+   * Unsolvable SCCs keep their original formula and therefore keep reporting `FORMULA_CYCLE`. */
+  /** Iterative Calculation Mode flag (per load; default OFF — FORMULA-ENGINE-SPEC §5). */
+  private iterativeCalculation = false;
+  /** Original formula of a rewired (pointer) cycle cell, keyed `row:col` (Model-sheet coords).
+   *  The live HF formula of a solved cell is a `=CycleSolver!A…` pointer; this map keeps the
+   *  user's formula authoritative for graph detection, the formula bar, and the hardcoded scan.
+   *  `""` = the cell is logically empty (a value/empty edit overwrote the pointer). */
+  private cycleFormulas = new Map<string, string>();
+  /** Solved cycle cells, keyed `row:col` → the relaxed float (the engine's float space —
+   *  commit-rounded at display exactly like every other formula result). */
+  private cycleSolved = new Map<string, number>();
+  /** Every member of the current cyclic SCCs (solved and unsolved), keyed `row:col`. */
+  private cycleMembers = new Set<string>();
+  /** Unresolved cyclic SCCs — one ordered path per SCC, for the recalc envelope's `cycles`. */
+  private unsolvedCycles: { path: string[] }[] = [];
+  /** Member → its SCC's ordered member path (for `inspectCell.cycle`). */
+  private cyclePaths = new Map<string, CellRef[]>();
+  /** The "CycleSolver" scratch sheet id (null when no SCC is currently solved). */
+  private cycleSheetId: number | null = null;
+
   constructor(scale = 2) {
     this.hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
     this.scale = scale;
@@ -703,6 +754,9 @@ export class ModelEngine {
     } else {
       this.hf.addNamedExpression(name, numericValue);
     }
+    // Named values feed formulas (constants) — a changed value can change a solved SCC's
+    // fixed point, so re-solve (no-op when Iterative Calculation is OFF).
+    this.refreshCycleSolves();
   }
 
   /** Remove a named range. No-op if the name is not defined. */
@@ -710,6 +764,7 @@ export class ModelEngine {
     const existing = this.hf.listNamedExpressions();
     if (existing.includes(name)) {
       this.hf.removeNamedExpression(name);
+      this.refreshCycleSolves();
     }
   }
 
@@ -751,7 +806,7 @@ export class ModelEngine {
    * (Re)build the grid: one HyperFormula sheet with a label column, one column per period,
    * plus YTD/FY derived columns computed as formulas (SCREENS-SPEC S-041).
    */
-  loadGrid(layout: GridLayout): void {
+  loadGrid(layout: GridLayout, options: LoadGridOptions = {}): void {
     this.lines = [...layout.lines];
     this.modelLines = [...layout.lines];
     this.periods = [...layout.periods];
@@ -769,6 +824,14 @@ export class ModelEngine {
     this.overrides.clear();
     this.rowLine.clear();
     this.colPeriod.clear();
+    // A fresh grid means a fresh Iterative Calculation solve: drop the prior state and scratch.
+    this.iterativeCalculation = options.iterativeCalculation ?? false;
+    this.cycleFormulas.clear();
+    this.cycleSolved.clear();
+    this.cycleMembers.clear();
+    this.cyclePaths.clear();
+    this.unsolvedCycles = [];
+    this.removeCycleSheet();
 
     if (this.sheetId !== null) {
       this.hf.removeSheet(this.sheetId);
@@ -810,6 +873,7 @@ export class ModelEngine {
         this.hf.setCellContents({ sheet: sheetId, col: fyCol, row }, `=SUM(${rangeFy})`);
       });
     });
+    this.refreshCycleSolves();
   }
 
   private range(sheetId: number, row: number, colFrom: number, colTo: number): string {
@@ -853,9 +917,12 @@ export class ModelEngine {
     const sheetId = this.sheetId;
     const address = { sheet: sheetId, col, row };
     const cellKey = this.key(input.line_id, input.period_id);
+    // Keep the logical (pre-pointer) formula current: if this cell is rewired to the
+    // CycleSolver scratch, the stored original is what detection/display use (AUDIT-04).
     if (input.formula != null) {
       this.hf.setCellContents(address, input.formula);
       this.manualAmounts.delete(cellKey);
+      this.cycleFormulas.set(this.coordKey(row, col), input.formula);
     } else if (input.value != null) {
       // Boundary guard: values must arrive as plain exact decimal strings — the
       // entry points (S-041 formula bar, paste) normalize Excel-style financial
@@ -871,14 +938,17 @@ export class ModelEngine {
       // commit boundary (`parse_value_minor`) is the exact i64 conversion; this mirrors it.
       this.hf.setCellContents(address, new Decimal(input.value).toNumber());
       this.manualAmounts.set(cellKey, input.value);
+      this.cycleFormulas.set(this.coordKey(row, col), "");
     } else {
       this.hf.setCellContents(address, null);
       this.manualAmounts.delete(cellKey);
+      this.cycleFormulas.set(this.coordKey(row, col), "");
     }
     if (input.manual_override) this.overrides.add(cellKey);
     else this.overrides.delete(cellKey);
     this.dirtyLines.add(input.line_id);
     this.hf.rebuildAndRecalculate();
+    this.refreshCycleSolves();
 
     const after = this.readCell(input.line_id, input.period_id);
     const recalc = this.recalcReport([input.line_id], started);
@@ -890,6 +960,7 @@ export class ModelEngine {
   recalc(changedHint: string[] = []): EngineRecalcReport {
     const started = performance.now();
     if (this.sheetId !== null) this.hf.rebuildAndRecalculate();
+    this.refreshCycleSolves();
     return this.recalcReport(changedHint, started);
   }
 
@@ -916,8 +987,10 @@ export class ModelEngine {
     this.hf.setCellContents({ sheet: this.sheetId, col, row }, null);
     this.manualAmounts.delete(this.key(line_id, period_id));
     this.overrides.delete(this.key(line_id, period_id));
+    this.cycleFormulas.set(this.coordKey(row, col), "");
     this.dirtyLines.add(line_id);
     this.hf.rebuildAndRecalculate();
+    this.refreshCycleSolves();
     return this.readCell(line_id, period_id);
   }
 
@@ -1030,6 +1103,8 @@ export class ModelEngine {
     this.hf.setCellContents({ sheet: sheetId, col, row }, parsed.toNumber());
     this.driverAmounts.set(cellKey, valueText);
     this.hf.rebuildAndRecalculate();
+    // Driver values are constant inputs to the SCC formulas — a change moves the fixed point.
+    this.refreshCycleSolves();
 
     return { ok: true, recalc: this.driverRecalcReport(driverId, started) };
   }
@@ -1076,9 +1151,9 @@ export class ModelEngine {
         const col = this.periodCol.get(period.id);
         if (row === undefined || col === undefined) continue;
         const pre = this.hf.getCellPrecedents({ sheet: this.sheetId, col, row });
-        const referencesDriver = pre.some(
-          (a) => "col" in a && a.sheet === driversSheet && a.row === driverRow,
-        );
+        const referencesDriver =
+          pre.some((a) => "col" in a && a.sheet === driversSheet && a.row === driverRow) ||
+          this.logicalFormulaReferencesDriver(row, col, driverRow);
         if (referencesDriver) {
           rows.push({
             line_id: line.id,
@@ -1106,7 +1181,8 @@ export class ModelEngine {
         const row = this.lineRow.get(line.id);
         const col = this.periodCol.get(period.id);
         if (row === undefined || col === undefined) continue;
-        const formula = this.hf.getCellFormula({ sheet: this.sheetId, col, row });
+        // Solved cycle cells hold a pointer live — scan the user's original formula.
+        const formula = this.logicalFormula(row, col);
         if (formula == null) continue;
         const literals = findHardcodedLiterals(formula);
         if (literals.length > 0) {
@@ -1136,7 +1212,8 @@ export class ModelEngine {
     if (row === undefined || col === undefined) {
       throw new Error("REFERENCE_BROKEN: unknown line or period in the loaded grid");
     }
-    const formula = this.hf.getCellFormula({ sheet: this.sheetId, col, row });
+    // Solved cycle cells hold a pointer live — convert the user's original formula.
+    const formula = this.logicalFormula(row, col);
     if (formula == null) {
       throw new Error("REFERENCE_BROKEN: cell has no formula to convert");
     }
@@ -1215,27 +1292,36 @@ export class ModelEngine {
     const sheetId = this.sheetId;
     const address = { sheet: sheetId, col, row };
     const raw = this.hf.getCellValue(address);
-    const formula = this.hf.getCellFormula(address) ?? null;
+    // Solved cycle cells hold a `=CycleSolver!A…` pointer live — surface the user's formula.
+    const formula = this.logicalFormula(row, col);
     const computed_text = this.cellAmount(line_id, period_id) ?? this.hfValueToText(raw);
     const error_code = this.hfErrorCode(raw);
-    const is_cycle = error_code === "FORMULA_CYCLE";
+    const coordK = this.coordKey(row, col);
+    // A solved member is still a cycle member (its value is relaxed, not non-cyclic).
+    const is_cycle = this.cycleMembers.has(coordK) || error_code === "FORMULA_CYCLE";
 
     // Resolve HF cell addresses to our grid coordinates. `getCellPrecedents`/`getCellDependents`
     // return `(SimpleCellRange | SimpleCellAddress)[]` — we only trace single-cell refs for now
-    // (range refs are expanded in a later milestone; this is the error-inspection path).
-    const precedents = this.hf
-      .getCellPrecedents(address)
-      .filter((a): a is SimpleCellAddress => "col" in a)
-      .map((a) => this.resolveRef(a));
+    // (range refs are expanded in a later milestone; this is the error-inspection path). A
+    // rewired cycle cell's live precedents point at the scratch sheet, so its precedents come
+    // from the original formula's text instead.
+    const precedents =
+      this.cycleFormulas.has(coordK) && formula !== null
+        ? this.formulaPrecedents(formula, sheetId)
+        : this.hf
+            .getCellPrecedents(address)
+            .filter((a): a is SimpleCellAddress => "col" in a)
+            .map((a) => this.resolveRef(a));
     const dependents = this.hf
       .getCellDependents(address)
       .filter((a): a is SimpleCellAddress => "col" in a)
       .map((a) => this.resolveRef(a));
 
-    // When the cell is a cycle, build the cycle path by tracing deep precedents.
+    // When the cell is a cycle, build the cycle path by tracing deep precedents (the solve
+    // path is stored for solved/unsolved members in Iterative Calculation Mode).
     let cycle: CellRef[] | null = null;
     if (is_cycle) {
-      cycle = this.traceCyclePath({ sheet: sheetId, col, row } as SimpleCellAddress);
+      cycle = this.cyclePaths.get(coordK) ?? this.traceCyclePath(address as SimpleCellAddress);
     }
 
     return {
@@ -1307,7 +1393,10 @@ export class ModelEngine {
       };
     }
     const raw = this.hf.getCellValue({ sheet: this.sheetId as number, col, row });
-    const formula = this.hf.getCellFormula({ sheet: this.sheetId as number, col, row }) ?? null;
+    // Solved cycle cells hold a `=CycleSolver!A…` pointer live — surface the user's formula
+    // and display the authoritative relaxed value (never a transient pointer read).
+    const formula = this.logicalFormula(row, col);
+    const solved = this.cycleSolved.get(this.coordKey(row, col));
     return {
       line_id,
       period_id,
@@ -1315,8 +1404,9 @@ export class ModelEngine {
       formula,
       // Manual cells display the exact stored string; formula cells commit-round the float
       // result to Currency Scale (MONEY-ROUNDING-SPEC §3) — never a raw float in the UI.
-      computed_text: amount ?? this.hfValueToText(raw),
-      error_code: this.hfErrorCode(raw),
+      // A solved cycle cell is a value, not an error, whatever the pointer cell holds.
+      computed_text: amount ?? this.hfValueToText(solved ?? raw),
+      error_code: solved !== undefined ? null : this.hfErrorCode(raw),
       manual_override: this.overrides.has(this.key(line_id, period_id)),
     };
   }
@@ -1377,7 +1467,9 @@ export class ModelEngine {
     const durationMs = Math.max(0, Math.floor(performance.now() - started));
     return {
       dirty_cells: changed.size,
-      cycles: [],
+      // Unresolved cyclic SCCs (Iterative Calculation Mode, AUDIT-04). Solved SCCs are
+      // resolved, not cycles — they surface no issue and no path.
+      cycles: this.unsolvedCycles,
       changed_cells: [...changed].sort(),
       issues,
       duration_ms: durationMs,
@@ -1392,6 +1484,403 @@ export class ModelEngine {
     return (
       this.hf.simpleCellAddressToString({ sheet: this.sheetId, col, row }, 0) ??
       `${line_id}:${period_id}`
+    );
+  }
+
+  /* ── Iterative Calculation Mode — solver integration (AUDIT-04) ──────────────────────────
+   * `refreshCycleSolves` runs on every graph mutation (loadGrid/setCell/clearCell/recalc/
+   * setDriverValue/named ranges). It is a no-op when the mode is OFF (default) — the grid
+   * keeps the `#CYCLE!` behavior exactly as before. When ON: cyclic SCCs are relaxed by
+   * `solveCyclicScc` (dual-probe validated); solved members get rewired to the scratch sheet
+   * so dependents resolve through HyperFormula's own propagation; unsolvable SCCs keep their
+   * original formula and their `FORMULA_CYCLE`. */
+
+  private coordKey(row: number, col: number): string {
+    return `${row}:${col}`;
+  }
+
+  /** Excel-style address text for a Model-sheet coordinate (e.g. `B2` — 1-based). */
+  private modelCellText(row: number, col: number): string {
+    return this.hf.simpleCellAddressToString(
+      { sheet: this.sheetId as number, col, row },
+      0,
+    ) as string;
+  }
+
+  /** The user's formula for a cell: the stored original for rewired cycle cells, the live HF
+   *  formula otherwise. `null` = no formula (constant/empty). */
+  private logicalFormula(row: number, col: number): string | null {
+    const stored = this.cycleFormulas.get(this.coordKey(row, col));
+    if (stored !== undefined) return stored === "" ? null : stored;
+    if (this.sheetId === null) return null;
+    return this.hf.getCellFormula({ sheet: this.sheetId, col, row }) ?? null;
+  }
+
+  private removeCycleSheet(): void {
+    if (this.cycleSheetId !== null) {
+      this.hf.removeSheet(this.cycleSheetId);
+      this.cycleSheetId = null;
+    }
+  }
+
+  /**
+   * (Re)solve the cyclic SCCs of the loaded grid. Deterministic end to end: nodes/edges come
+   * from the logical formulas in grid order, SCCs are solved in dependency (reverse
+   * topological) order, and members are swept in (row, col) order by the solver.
+   */
+  private refreshCycleSolves(): void {
+    this.cycleSolved.clear();
+    this.cycleMembers.clear();
+    this.cyclePaths.clear();
+    this.unsolvedCycles = [];
+    const sheetId = this.sheetId;
+    if (
+      !this.iterativeCalculation ||
+      sheetId === null ||
+      this.lines.length === 0 ||
+      this.periods.length === 0
+    ) {
+      this.applyCyclePointers(new Map());
+      this.removeCycleSheet();
+      return;
+    }
+
+    // ── 1. Nodes: every in-grid cell with a logical formula (rows 1..N, cols 1..P+2 = YTD/FY).
+    const lastRow = this.lines.length;
+    const lastCol = this.periods.length + 2;
+    const nodeCoord = new Map<string, { row: number; col: number }>();
+    const formulaOf = new Map<string, string>();
+    const nodes: string[] = [];
+    for (let row = 1; row <= lastRow; row += 1) {
+      for (let col = 1; col <= lastCol; col += 1) {
+        const f = this.logicalFormula(row, col);
+        if (f === null) continue;
+        const id = this.coordKey(row, col);
+        nodes.push(id);
+        nodeCoord.set(id, { row, col });
+        formulaOf.set(id, f);
+      }
+    }
+
+    // ── 2. Edges: every in-grid reference target (ranges expanded to their full rectangle;
+    //    other-sheet refs are constant inputs and can never be part of a grid cycle).
+    const formulaIds = new Set(nodes);
+    const edges = new Map<string, string[]>();
+    for (const id of nodes) {
+      const refs = findFormulaReferences(formulaOf.get(id) as string);
+      if (refs.length === 0) continue;
+      const list: string[] = [];
+      for (const r of refs) {
+        if (r.sheet !== null && r.sheet !== SHEET_NAME) continue;
+        const rowMin = Math.min(r.startRow, r.endRow);
+        const rowMax = Math.max(r.startRow, r.endRow);
+        const colMin = Math.min(r.startCol, r.endCol);
+        const colMax = Math.max(r.startCol, r.endCol);
+        for (let rr = rowMin; rr <= rowMax; rr += 1) {
+          for (let cc = colMin; cc <= colMax; cc += 1) {
+            const to = this.coordKey(rr, cc);
+            if (
+              rr >= 1 &&
+              rr <= lastRow &&
+              cc >= 1 &&
+              cc <= lastCol &&
+              formulaIds.has(to) &&
+              !list.includes(to)
+            ) {
+              list.push(to);
+            }
+          }
+        }
+      }
+      if (list.length > 0) edges.set(id, list);
+    }
+
+    const cyclicSccs = findSCCs(nodes, edges).filter((scc) => isCyclicScc(scc, edges));
+    const byCoord = (a: string, b: string): number => {
+      const ca = nodeCoord.get(a) as { row: number; col: number };
+      const cb = nodeCoord.get(b) as { row: number; col: number };
+      return ca.row - cb.row || ca.col - cb.col;
+    };
+
+    // ── 3. No cycles: restore any stale pointers and drop the scratch sheet.
+    if (cyclicSccs.length === 0) {
+      this.applyCyclePointers(new Map());
+      this.removeCycleSheet();
+      return;
+    }
+
+    // Deterministic solve order: SCCs whose members reference another SCC are solved AFTER
+    // their dependency, so a dependent formula can read the already-solved values.
+    const sccIndexOf = new Map<string, number>();
+    cyclicSccs.forEach((scc, i) => {
+      for (const m of scc) sccIndexOf.set(m, i);
+    });
+    const dependsOn = cyclicSccs.map((scc, i) => {
+      const deps = new Set<number>();
+      for (const m of scc) {
+        for (const t of edges.get(m) ?? []) {
+          const j = sccIndexOf.get(t);
+          // Intra-SCC edges are internal — a dependency is only ANOTHER SCC.
+          if (j !== undefined && j !== i) deps.add(j);
+        }
+      }
+      return deps;
+    });
+    const order: number[] = [];
+    const placed = new Set<number>();
+    for (;;) {
+      const next = cyclicSccs
+        .map((_, i) => i)
+        .filter((i) => !placed.has(i) && [...(dependsOn[i] ?? [])].every((j) => placed.has(j)))
+        .sort((a, b) => a - b)[0];
+      if (next === undefined) break; // safety net — an SCC graph is always a DAG
+      order.push(next);
+      placed.add(next);
+    }
+
+    this.removeCycleSheet();
+    const scratchHandle = this.hf.addSheet(CYCLE_SHEET_NAME);
+    const scratchSheet = this.hf.getSheetId(scratchHandle);
+    if (scratchSheet === undefined) {
+      throw new Error("INTERNAL: could not resolve the CycleSolver sheet id");
+    }
+    this.cycleSheetId = scratchSheet;
+
+    const cyclicMemberIds = new Set<string>();
+    for (const scc of cyclicSccs) for (const m of scc) cyclicMemberIds.add(m);
+
+    // ── 4. Solve SCCs in dependency order; one scratch row per member (offset per SCC).
+    const solvedMembers = new Map<string, number>(); // node id → scratch row
+    try {
+      let rowOffset = 0;
+      for (const si of order) {
+        const scc = cyclicSccs[si] as string[];
+        const members = [...scc].sort(byCoord);
+        for (const m of members) this.cycleMembers.add(m);
+        const scratchRows = new Map<string, number>();
+        members.forEach((m, i) => scratchRows.set(m, rowOffset + i));
+        rowOffset += members.length;
+
+        const pathRefs: CellRef[] = members.map((m) => {
+          const c = nodeCoord.get(m) as { row: number; col: number };
+          return this.resolveRef({ sheet: sheetId, col: c.col, row: c.row });
+        });
+        for (const m of members) this.cyclePaths.set(m, pathRefs);
+
+        // Rewrite every member's logical formula for the scratch sheet. Any ref shape that
+        // cannot be rewritten safely refuses the WHOLE SCC — it keeps its original formula
+        // and therefore its `FORMULA_CYCLE` (honest refusal, never a guessed rewrite).
+        const rewritten: (string | null)[] = [];
+        for (const m of members) {
+          const f = formulaOf.get(m) as string;
+          rewritten.push(
+            rewriteFormulaReferences(f, (ref) =>
+              this.rewriteCycleRef(
+                ref,
+                f,
+                scratchRows,
+                solvedMembers,
+                cyclicMemberIds,
+                lastRow,
+                lastCol,
+              ),
+            ),
+          );
+        }
+        if (rewritten.some((w) => w === null)) {
+          this.unsolvedCycles.push({ path: pathRefs.map((r) => this.modelCellText(r.row, r.col)) });
+          continue;
+        }
+
+        // Build the scratch rows: A = input (seed 0), B = the rewritten formula.
+        this.hf.batch(() => {
+          members.forEach((m, i) => {
+            const scratchRow = scratchRows.get(m) as number;
+            this.hf.setCellContents({ sheet: scratchSheet, col: 0, row: scratchRow }, 0);
+            this.hf.setCellContents(
+              { sheet: scratchSheet, col: 1, row: scratchRow },
+              rewritten[i] as string,
+            );
+          });
+        });
+
+        // The live scratch IS the runtime state: writing a member's input lets later members'
+        // evaluations see it (strict Gauss–Seidel through HyperFormula's own propagation).
+        const runtime: CycleSolveRuntime = {
+          evaluate: (nodeId) => {
+            const raw = this.hf.getCellValue({
+              sheet: scratchSheet,
+              col: 1,
+              row: scratchRows.get(nodeId) as number,
+            });
+            // A formula error inside the SCC (e.g. #DIV/0!) means no numeric solution.
+            return typeof raw === "number" ? raw : null;
+          },
+          write: (nodeId, value) => {
+            this.hf.setCellContents(
+              { sheet: scratchSheet, col: 0, row: scratchRows.get(nodeId) as number },
+              value,
+            );
+          },
+        };
+        const result = solveCyclicScc(members, runtime, { scale: this.scale });
+        if (result.converged) {
+          // Commit the canonical (primary-probe) values into the A inputs the pointers read.
+          members.forEach((m, i) => {
+            const value = (result.values[i] as [string, number])[1];
+            const scratchRow = scratchRows.get(m) as number;
+            this.hf.setCellContents({ sheet: scratchSheet, col: 0, row: scratchRow }, value);
+            solvedMembers.set(m, scratchRow);
+            this.cycleSolved.set(m, value);
+          });
+        } else {
+          this.unsolvedCycles.push({ path: pathRefs.map((r) => this.modelCellText(r.row, r.col)) });
+        }
+      }
+    } catch (err) {
+      // Never leave a half-solved state behind: restore every pointer and drop the scratch.
+      this.applyCyclePointers(new Map());
+      this.removeCycleSheet();
+      throw err;
+    }
+
+    // ── 5. Rewire the solved members to their scratch inputs; restore the rest.
+    this.applyCyclePointers(solvedMembers);
+    if (solvedMembers.size === 0) this.removeCycleSheet();
+  }
+
+  /**
+   * Rewrite one reference of a cycle member's formula for the scratch sheet. Returns the
+   * replacement text, or `null` when the shape cannot be rewritten safely (the whole SCC
+   * then stays `#CYCLE!`). Rules: member of this SCC or an already-solved SCC → scratch input;
+   * member of another (not-yet-settled) SCC → refuse; anything else in the Model grid →
+   * qualified `Model!` ref; other sheets → pass through as written.
+   */
+  private rewriteCycleRef(
+    ref: FormulaReference,
+    formula: string,
+    scratchRows: Map<string, number>,
+    solvedMembers: Map<string, number>,
+    cyclicMemberIds: ReadonlySet<string>,
+    lastRow: number,
+    lastCol: number,
+  ): string | null {
+    if (ref.sheet !== null && ref.sheet !== SHEET_NAME) {
+      return formula.slice(ref.start, ref.end); // other sheets: absolute, as written
+    }
+    const rowMin = Math.min(ref.startRow, ref.endRow);
+    const rowMax = Math.max(ref.startRow, ref.endRow);
+    const colMin = Math.min(ref.startCol, ref.endCol);
+    const colMax = Math.max(ref.startCol, ref.endCol);
+    if (rowMin === rowMax && colMin === colMax) {
+      const key = this.coordKey(rowMin, colMin);
+      const own = scratchRows.get(key);
+      if (own !== undefined) return `CycleSolver!A${own + 1}`;
+      const solved = solvedMembers.get(key);
+      if (solved !== undefined) return `CycleSolver!A${solved + 1}`;
+      if (cyclicMemberIds.has(key)) return null; // another SCC — value not settled here
+      return `Model!${this.modelCellText(rowMin, colMin)}`;
+    }
+    // Range: rewritable when the WHOLE rectangle is single-column members of this SCC with
+    // contiguous scratch rows; otherwise an all-Model rectangle stays a qualified `Model!`
+    // range; anything mixed (members + non-members) is refused.
+    let allOwn = colMin === colMax;
+    const ownRows: number[] = [];
+    for (let rr = rowMin; rr <= rowMax && allOwn; rr += 1) {
+      for (let cc = colMin; cc <= colMax; cc += 1) {
+        const own = scratchRows.get(this.coordKey(rr, cc));
+        if (own === undefined) {
+          allOwn = false;
+          break;
+        }
+        ownRows.push(own);
+      }
+    }
+    if (allOwn) {
+      const lo = Math.min(...ownRows);
+      const hi = Math.max(...ownRows);
+      if (hi - lo + 1 === ownRows.length) {
+        return `CycleSolver!A${lo + 1}:CycleSolver!A${hi + 1}`;
+      }
+      return null; // interleaved with another member's scratch rows — refuse
+    }
+    if (rowMin >= 1 && rowMax <= lastRow && colMin >= 1 && colMax <= lastCol) {
+      return `Model!${this.modelCellText(rowMin, colMin)}:${this.modelCellText(rowMax, colMax)}`;
+    }
+    return null; // mixed/out-of-grid range — refuse
+  }
+
+  /**
+   * Point solved cycle cells at their scratch inputs and restore every cell that is no longer
+   * a solved member. Only cells whose live content is still a pointer (or that are becoming
+   * one) are touched — a cell the user edited in the meantime keeps its edit.
+   */
+  private applyCyclePointers(solved: Map<string, number>): void {
+    const sheetId = this.sheetId;
+    if (sheetId === null) return;
+    const keys = new Set<string>([...this.cycleFormulas.keys(), ...solved.keys()]);
+    if (keys.size === 0) return;
+    this.hf.batch(() => {
+      for (const k of keys) {
+        const sep = k.indexOf(":");
+        const row = parseInt(k.slice(0, sep), 10);
+        const col = parseInt(k.slice(sep + 1), 10);
+        const address = { sheet: sheetId, col, row };
+        const scratchRow = solved.get(k);
+        const live = this.hf.getCellFormula(address);
+        const isPointer = typeof live === "string" && live.startsWith("=CycleSolver!");
+        if (scratchRow !== undefined) {
+          // (Re)wire the pointer — covers new solves, moved scratch rows, and re-solved edits.
+          this.cycleFormulas.set(k, this.cycleFormulas.get(k) ?? live ?? "");
+          this.hf.setCellContents(address, `=CycleSolver!A${scratchRow + 1}`);
+        } else if (isPointer) {
+          const original = this.cycleFormulas.get(k);
+          this.hf.setCellContents(
+            address,
+            original === undefined || original === "" ? null : original,
+          );
+          this.cycleFormulas.delete(k);
+        } else {
+          this.cycleFormulas.delete(k); // changed underneath us (user edit) — drop the stale entry
+        }
+      }
+    });
+  }
+
+  /** Precedent refs derived from a formula's text (the path for rewired cycle cells, whose
+   *  live formula is a scratch pointer). Ranges are expanded to their grid cells. */
+  private formulaPrecedents(formula: string, sheetId: number): CellRef[] {
+    const refs: CellRef[] = [];
+    for (const r of findFormulaReferences(formula)) {
+      if (r.sheet === null || r.sheet === SHEET_NAME) {
+        const rowMin = Math.min(r.startRow, r.endRow);
+        const rowMax = Math.max(r.startRow, r.endRow);
+        const colMin = Math.min(r.startCol, r.endCol);
+        const colMax = Math.max(r.startCol, r.endCol);
+        for (let rr = rowMin; rr <= rowMax; rr += 1) {
+          for (let cc = colMin; cc <= colMax; cc += 1) {
+            refs.push(this.resolveRef({ sheet: sheetId, col: cc, row: rr }));
+          }
+        }
+      } else {
+        const targetSheet = this.hf.getSheetId(r.sheet);
+        if (targetSheet === undefined) continue;
+        refs.push(this.resolveRef({ sheet: targetSheet, col: r.startCol, row: r.startRow }));
+      }
+    }
+    return refs;
+  }
+
+  /** Whether a rewired cycle cell's original formula references the given Drivers row — the
+   *  live formula is a scratch pointer and its precedents no longer see the original refs. */
+  private logicalFormulaReferencesDriver(row: number, col: number, driverRow: number): boolean {
+    const stored = this.cycleFormulas.get(this.coordKey(row, col));
+    if (stored === undefined || stored === "") return false;
+    return findFormulaReferences(stored).some(
+      (r) =>
+        r.sheet === "Drivers" &&
+        Math.min(r.startRow, r.endRow) <= driverRow &&
+        driverRow <= Math.max(r.startRow, r.endRow),
     );
   }
 }

@@ -34,6 +34,51 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-04 formula cycle solver, engine scope DONE (2026-09-23, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-04 is the credibility vector for 3-statement models: debt revolver →
+  interest → debt is an _intentional_ mathematical loop, and HyperFormula 3.4.0 is DAG-only
+  (no iterative mode) — it hard-fails `#CYCLE!` and blocks exports. The spec
+  (FORMULA-ENGINE-SPEC §5) locks the contract: Tarjan SCC, damped Gauss–Seidel α=0.5,
+  ≤100 iterations, converge at max|Δ| ≤ 0.0001 minor units, divergent → `#CYCLE!`, OFF by
+  default.
+- **What shipped (all executed, not claimed):**
+  1. `src/model/cycleSolver.ts` — pure solver (no HyperFormula): Tarjan SCC + damped
+     Gauss–Seidel + **dual-probe validation** (zero seed AND unit seed must both converge
+     to the same value at the model's committed currency precision, identical decimal
+     HALF_UP at the model scale). 34 tests, hand-computed fixed points, incl. a 100-trial
+     random cyclic graph property test checked against a direct solve.
+  2. `src/workers/modelEngine.ts` — engine wiring behind additive opt-in
+     `loadGrid({ iterativeCalculation: true })` (default OFF; no new IPC, no new error
+     code → no Tier-3 RFC). Every mutation re-detects SCCs over the **logical**
+     (pre-pointer) formulas, solves each SCC in reverse-topological order on a private
+     `CycleSolver` sheet, and rewires solved members to `=CycleSolver!A{row}` pointers so
+     derived columns and YTD/FY `SUM`s stay exact. Original formulas are restored whenever
+     a loop breaks. 20 engine tests (`src/workers/modelEngine.cycles.test.ts`).
+  3. **Honest refusal policy:** any rewrite shape that cannot be guaranteed safe (mixed
+     member/constant ranges, multi-column member ranges, refs into a not-yet-solved SCC,
+     in-SCC formula errors) leaves the SCC at `FORMULA_CYCLE` — never a guessed value.
+     Unsolvable loops surface in `model.recalc.cycles` (path arrays) and
+     `inspectCell.is_cycle` (incl. solved members).
+- **Key design decisions (do not re-derive):**
+  - Dual probe agreement is checked at **committed currency precision**, not the spec
+    1e-4 tolerance: the per-sweep-change stop rule leaves probe endpoints up to ~4×tol
+    apart, which false-rejects uniquely-solvable loops at coarse scales (e.g. scale-0 JPY).
+  - Pointer design (solved members → `=CycleSolver!A{row}`) instead of a value overlay:
+    derived columns, named ranges, and `getDerived` then see exact values through
+    HyperFormula's own propagation.
+  - Detection runs on the **logical** formulas (what the analyst typed), not the live
+    formulas (which pointers would have rewritten) — otherwise detection flips every
+    refresh.
+  - Driver-table refs inside a cycle are constants (driver values are never part of an
+    SCC); custom functions (CAGR/YOY/…) appear only as dependency edges, never rewritten.
+- **Gates:** `npx tsc --noEmit` clean; `src/workers/modelEngine.test.ts` 72/72 (default-OFF
+  unchanged); `modelEngine.cycles.test.ts` 20/20; `model/cycleSolver.test.ts` 34/34;
+  `npm run check` fully green; `npm run build` green.
+- **Known gaps (follow-ups, see §2):** native Rust parity for the solver; a store/UI
+  toggle to expose `iterativeCalculation` (today it's an explicit load option —
+  deliberately no silent default).
+
 ### Latest — AUDIT-02 Excel-parity input formats, vector DONE (2026-09-18, `arena/01a0b379-fpa`)
 
 - **Why:** AUDIT-02 (Excel parity) named four input formats Excel accepts and OneFP&A rejected:
@@ -575,6 +620,11 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
 5. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
    grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
+6. **AUDIT-04 completion (native + UI)** — the TS/engine solver is DONE 2026-09-23
+   (see §1). Remaining: port the solver contract to native Rust (same parameters, same
+   dual-probe validation — the `src/model/cycleSolver.ts` tests are the oracle), add a
+   store/UI toggle that passes `iterativeCalculation` through `loadGrid`, then flip
+   AUDIT-04 to full DONE in AUDIT-VECTOR-PLAN / TASKBOARD.
 
 ---
 
