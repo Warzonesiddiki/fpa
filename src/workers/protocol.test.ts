@@ -30,7 +30,7 @@ describe("worker protocol (FORMULA-ENGINE-SPEC §5 envelope)", () => {
     const load = handleEngineMessage(engine, {
       id: 1,
       op: "loadGrid",
-      args: { lines: LINES, periods: PERIODS },
+      args: { layout: { lines: LINES, periods: PERIODS }, options: undefined },
     });
     expect(load).toEqual({ id: 1, ok: true, data: null });
 
@@ -315,6 +315,89 @@ describe("M3-5: spreadTotal op (MODELING-METHODS-SPEC §3)", () => {
         "Seasonality weights total 120% — normalize to 100% or fix.",
       );
       expect(payload.details).toMatchObject({ sum: "120", canNormalize: true });
+    }
+  });
+
+  it("dispatches setIterativeCalculation — live toggle re-solves without rebuilding the sheet", () => {
+    const engine = new ModelEngine();
+    // Unloaded engine: the op refuses honestly with INTERNAL, like the other graph ops.
+    const early = handleEngineMessage(engine, {
+      id: 1,
+      op: "setIterativeCalculation",
+      args: { enabled: true },
+    });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.error.code).toBe("INTERNAL");
+
+    const cycleLines: ModelGridLine[] = [
+      { id: "line-a", label: "4000 · Revenue", method: "manual" },
+      { id: "line-b", label: "4100 · Interest", method: "manual" },
+    ];
+    handleEngineMessage(engine, {
+      id: 2,
+      op: "loadGrid",
+      args: { layout: { lines: cycleLines, periods: PERIODS }, options: undefined },
+    });
+    // Convergent 2-cycle (row 0 = header, label column A → L1/P01 = B2, L2/P01 = B3):
+    // A = B*0.5, B = A+100 → A=100, B=200 (hand-computed fixed point).
+    handleEngineMessage(engine, {
+      id: 3,
+      op: "setCell",
+      args: { line_id: "line-a", period_id: "fp-2026-p01", formula: "=B3*0.5" },
+    });
+    const cycle = handleEngineMessage(engine, {
+      id: 4,
+      op: "setCell",
+      args: { line_id: "line-b", period_id: "fp-2026-p01", formula: "=B2+100" },
+    });
+    expect(cycle.ok).toBe(true);
+    if (cycle.ok) {
+      expect((cycle.data as { cell: { error_code: string | null } }).cell.error_code).toBe(
+        "FORMULA_CYCLE",
+      );
+    }
+
+    // Enable on the LIVE grid: the cycle resolves to the hand-computed fixed point.
+    const on = handleEngineMessage(engine, {
+      id: 5,
+      op: "setIterativeCalculation",
+      args: { enabled: true },
+    });
+    expect(on).toEqual({ id: 5, ok: true, data: null });
+    const gridOn = handleEngineMessage(engine, { id: 6, op: "getGrid" });
+    expect(gridOn.ok).toBe(true);
+    if (gridOn.ok) {
+      const cells = gridOn.data as {
+        line_id: string;
+        period_id: string;
+        computed_text: string | null;
+        error_code: string | null;
+      }[];
+      const a = cells.find((c) => c.line_id === "line-a" && c.period_id === "fp-2026-p01");
+      const b = cells.find((c) => c.line_id === "line-b" && c.period_id === "fp-2026-p01");
+      expect(a?.error_code).toBeNull();
+      expect(b?.error_code).toBeNull();
+      expect(a?.computed_text).toBe("100");
+      expect(b?.computed_text).toBe("200");
+    }
+
+    // Disable again: the cycle reverts — no stale "resolved" state survives the flip.
+    const off = handleEngineMessage(engine, {
+      id: 7,
+      op: "setIterativeCalculation",
+      args: { enabled: false },
+    });
+    expect(off).toEqual({ id: 7, ok: true, data: null });
+    const gridOff = handleEngineMessage(engine, { id: 8, op: "getGrid" });
+    expect(gridOff.ok).toBe(true);
+    if (gridOff.ok) {
+      const cells = gridOff.data as { line_id: string; error_code: string | null }[];
+      expect(cells).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ line_id: "line-a", error_code: "FORMULA_CYCLE" }),
+          expect.objectContaining({ line_id: "line-b", error_code: "FORMULA_CYCLE" }),
+        ]),
+      );
     }
   });
 });

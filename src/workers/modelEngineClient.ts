@@ -17,6 +17,7 @@ import type {
   GridLayout,
   HardcodedFinding,
   HardcodedLiteral,
+  LoadGridOptions,
   ModelGridPeriod,
   SetCellInput,
   SetCellResult,
@@ -25,7 +26,7 @@ import { handleEngineMessage, type EngineRequest, type EngineResponse } from "./
 import type { SpreadRequest, SpreadResult } from "./spreading";
 
 export interface ModelEngineClient {
-  loadGrid(layout: GridLayout): Promise<void>;
+  loadGrid(layout: GridLayout, options?: LoadGridOptions): Promise<void>;
   setCell(input: SetCellInput): Promise<SetCellResult>;
   clearCell(lineId: string, periodId: string): Promise<GridCellView>;
   recalc(): Promise<EngineRecalcReport>;
@@ -54,6 +55,8 @@ export interface ModelEngineClient {
   getNamedRangeValue(name: string): Promise<string | null>;
   /** Period Spreading (M3-5 · MODELING-METHODS-SPEC §3) — exact values, Σ == total. */
   spreadTotal(req: SpreadRequest): Promise<SpreadResult>;
+  /** Toggle Iterative Calculation on the live grid (non-destructive re-solve; AUDIT-04). */
+  setIterativeCalculation(enabled: boolean): Promise<void>;
   destroy(): void;
 }
 
@@ -117,8 +120,8 @@ class SingleFlight implements ModelEngineClient {
     });
   }
 
-  loadGrid(layout: GridLayout): Promise<void> {
-    return this.enqueue("loadGrid", layout);
+  loadGrid(layout: GridLayout, options?: LoadGridOptions): Promise<void> {
+    return this.enqueue("loadGrid", { layout, options });
   }
   setCell(input: SetCellInput): Promise<SetCellResult> {
     return this.enqueue("setCell", input);
@@ -191,6 +194,9 @@ class SingleFlight implements ModelEngineClient {
   }
   spreadTotal(req: SpreadRequest): Promise<SpreadResult> {
     return this.enqueue("spreadTotal", req);
+  }
+  setIterativeCalculation(enabled: boolean): Promise<void> {
+    return this.enqueue("setIterativeCalculation", { enabled });
   }
   destroy(): void {
     this.transport.destroy();

@@ -338,3 +338,46 @@ describe("Iterative Calculation Mode — solved cycles (opt-in load option)", ()
     expect(raw.decimalPlaces()).toBeLessThanOrEqual(2);
   });
 });
+
+describe("Iterative Calculation Mode — live toggle (S-041 toolbar · setIterativeCalculation)", () => {
+  it("refuses before loadGrid with INTERNAL (like the other graph ops)", () => {
+    const e = new ModelEngine();
+    expect(() => e.setIterativeCalculation(true)).toThrow(
+      /INTERNAL: loadGrid must run before setIterativeCalculation/,
+    );
+  });
+
+  it("enabling on the live grid re-solves an existing cycle without rebuilding the sheet", () => {
+    const e = plainEngine(); // loaded with the flag OFF — cycles are #CYCLE!
+    // Convergent 2-cycle (label column A, P01 = column B): L1 = 0.5·L2, L2 = L1 + 100
+    // → L1 = 100, L2 = 200 (exact fixed point, hand-computed).
+    setFormula(e, 0, 0, "=B3*0.5");
+    setFormula(e, 1, 0, "=B2+100");
+    expect(error(e, 0, 0)).toBe("FORMULA_CYCLE");
+    expect(error(e, 1, 0)).toBe("FORMULA_CYCLE");
+    expect(text(e, 0, 0)).toBe("#CYCLE!");
+
+    e.setIterativeCalculation(true); // live re-solve — the formulas are untouched
+    expect(text(e, 0, 0)).toBe("100");
+    expect(text(e, 1, 0)).toBe("200");
+    expect(error(e, 0, 0)).toBeNull();
+    expect(error(e, 1, 0)).toBeNull();
+    const report = e.recalc();
+    expect(report.issues).toEqual([]);
+    expect(report.cycles).toEqual([]);
+  });
+
+  it("disabling reverts the solved cycle to #CYCLE!/FORMULA_CYCLE (no stale resolution)", () => {
+    const e = cycleEngine(); // loaded with the flag ON
+    setFormula(e, 0, 0, "=B3*0.5");
+    setFormula(e, 1, 0, "=B2+100");
+    expect(text(e, 0, 0)).toBe("100");
+
+    e.setIterativeCalculation(false);
+    expect(text(e, 0, 0)).toBe("#CYCLE!");
+    expect(error(e, 0, 0)).toBe("FORMULA_CYCLE");
+    expect(error(e, 1, 0)).toBe("FORMULA_CYCLE");
+    const report = e.recalc();
+    expect(report.issues.some((i) => i.code === "FORMULA_CYCLE")).toBe(true);
+  });
+});

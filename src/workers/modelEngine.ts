@@ -876,6 +876,22 @@ export class ModelEngine {
     this.refreshCycleSolves();
   }
 
+  /**
+   * Toggle Iterative Calculation on the LIVE grid (S-041 toolbar, AUDIT-04): the sheet, cell
+   * values and formulas are preserved — only the cycle-solve state is re-evaluated. Enabling
+   * relaxes SCCs to the dual-probe-validated fixed point; disabling reverts every cycle cell
+   * to `#CYCLE!`/`FORMULA_CYCLE`. This is the runtime variant of
+   * `LoadGridOptions.iterativeCalculation` (FORMULA-ENGINE-SPEC §5); `loadGrid` remains the
+   * authoritative entry point.
+   */
+  setIterativeCalculation(enabled: boolean): void {
+    if (this.sheetId === null) {
+      throw new Error("INTERNAL: loadGrid must run before setIterativeCalculation");
+    }
+    this.iterativeCalculation = enabled;
+    this.refreshCycleSolves();
+  }
+
   private range(sheetId: number, row: number, colFrom: number, colTo: number): string {
     const sheetName = this.hf.getSheetName(sheetId);
     const from = this.hf.simpleCellAddressToString({ sheet: sheetId, col: colFrom, row }, 0);

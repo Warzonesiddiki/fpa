@@ -34,6 +34,34 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-04 store/UI toggle: iterative calculation on the S-041 toolbar (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** the documented AUDIT-04 follow-up was "native Rust parity + store/UI toggle".
+  The TS-verifiable half (store/UI) is now done; AUDIT-04 moves to 🚧 PARTIAL with only
+  the native port remaining (Rust-runner work, like M1's property/migration tests).
+- **What shipped (all executed, not claimed):**
+  - `useModelGridStore.iterativeCalculation` (default OFF) + `setIterativeCalculation`:
+    on a loaded grid the LIVE graph re-solves in place — cell values/formulas preserved,
+    no sheet rebuild (a destructive `load()` would have wiped the working set); without
+    a grid the flag arms the next `load()`, which passes it through `engine.loadGrid`.
+  - New additive worker op `setIterativeCalculation` (protocol + client); the `loadGrid`
+    op now carries `{layout, options}` so `LoadGridOptions.iterativeCalculation` reaches
+    the worker transport (previously engine-call-only). No IPC catalog change → no
+    Tier-3 RFC.
+  - S-041 toolbar toggle (`data-testid="iterative-calc-toggle"`, `aria-pressed`, i18n).
+  - 10 new tests (protocol/envelope, engine live ON→OFF round-trip on the hand-computed
+    2-cycle A=100/B=200, store, S-041 UI).
+- **Key decision (do not re-derive):** the toggle must NOT re-run `load()` — the store's
+  load path rebuilds the grid from COA lines and the engine's in-session cell values
+  would be lost. The live re-solve reuses `refreshCycleSolves()` (idempotent; OFF state
+  reverts cycle cells to `#CYCLE!` via `applyCyclePointers(new Map())`).
+- **Grid A1 mapping gotcha (cost an hour):** row 0 = header, column A = line labels, so
+  L1/P01 = **B2**, L2/P01 = **B3** (A1/B1 are header text cells — formulas referencing
+  them compute `#VALUE!`).
+- **Gates:** `npm run check` green, build green, E2E 6/6.
+- **Remaining AUDIT-04:** native Rust parity port (same parameters, same dual-probe
+  validation — the TS tests are the oracle). Rust-runner work.
+
 ### Latest — AUDIT-16 working capital drivers + revolver sweep, TS engines DONE (2026-09-26, `arena/01a0ce5b-fpa`)
 
 - **Why:** AUDIT-16 (cash flow / liquidity) named, beyond the Direct/Indirect cash
@@ -717,11 +745,12 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
    Remaining: money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
    454 / 445 / 544 / 3334, NRF 2024–2028, W53) and the migration suite — both Rust-runner
    work.
-6. **AUDIT-04 completion (native + UI)** — the TS/engine solver is DONE 2026-09-23
-   (see §1). Remaining: port the solver contract to native Rust (same parameters, same
-   dual-probe validation — the `src/model/cycleSolver.ts` tests are the oracle), add a
-   store/UI toggle that passes `iterativeCalculation` through `loadGrid`, then flip
-   AUDIT-04 to full DONE in AUDIT-VECTOR-PLAN / TASKBOARD.
+6. **AUDIT-04 completion (native)** — the TS/engine solver is DONE 2026-09-23 and the
+   **store/UI toggle is DONE 2026-09-26** (S-041 toolbar `iterative-calc-toggle`; store
+   flag through `loadGrid` + live re-solve op `setIterativeCalculation` — see §1).
+   Remaining: port the solver contract to native Rust (same parameters, same dual-probe
+   validation — the TS tests are the oracle), then flip AUDIT-04 to full DONE in
+   AUDIT-VECTOR-PLAN / TASKBOARD. Rust-runner work.
 
 ---
 

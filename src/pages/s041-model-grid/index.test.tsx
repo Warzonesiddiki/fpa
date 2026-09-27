@@ -428,6 +428,25 @@ describe("S-041 Model Grid — M3-9 Excel-parity toolbar (F-012)", () => {
     );
   }, 20000);
 
+  it("iterative calculation toggle flips the store flag (and aria-pressed) without reloading", async () => {
+    mockLoad();
+    const { container } = renderPage();
+    await waitForGridCell(container);
+    const toggle = screen.getByTestId("iterative-calc-toggle");
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(false);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await userEvent.click(toggle);
+    await waitFor(() => expect(useModelGridStore.getState().iterativeCalculation).toBe(true));
+    expect(screen.getByTestId("iterative-calc-toggle")).toHaveAttribute("aria-pressed", "true");
+    // The live re-solve keeps the same loaded grid (no status churn back to empty/loading).
+    expect(useModelGridStore.getState().status).toBe("populated");
+
+    await userEvent.click(toggle);
+    await waitFor(() => expect(useModelGridStore.getState().iterativeCalculation).toBe(false));
+    expect(screen.getByTestId("iterative-calc-toggle")).toHaveAttribute("aria-pressed", "false");
+  }, 20000);
+
   it("pastes a TSV block through the paste dialog", async () => {
     mockLoad();
     const { container } = renderPage();

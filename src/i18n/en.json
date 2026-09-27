@@ -908,6 +908,8 @@
     "formulaPlaceholder": "= or value",
     "apply": "Apply",
     "recalc": "Recalculate model",
+    "iterativeCalc": "Iterative calculation (formula cycles)",
+    "iterativeCalcHint": "Solve in-grid formula cycles (e.g. debt ↔ interest) with iterative calculation. Off by default: cycles stay flagged FORMULA_CYCLE.",
     "sheetTabs": "Sheets",
     "sheetModel": "Model",
     "gridRegion": "Model grid",

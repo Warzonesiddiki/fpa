@@ -638,3 +638,87 @@ describe("model grid store — period classification and hybrid labeling (M4-1 �
     expect(s.hybridLabel).toBeNull();
   });
 });
+
+describe("model grid store — iterative calculation toggle (AUDIT-04 · S-041 toolbar)", () => {
+  const LINE_B = "3f9f2c9e-9f8b-4e2d-9a1c-400000000011";
+
+  // Convergent 2-cycle (label column A, P01 = column B): A = 0.5·B, B = A + 100
+  // → A = 100, B = 200 (exact fixed point, hand-computed).
+  function setCycle() {
+    const calls = [
+      useModelGridStore
+        .getState()
+        .setCell({ line_id: LINE, period_id: PERIOD, formula: "=B3*0.5" }),
+      useModelGridStore
+        .getState()
+        .setCell({ line_id: LINE_B, period_id: PERIOD, formula: "=B2+100" }),
+    ];
+    return Promise.all(calls);
+  }
+
+  it("defaults to OFF; reset() clears the flag; toggling without a grid arms the next load", async () => {
+    useModelGridStore.getState().reset();
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(false);
+
+    mockLoad();
+    await useModelGridStore.getState().load();
+    await useModelGridStore.getState().setIterativeCalculation(true);
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(true);
+
+    useModelGridStore.getState().reset();
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(false);
+
+    // No live grid (just reset): the toggle simply arms the flag for the next load.
+    await useModelGridStore.getState().setIterativeCalculation(true);
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(true);
+  });
+
+  it("passes the armed flag through loadGrid so a fresh load solves cycles", async () => {
+    useModelGridStore.getState().reset();
+    await useModelGridStore.getState().setIterativeCalculation(true);
+    mockLoad();
+    await useModelGridStore.getState().load();
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [], issues: [], duration_ms: 0 },
+      audit_id: 1,
+    });
+    await setCycle();
+    const s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${PERIOD}`].error_code).toBeNull();
+    expect(s.cells[`${LINE}:${PERIOD}`].computed_text).toBe("100");
+    expect(s.cells[`${LINE_B}:${PERIOD}`].computed_text).toBe("200");
+  });
+
+  it("toggles the live grid in place: cycles resolve when ON and revert to FORMULA_CYCLE when OFF", async () => {
+    // The store is a module singleton — clear any flag armed by an earlier test.
+    useModelGridStore.getState().reset();
+    mockLoad();
+    const store = useModelGridStore.getState();
+    await store.load();
+    expect(useModelGridStore.getState().iterativeCalculation).toBe(false);
+    callMock.mockResolvedValue({
+      recalc: { dirty_cells: 1, cycles: [], changed_cells: [], issues: [], duration_ms: 0 },
+      audit_id: 2,
+    });
+    await setCycle();
+    // Flag OFF (default): the cycle stays flagged — cells are the engine's real state.
+    let s = useModelGridStore.getState();
+    expect(s.cells[`${LINE}:${PERIOD}`].error_code).toBe("FORMULA_CYCLE");
+    expect(s.cells[`${LINE_B}:${PERIOD}`].error_code).toBe("FORMULA_CYCLE");
+
+    await useModelGridStore.getState().setIterativeCalculation(true);
+    s = useModelGridStore.getState();
+    expect(s.iterativeCalculation).toBe(true);
+    expect(s.cells[`${LINE}:${PERIOD}`].error_code).toBeNull();
+    expect(s.cells[`${LINE}:${PERIOD}`].computed_text).toBe("100");
+    expect(s.cells[`${LINE_B}:${PERIOD}`].computed_text).toBe("200");
+    expect(s.recalc?.issues).toEqual([]); // real engine report — the cycle solved
+
+    await useModelGridStore.getState().setIterativeCalculation(false);
+    s = useModelGridStore.getState();
+    expect(s.iterativeCalculation).toBe(false);
+    expect(s.cells[`${LINE}:${PERIOD}`].error_code).toBe("FORMULA_CYCLE");
+    expect(s.cells[`${LINE_B}:${PERIOD}`].error_code).toBe("FORMULA_CYCLE");
+    expect(s.recalc?.issues.some((i) => i.code === "FORMULA_CYCLE")).toBe(true);
+  });
+});

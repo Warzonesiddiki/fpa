@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+- **AUDIT-04 store/UI toggle — iterative calculation on the S-041 toolbar DONE
+  (2026-09-26):** completes the TS-verifiable half of the AUDIT-04 follow-up (engine
+  solver shipped 2026-09-23; remaining work is native Rust parity only).
+  - `useModelGridStore.iterativeCalculation` (default OFF) +
+    `setIterativeCalculation(enabled)`: with a loaded grid the LIVE graph re-solves in
+    place — cell values and formulas are preserved, no sheet rebuild; without one the
+    flag arms the next load.
+  - New additive worker op `setIterativeCalculation` (protocol + client), and the
+    `loadGrid` op now carries `{ layout, options }` so the existing
+    `LoadGridOptions.iterativeCalculation` reaches the worker transport. No IPC catalog
+    change → no Tier-3 RFC.
+  - S-041 toolbar toggle (`aria-pressed`, `data-testid="iterative-calc-toggle"`,
+    i18n) in the house ghost-button pattern.
+  - 10 new tests across protocol / engine / store / S-041 UI (hand-computed 2-cycle
+    fixed point A=100/B=200 for the live ON→OFF round-trip).
+  AUDIT-04 moves ✅ (engine) → 🚧 PARTIAL (engine + store/UI DONE; native parity
+  remaining).
+- **AUDIT-16 working capital drivers + auto-revolver sweep — TS engines DONE
+
 - **AUDIT-16 working capital drivers + auto-revolver sweep — TS engines DONE
   (2026-09-26):** the last TS-verifiable slice of AUDIT-16 (cash flow / liquidity),
   completing the exact-decimal engine family (`cashFlow.ts` 2026-09-22,
