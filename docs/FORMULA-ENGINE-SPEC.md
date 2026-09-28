@@ -78,6 +78,7 @@ Rules: an error value **never propagates into a statement total as 0** — a cel
   - Convergence criteria: max absolute change between iterations $\le 0.0001$ minor units.
   - Converged cycles resolve to valid financial values; non-converging or divergent loops (e.g. `=A1*2`) terminate at max iterations and emit `#CYCLE!`.
   - When Iterative Calculation is disabled (default), cycles are flagged at build time and marked `#CYCLE!`.
+  - **Runtime toggle (S-041 · AUDIT-04):** the mode is also switchable on the live grid without rebuilding the sheet — the worker op `setIterativeCalculation(enabled)` re-runs the cycle solve in place (enabling relaxes SCCs to the validated fixed point, disabling reverts cycle cells to `#CYCLE!`/`FORMULA_CYCLE`); `loadGrid` remains the authoritative entry point and carries the same option for fresh loads.
 - **Determinism:** same model + inputs → identical values on all OS (property test; float divergence eliminated by commit-rounding).
 - **Scale contract:** engine evaluates in float (Excel parity), **then rounds to Currency Scale at commit** (MONEY-ROUNDING-SPEC §3); rust_decimal never participates in cell evaluation (I1 boundary: engine output → Money Value on commit).
 

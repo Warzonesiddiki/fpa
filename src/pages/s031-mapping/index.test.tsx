@@ -408,6 +408,140 @@ describe("S-031 Mapping and Validation Wizard (M2-3)", () => {
     expect(results.violations).toEqual([]);
   }, 30000);
 
+  it("suggests the closest COA matches for a missing account code (AUDIT-07, advisory only)", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") {
+        return Promise.resolve([
+          {
+            id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+            code: "4000",
+            name: "Revenue",
+            account_type: "revenue",
+            report_section: "Income Statement",
+            parent_id: null,
+            bu_id: null,
+            is_control: false,
+            active: true,
+            version: 1,
+            usage_count: 2,
+          },
+          {
+            id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000002",
+            code: "6310",
+            name: "Interest Expense (Foreign)",
+            account_type: "opex",
+            report_section: "Income Statement",
+            parent_id: null,
+            bu_id: null,
+            is_control: false,
+            active: true,
+            version: 1,
+            usage_count: 0,
+          },
+          {
+            id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000003",
+            code: "6500",
+            name: "Rent Expense",
+            account_type: "opex",
+            report_section: "Income Statement",
+            parent_id: null,
+            bu_id: null,
+            is_control: false,
+            active: true,
+            version: 1,
+            usage_count: 1,
+          },
+        ]);
+      }
+      return Promise.resolve({
+        hard: [
+          {
+            code: "MAP_ACCOUNT_AMBIGUOUS",
+            message:
+              "ACCOUNT_MISSING: '6310X' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+            line_no: 3,
+            details: { accountCode: "6310X", list: [] },
+          },
+        ],
+        warnings: [],
+        preview: [PREVIEW_ROWS[0]],
+        rows: 1,
+        mapping_version: "canonical-v1",
+      });
+    });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+
+    // One advisory candidate (Jaro-Winkler 0.96 on the code) surfaces under the finding.
+    await screen.findByText("Closest COA matches");
+    const list = await screen.findByTestId("account-suggestions");
+    expect(list).toHaveTextContent("6310");
+    expect(list).toHaveTextContent("Interest Expense (Foreign)");
+    expect(list).toHaveTextContent("96% similar");
+    expect(
+      screen.getByText(
+        "Similarity suggestions for the missing account code — verify before correcting the source or mapping.",
+      ),
+    ).toBeInTheDocument();
+
+    // Advisory only: the HARD gate stays and no remap/create action appears.
+    expect(screen.getByText("HARD findings (1)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Tie-Out" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /remap|create account/i })).not.toBeInTheDocument();
+
+    const results = await axe(document.body);
+    expect(results.violations).toEqual([]);
+  }, 30000);
+
+  it("states when a missing account has no close COA match (AUDIT-07)", async () => {
+    readyForValidation();
+    const user = userEvent.setup();
+    callMock.mockImplementation((cmd: string) => {
+      if (cmd === "coa.list") {
+        return Promise.resolve([
+          {
+            id: "3f9f2c9e-9f8b-4e2d-9a1c-300000000001",
+            code: "4000",
+            name: "Revenue",
+            account_type: "revenue",
+            report_section: "Income Statement",
+            parent_id: null,
+            bu_id: null,
+            is_control: false,
+            active: true,
+            version: 1,
+            usage_count: 2,
+          },
+        ]);
+      }
+      return Promise.resolve({
+        hard: [
+          {
+            code: "MAP_ACCOUNT_AMBIGUOUS",
+            message:
+              "ACCOUNT_MISSING: 'Z999' is not in this Company's COA — correct the source or mapping and validate again (GL-TEMPLATE-SPEC §6)",
+            line_no: 5,
+            details: { accountCode: "Z999", list: [] },
+          },
+        ],
+        warnings: [],
+        preview: [PREVIEW_ROWS[0]],
+        rows: 1,
+        mapping_version: "canonical-v1",
+      });
+    });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Continue to Validation" }));
+    expect(
+      await screen.findByText(
+        "No close match in this Company's COA — the source may need a new account.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("account-suggestions")).not.toBeInTheDocument();
+  }, 30000);
+
   it("renders an honest zero-valid-row edge state without a fabricated source preview", async () => {
     readyForValidation();
     const user = userEvent.setup();

@@ -1,10 +1,13 @@
-import { useMemo } from "react";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Lightbulb, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { RowIssue, ImportParseData as ImportParseResult } from "@/api/schema";
+import { call } from "@/api/bridge";
+import type { AccountNode, RowIssue, ImportParseData as ImportParseResult } from "@/api/schema";
 import { Button, Card, MoneyCell, StatePanel } from "@/components/ui";
+import { suggestAccounts } from "@/model/jaroWinkler";
 import { useImportStore } from "@/stores/import";
+import { useSessionStore } from "@/stores/session";
 import { useSettingsStore } from "@/stores/settings";
 
 const FINDING_DISPLAY_LIMIT = 50;
@@ -38,8 +41,103 @@ function detailValue(value: unknown): string | null {
   return null;
 }
 
+/**
+ * AUDIT-07 mapping suggestions: when a HARD `MAP_ACCOUNT_AMBIGUOUS` finding
+ * carries an `ACCOUNT_MISSING` detail, rank the Company's COA against the
+ * missing source code (Jaro-Winkler, `src/model/jaroWinkler.ts`) and show the
+ * closest matches. Purely advisory — computed client-side from the catalogued
+ * `coa.list` data, never auto-applied, never changes validation behaviour
+ * (GL-TEMPLATE-SPEC §6 keeps the hard gate and re-validation).
+ *
+ * `accounts` is `null` while the (single, per-panel) COA read is in flight or
+ * failed — both render nothing; a read that resolves to a non-array is
+ * treated as a failure.
+ */
+function useCoaAccounts(enabled: boolean): AccountNode[] | null {
+  const companyId = useSessionStore((state) => state.companyId);
+  const [accounts, setAccounts] = useState<AccountNode[] | null>(null);
+
+  useEffect(() => {
+    if (!enabled || companyId === null) return;
+    let active = true;
+    // Promise.resolve tolerates a direct value as well as a promise (advisory
+    // read: a missing/non-array answer renders no suggestions, never an error).
+    Promise.resolve(call("coa.list", { company_id: companyId }))
+      .then((data) => {
+        if (active && Array.isArray(data)) setAccounts(data as AccountNode[]);
+      })
+      .catch(() => {
+        // Suggestions are advisory: a failed read renders no suggestions.
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled, companyId]);
+
+  return accounts;
+}
+
+function MissingAccountSuggestions({
+  accountCode,
+  accounts,
+}: {
+  accountCode: string;
+  accounts: AccountNode[] | null;
+}) {
+  const { t } = useTranslation();
+
+  const suggestions = useMemo(
+    () => (accounts === null ? [] : suggestAccounts({ code: accountCode }, accounts)),
+    [accounts, accountCode],
+  );
+
+  if (accounts === null || accounts.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded-md border border-[var(--color-oneborder)] bg-[var(--color-onesurface)] p-2.5">
+      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-onetextmuted)]">
+        <Lightbulb aria-hidden="true" className="h-3 w-3" />
+        {t("mappingWizard.validation.suggestions.title")}
+      </p>
+      {suggestions.length === 0 ? (
+        <p className="mt-1.5 text-xs text-[var(--color-onetextsecondary)]">
+          {t("mappingWizard.validation.suggestions.none")}
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-[11px] text-[var(--color-onetextmuted)]">
+            {t("mappingWizard.validation.suggestions.hint")}
+          </p>
+          <ul className="mt-1.5 space-y-1" data-testid="account-suggestions">
+            {suggestions.map((suggestion) => (
+              <li
+                key={suggestion.code}
+                className="flex items-baseline justify-between gap-2 text-xs text-[var(--color-onetext)]"
+              >
+                <span className="min-w-0">
+                  <code className="font-mono">{suggestion.code}</code>{" "}
+                  <span className="text-[var(--color-onetextsecondary)]">{suggestion.name}</span>
+                </span>
+                <span className="shrink-0 text-[var(--color-onetextmuted)]">
+                  {t("mappingWizard.validation.suggestions.similarity", {
+                    score: Math.floor(suggestion.similarity * 100),
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FindingList({ severity, findings }: FindingListProps) {
   const { t } = useTranslation();
+  const needsAccountSuggestions =
+    severity === "hard" && findings.some((finding) => finding.code === "MAP_ACCOUNT_AMBIGUOUS");
+  const coaAccounts = useCoaAccounts(needsAccountSuggestions);
+
   if (findings.length === 0) return null;
 
   const displayed = findings.slice(0, FINDING_DISPLAY_LIMIT);
@@ -93,6 +191,14 @@ function FindingList({ severity, findings }: FindingListProps) {
                   ))}
                 </dl>
               )}
+              {hard &&
+                finding.code === "MAP_ACCOUNT_AMBIGUOUS" &&
+                typeof finding.details.accountCode === "string" && (
+                  <MissingAccountSuggestions
+                    accountCode={finding.details.accountCode}
+                    accounts={coaAccounts}
+                  />
+                )}
             </li>
           );
         })}

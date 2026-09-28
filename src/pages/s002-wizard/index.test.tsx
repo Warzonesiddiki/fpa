@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
 import { renderWizard } from "@/test/wizard-harness";
 
 const callMock = vi.fn();
@@ -469,5 +470,18 @@ describe("S-002 wizard — live pack library states (B18-3 mock mirrors shapes)"
         "Standard costing, production plan, capacity, WIP; OEE, inventory turns, standard cost variance.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the fiscal calendar preview step axe-clean (M1 a11y gate)", async () => {
+    installLiveMocks();
+    renderWizard();
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Acme" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByText("Manufacturing");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // The live preview renders the period rows before the a11y audit.
+    expect(await screen.findByText("P01")).toBeInTheDocument();
+    const results = await axe(document.body);
+    expect(results.violations).toEqual([]);
   });
 });

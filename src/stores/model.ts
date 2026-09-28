@@ -184,6 +184,19 @@ interface ModelGridState {
   applyEdit: (input: SetCellInput) => Promise<boolean>;
   inspectCell: (lineId: string, periodId: string) => Promise<CellInspectResult>;
   recalcAll: () => Promise<void>;
+  /**
+   * Iterative Calculation (AUDIT-04, FORMULA-ENGINE-SPEC §5): when enabled, in-grid formula
+   * cycles (e.g. the three-statement debt ↔ interest loop) relax to a dual-probe-validated
+   * fixed point instead of a hard `#CYCLE!`. Default OFF — cycles stay flagged FORMULA_CYCLE
+   * until the user opts in via the S-041 toolbar toggle.
+   */
+  iterativeCalculation: boolean;
+  /**
+   * Toggle Iterative Calculation. With a loaded grid the live graph is re-solved in place
+   * (cell values and formulas are preserved); without one the flag simply applies to the next
+   * load (passed through `engine.loadGrid`, which remains the authoritative entry point).
+   */
+  setIterativeCalculation: (enabled: boolean) => Promise<void>;
   retry: () => Promise<void>;
   reset: () => void;
   /** Select a single cell (collapse any range selection to it). */
@@ -329,6 +342,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
   canUndo: false,
   canRedo: false,
   spreadError: null,
+  iterativeCalculation: false,
 
   armDrill: (target) => set({ drillTarget: target }),
   clearDrill: () => set({ drillTarget: null }),
@@ -402,7 +416,10 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       }
 
       const engine = getClient();
-      await engine.loadGrid({ lines, periods });
+      await engine.loadGrid(
+        { lines, periods },
+        { iterativeCalculation: get().iterativeCalculation },
+      );
       const grid = await engine.getGrid();
       const cells: Record<string, GridCellView> = {};
       for (const c of grid) cells[cellKey(c.line_id, c.period_id)] = c;
@@ -885,6 +902,24 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
     }
   },
 
+  setIterativeCalculation: async (enabled) => {
+    set({ iterativeCalculation: enabled });
+    const s = get();
+    // No live grid (not loaded yet, or no company) — the flag applies on the next load().
+    if (!s.client || s.lines.length === 0) return;
+    try {
+      await s.client.setIterativeCalculation(enabled);
+      const report = await s.client.recalc();
+      const cells: Record<string, GridCellView> = {};
+      for (const c of await s.client.getGrid()) cells[cellKey(c.line_id, c.period_id)] = c;
+      const derived: Record<string, { ytd: string | null; fy: string | null }> = {};
+      for (const line of s.lines) derived[line.id] = await s.client.getDerived(line.id);
+      set({ status: "populated", cells, derived, recalc: report, error: null });
+    } catch (err) {
+      set({ status: "error", error: err as BridgeError });
+    }
+  },
+
   retry: async () => {
     await get().load();
   },
@@ -923,6 +958,7 @@ export const useModelGridStore = create<ModelGridState>((set, get) => ({
       error: null,
       lines: [],
       periods: [],
+      iterativeCalculation: false,
       cells: {},
       derived: {},
       recalc: null,

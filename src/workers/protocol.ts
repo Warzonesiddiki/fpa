@@ -30,7 +30,8 @@ export type EngineOp =
   | "removeNamedRange"
   | "listNamedRanges"
   | "getNamedRangeValue"
-  | "spreadTotal";
+  | "spreadTotal"
+  | "setIterativeCalculation";
 
 export interface EngineRequest {
   id: number;
@@ -62,9 +63,14 @@ export function parseEngineError(err: unknown): { code: string; message: string 
 export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): EngineResponse {
   try {
     switch (req.op) {
-      case "loadGrid":
-        engine.loadGrid(req.args as Parameters<ModelEngine["loadGrid"]>[0]);
+      case "loadGrid": {
+        const { layout, options } = req.args as {
+          layout: Parameters<ModelEngine["loadGrid"]>[0];
+          options?: Parameters<ModelEngine["loadGrid"]>[1];
+        };
+        engine.loadGrid(layout, options);
         return { id: req.id, ok: true, data: null };
+      }
       case "setCell":
         return {
           id: req.id,
@@ -150,6 +156,11 @@ export function handleEngineMessage(engine: ModelEngine, req: EngineRequest): En
         // Pure computation (MODELING-METHODS-SPEC §3): the caller commits each period value through
         // the audited `model.cell.set.v1` + `setCell` path, so the graph stays the single owner.
         return { id: req.id, ok: true, data: spreadTotal(req.args as SpreadRequest) };
+      case "setIterativeCalculation": {
+        const { enabled } = req.args as { enabled: boolean };
+        engine.setIterativeCalculation(enabled);
+        return { id: req.id, ok: true, data: null };
+      }
       default:
         return {
           id: req.id,

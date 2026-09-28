@@ -43,8 +43,11 @@ test("Unlock -> Companies -> First-Run Wizard creates a Company -> Dashboard", a
 
   await page.getByRole("button", { name: "Next" }).click();
 
-  // Step 3.3: Fiscal Calendar (12-month default; preview renders once loaded).
+  // Step 3.3: Fiscal Calendar (12-month default; the live preview must render the
+  // actual periods — M1 exit criterion "calendar preview" — not just the heading).
   await expect(page.getByRole("heading", { name: "Fiscal Calendar" })).toBeVisible();
+  await expect(page.getByText("P01", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("P12", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Next" }).click();
 
   // Step 3.4: Chart of Accounts review.
@@ -61,4 +64,13 @@ test("Unlock -> Companies -> First-Run Wizard creates a Company -> Dashboard", a
   await expect(page).toHaveURL(/\/app\/dashboard/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByText(/Plan-Only/)).toBeVisible();
+
+  // M1 exit criterion: the model grid opens for the freshly created Company
+  // (layout composed from the pack's COA + the previewed calendar).
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Model" }).click();
+  await expect(page).toHaveURL(/\/app\/model\/grid/);
+  await expect(page.getByRole("heading", { name: "Model Grid" })).toBeVisible();
+  const grid = page.getByTestId("model-grid");
+  await expect(grid).toBeVisible();
+  await expect(page.locator('[role="gridcell"][col-id^="p-"]').first()).toBeVisible();
 });

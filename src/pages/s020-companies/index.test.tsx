@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { axe } from "vitest-axe";
 import { CompaniesPage } from "./index";
 
 const callMock = vi.fn();
@@ -45,11 +46,14 @@ const COMPANIES = [
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={["/app/companies"]}>
-      <Routes>
-        <Route path="/app/companies" element={<CompaniesPage />} />
-        <Route path="/wizard" element={<div>wizard</div>} />
-        <Route path="/app/dashboard" element={<div>dashboard</div>} />
-      </Routes>
+      {/* `<main>` mirrors the app shell's content landmark so the axe `region` rule passes. */}
+      <main>
+        <Routes>
+          <Route path="/app/companies" element={<CompaniesPage />} />
+          <Route path="/wizard" element={<div>wizard</div>} />
+          <Route path="/app/dashboard" element={<div>dashboard</div>} />
+        </Routes>
+      </main>
     </MemoryRouter>,
   );
 }
@@ -183,5 +187,13 @@ describe("S-020 Company Manager (F-001)", () => {
     const message = await screen.findByText("A file already exists at that path.");
     expect(message.closest('[role="alert"]')).toBeInTheDocument();
     expect(screen.getByText("STORAGE_FILE_EXISTS")).toBeInTheDocument();
+  });
+
+  it("keeps the populated company list axe-clean (M1 a11y gate)", async () => {
+    callMock.mockResolvedValue(COMPANIES);
+    renderPage();
+    await screen.findByText("Meridian Holdings (Demo)");
+    const results = await axe(document.body);
+    expect(results.violations).toEqual([]);
   });
 });

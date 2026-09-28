@@ -34,6 +34,173 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — AUDIT-04 store/UI toggle: iterative calculation on the S-041 toolbar (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** the documented AUDIT-04 follow-up was "native Rust parity + store/UI toggle".
+  The TS-verifiable half (store/UI) is now done; AUDIT-04 moves to 🚧 PARTIAL with only
+  the native port remaining (Rust-runner work, like M1's property/migration tests).
+- **What shipped (all executed, not claimed):**
+  - `useModelGridStore.iterativeCalculation` (default OFF) + `setIterativeCalculation`:
+    on a loaded grid the LIVE graph re-solves in place — cell values/formulas preserved,
+    no sheet rebuild (a destructive `load()` would have wiped the working set); without
+    a grid the flag arms the next `load()`, which passes it through `engine.loadGrid`.
+  - New additive worker op `setIterativeCalculation` (protocol + client); the `loadGrid`
+    op now carries `{layout, options}` so `LoadGridOptions.iterativeCalculation` reaches
+    the worker transport (previously engine-call-only). No IPC catalog change → no
+    Tier-3 RFC.
+  - S-041 toolbar toggle (`data-testid="iterative-calc-toggle"`, `aria-pressed`, i18n).
+  - 10 new tests (protocol/envelope, engine live ON→OFF round-trip on the hand-computed
+    2-cycle A=100/B=200, store, S-041 UI).
+- **Key decision (do not re-derive):** the toggle must NOT re-run `load()` — the store's
+  load path rebuilds the grid from COA lines and the engine's in-session cell values
+  would be lost. The live re-solve reuses `refreshCycleSolves()` (idempotent; OFF state
+  reverts cycle cells to `#CYCLE!` via `applyCyclePointers(new Map())`).
+- **Grid A1 mapping gotcha (cost an hour):** row 0 = header, column A = line labels, so
+  L1/P01 = **B2**, L2/P01 = **B3** (A1/B1 are header text cells — formulas referencing
+  them compute `#VALUE!`).
+- **Gates:** `npm run check` green, build green, E2E 6/6.
+- **Remaining AUDIT-04:** native Rust parity port (same parameters, same dual-probe
+  validation — the TS tests are the oracle). Rust-runner work.
+
+### Latest — AUDIT-16 working capital drivers + revolver sweep, TS engines DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-16 (cash flow / liquidity) named, beyond the Direct/Indirect cash
+  flow (done 2026-09-22 in `cashFlow.ts`): "working capital drivers (DSO/DPO/DIO);
+  auto-revolver sweep". Those were the last TS-verifiable pieces; the rest
+  (`cash_flow_reconciliation` command + tables, S-060/S-046 UI wiring, native
+  parity) is Tier-3 or native.
+- **What shipped (all executed, not claimed):** `src/model/workingCapital.ts` —
+  new pure module, 13 tests with hand-computed fixed points:
+  1. **Drivers** — DSO = AR ÷ Revenue × days, DIO = Inventory ÷ COGS × days,
+     DPO = AP ÷ COGS × days, CCC = DSO + DIO − DPO; exact decimal (decimal.js)
+     committed to 2 places HALF_UP; zero/negative flow → `null` + reason (never a
+     fabricated ratio).
+  2. **Auto-revolver sweep (closed form)** — exact integer minor units:
+     `cash + d − round(d·r) ≥ minCash` solved by HALF_UP start from the
+     real-valued fixed point `(min − cash)/(1 − r)` + bounded one-unit walk for the
+     rounded interest; floor/limit respected; `minimumCashMet: false` when the
+     limit caps the draw short (honest flag, not an assumption); excess-cash sweep
+     repays above a target cash capped by the outstanding balance.
+- **Key decision (do not re-derive):** the sweep is the **closed-form oracle** for
+  the grid cycle `cycleSolver.ts` documents (debt ↔ interest ↔ cash ↔ draw) — the
+  AUDIT-04 iterative solver relaxes the in-grid formula version; both must agree.
+  Keep the module pure (no engine, no store) so it stays the native reference.
+- **Gates:** `npm run check` green, `npm run build` green, 13/13 new tests.
+- **Follow-ups (Tier-3/native):** `cash_flow_reconciliation` command +
+  `cash_flow_statements`/`working_capital_drivers` tables; S-060 `type="cf"` +
+  S-046 13-week UI wiring; `statement.rs`/`schedule.rs` parity. (The 13-week
+  schedule engine already exists — `src/model/week13Cash.ts`, AUDIT-12.)
+
+### Latest — AUDIT-07 Jaro-Winkler mapping suggestions, TS slice DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-07 (ingestion gaps) — the top analyst-rejection case is a new ERP
+  account code that isn't in the Company's COA: hard `MAP_ACCOUNT_AMBIGUOUS` /
+  `ACCOUNT_MISSING` blocks the import and S-031 offered no way forward. The vector's
+  fix = Jaro-Winkler suggestions + `account_mappings` table + `coa.create` +
+  `Data::DateTime` + `CURRENCY_MIXED` removal. Everything but the suggestion
+  mechanism is Tier-3 (new IPC/table/catalog changes) or native — so this unit
+  ships the **pure-TS slice** with zero new IPC and zero behavior change.
+- **What shipped (all executed, not claimed):**
+  1. `src/model/jaroWinkler.ts` — pure module (no money/storage/engine): Jaro,
+     Jaro-Winkler (prefix cap 4, p = 0.1), `suggestAccounts` (max(code, name)
+     similarity, case-insensitive names, threshold 0.85, top 3, deterministic).
+     14 tests — every value cross-checked against an independent O(n²) reference
+     before pinning.
+  2. `src/pages/s031-mapping/ValidationPanel.tsx` — advisory "Closest COA matches"
+     under each `ACCOUNT_MISSING` finding (single `coa.list` read per panel; "no
+     close match" line when nothing clears the threshold). **Advisory only** —
+     never auto-applied; the hard gate, the finding payload, and the remediation
+     surface are unchanged (GL-TEMPLATE-SPEC §6 + API-SPEC updated to say exactly
+     that, incl. the `details.list` core-owned slot semantics).
+  3. Tests: 16/16 S-031 (new: suggestion rendering with 96% candidate, no-match
+     line, advisory-only assertions, axe-clean); `npm run check` + build green.
+- **Key decision (do not re-derive):** the suggestion is computed **client-side from
+  catalogued `coa.list` data** rather than populating `details.list` in the mock —
+  a mock-only fill would be local-fake persistence (B18-3); the native side owns
+  `list` and filling it is a documented follow-up alongside the `account_mappings`
+  table + `coa.create` (Tier-3) + `Data::DateTime` + `CURRENCY_MIXED` removal.
+- **Follow-ups (Tier-3/native):** as above — AUDIT-07 is now 🚧 PARTIAL.
+
+### Latest — M1 acceptance sweep, TS-verifiable parts DONE (2026-09-26, `arena/01a0ce5b-fpa`)
+
+- **Why:** ROADMAP §M1 exit criteria: "unlock → create company → wizard → calendar
+  preview → grid opens; money/calendar property tests green; a11y gates on 4 screens;
+  migration suite green." The six E2E specs covered unlock, the wizard steps (heading
+  only), and grid editing on the _pre-seeded_ demo company — but nothing asserted the
+  calendar preview content, and nothing followed a _freshly created_ company into the
+  grid. The 4 flow screens also lacked axe gates on S-002/S-020.
+- **What shipped (all executed, not claimed):**
+  1. `e2e/company-lifecycle.spec.ts` — the journey now asserts (a) the wizard's Fiscal
+     Calendar step renders the **live preview periods** (P01…P12, 12-month default —
+     `previewFiscalYears` in the dev mock; the heading alone no longer passes) and
+     (b) after landing on the Dashboard, SPA-navigation to the **Model Grid** for the
+     fresh Company (route, "Model Grid" heading, `data-testid="model-grid"`, first
+     `[role="gridcell"][col-id^="p-"]` visible). SPA-style navigation only (page.goto
+     resets the in-memory session — M7-5 lesson).
+  2. `src/pages/s002-wizard/index.test.tsx` — new axe gate on the **fiscal-calendar
+     preview step** (waits for the preview period rows, then `axe(document.body)` →
+     0 violations).
+  3. `src/pages/s020-companies/index.test.tsx` — new axe gate on the **populated
+     company list**; the shared `renderPage` now wraps Routes in `<main>` mirroring the
+     app shell's content landmark (identical pattern to S-041's tests) — this surfaced
+     the real `region` (landmark) gap that the shell provides in production.
+  - Result: 4/4 M1 flow screens axe-gated (S-001, S-002, S-020, S-041); 6/6 E2E specs
+    green; `npm run check` + `npm run build` green.
+- **Cargo-pending (honest scope):** money/calendar `proptest` property tests + the
+  migration suite (Rust-runner work, §14 of TASKBOARD). §2 item 5 stays open for those.
+- **Sandbox note (learned this session):** the sandbox also wipes `~/.cache/ms-playwright`
+  and `cdn.playwright.dev` is network-blocked. Working E2E run: install npm-bundled
+  `@sparticuz/chromium` (v153) into a scratch dir, `Chromium.executablePath()` (extracts
+  to `/tmp/chromium`), de-brotli its `bin/al2023.tar.br` (node:zlib) for the shared
+  libs, run with `LD_LIBRARY_PATH=<lib dir> npx playwright test -c
+playwright.local.config.ts` (local-only config with `launchOptions.executablePath`,
+  git-excluded via `.git/info/exclude`).
+
+### Latest — AUDIT-04 formula cycle solver, engine scope DONE (2026-09-23, `arena/01a0ce5b-fpa`)
+
+- **Why:** AUDIT-04 is the credibility vector for 3-statement models: debt revolver →
+  interest → debt is an _intentional_ mathematical loop, and HyperFormula 3.4.0 is DAG-only
+  (no iterative mode) — it hard-fails `#CYCLE!` and blocks exports. The spec
+  (FORMULA-ENGINE-SPEC §5) locks the contract: Tarjan SCC, damped Gauss–Seidel α=0.5,
+  ≤100 iterations, converge at max|Δ| ≤ 0.0001 minor units, divergent → `#CYCLE!`, OFF by
+  default.
+- **What shipped (all executed, not claimed):**
+  1. `src/model/cycleSolver.ts` — pure solver (no HyperFormula): Tarjan SCC + damped
+     Gauss–Seidel + **dual-probe validation** (zero seed AND unit seed must both converge
+     to the same value at the model's committed currency precision, identical decimal
+     HALF_UP at the model scale). 34 tests, hand-computed fixed points, incl. a 100-trial
+     random cyclic graph property test checked against a direct solve.
+  2. `src/workers/modelEngine.ts` — engine wiring behind additive opt-in
+     `loadGrid({ iterativeCalculation: true })` (default OFF; no new IPC, no new error
+     code → no Tier-3 RFC). Every mutation re-detects SCCs over the **logical**
+     (pre-pointer) formulas, solves each SCC in reverse-topological order on a private
+     `CycleSolver` sheet, and rewires solved members to `=CycleSolver!A{row}` pointers so
+     derived columns and YTD/FY `SUM`s stay exact. Original formulas are restored whenever
+     a loop breaks. 20 engine tests (`src/workers/modelEngine.cycles.test.ts`).
+  3. **Honest refusal policy:** any rewrite shape that cannot be guaranteed safe (mixed
+     member/constant ranges, multi-column member ranges, refs into a not-yet-solved SCC,
+     in-SCC formula errors) leaves the SCC at `FORMULA_CYCLE` — never a guessed value.
+     Unsolvable loops surface in `model.recalc.cycles` (path arrays) and
+     `inspectCell.is_cycle` (incl. solved members).
+- **Key design decisions (do not re-derive):**
+  - Dual probe agreement is checked at **committed currency precision**, not the spec
+    1e-4 tolerance: the per-sweep-change stop rule leaves probe endpoints up to ~4×tol
+    apart, which false-rejects uniquely-solvable loops at coarse scales (e.g. scale-0 JPY).
+  - Pointer design (solved members → `=CycleSolver!A{row}`) instead of a value overlay:
+    derived columns, named ranges, and `getDerived` then see exact values through
+    HyperFormula's own propagation.
+  - Detection runs on the **logical** formulas (what the analyst typed), not the live
+    formulas (which pointers would have rewritten) — otherwise detection flips every
+    refresh.
+  - Driver-table refs inside a cycle are constants (driver values are never part of an
+    SCC); custom functions (CAGR/YOY/…) appear only as dependency edges, never rewritten.
+- **Gates:** `npx tsc --noEmit` clean; `src/workers/modelEngine.test.ts` 72/72 (default-OFF
+  unchanged); `modelEngine.cycles.test.ts` 20/20; `model/cycleSolver.test.ts` 34/34;
+  `npm run check` fully green; `npm run build` green.
+- **Known gaps (follow-ups, see §2):** native Rust parity for the solver; a store/UI
+  toggle to expose `iterativeCalculation` (today it's an explicit load option —
+  deliberately no silent default).
+
 ### Latest — AUDIT-02 Excel-parity input formats, vector DONE (2026-09-18, `arena/01a0b379-fpa`)
 
 - **Why:** AUDIT-02 (Excel parity) named four input formats Excel accepts and OneFP&A rejected:
@@ -572,9 +739,18 @@ name)` rewrites a literal → **bare** named-range reference (`wage_inflation`, 
    rows (S-056 ships the buttons disabled until then); `model.inspect`/`driver.import` handlers (B3).
 4. ~~**M3-6 native completion**~~ — DONE 2026-09-04 on the Windows desktop (see TASKBOARD §12);
    M3-1 DB persistence likewise landed via `model_schedule_upsert`'s `model_values` writes.
-5. **M1 acceptance sweep** (ROADMAP §M1): unlock → create company → wizard → calendar preview →
-   grid opens E2E; money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
-   454 / 445 / 544 / 3334, NRF 2024–2028, W53); a11y gates on 4 screens; migration suite green.
+5. **M1 acceptance sweep** (ROADMAP §M1) — **TS-verifiable parts DONE 2026-09-26**
+   (E2E chain now asserts calendar preview periods + grid opens for the fresh company;
+   a11y gates complete on the 4 flow screens S-001/S-002/S-020/S-041 — see §1).
+   Remaining: money/calendar property tests (`proptest` 1.5 is already in dev-deps: 12mo /
+   454 / 445 / 544 / 3334, NRF 2024–2028, W53) and the migration suite — both Rust-runner
+   work.
+6. **AUDIT-04 completion (native)** — the TS/engine solver is DONE 2026-09-23 and the
+   **store/UI toggle is DONE 2026-09-26** (S-041 toolbar `iterative-calc-toggle`; store
+   flag through `loadGrid` + live re-solve op `setIterativeCalculation` — see §1).
+   Remaining: port the solver contract to native Rust (same parameters, same dual-probe
+   validation — the TS tests are the oracle), then flip AUDIT-04 to full DONE in
+   AUDIT-VECTOR-PLAN / TASKBOARD. Rust-runner work.
 
 ---
 

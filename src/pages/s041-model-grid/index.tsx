@@ -21,6 +21,7 @@ import {
   SplitSquareHorizontal,
   Undo2,
   Redo2,
+  Repeat,
   TableProperties,
 } from "lucide-react";
 import { Button, StatePanel, MoneyCell } from "@/components/ui";
@@ -97,6 +98,8 @@ export function ModelGridPage() {
   const forecastPeriods = useModelGridStore((s) => s.forecastPeriods);
   const scenarioId = useModelGridStore((s) => s.scenarioId);
   const setScenario = useModelGridStore((s) => s.setScenario);
+  const iterativeCalculation = useModelGridStore((s) => s.iterativeCalculation);
+  const setIterativeCalculation = useModelGridStore((s) => s.setIterativeCalculation);
 
   // S-071 "→ cell" deep link (SCREENS-SPEC S-041 drill path): `/app/model/grid?line=…&scenario=…&period=…`.
   // Switches the Scenario first if the finding belongs to another one, then focuses and
@@ -621,6 +624,17 @@ export function ModelGridPage() {
           aria-label={t("gridPage.recalc")}
         >
           <Sigma aria-hidden="true" className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={iterativeCalculation}
+          data-testid="iterative-calc-toggle"
+          title={t("gridPage.iterativeCalcHint")}
+          aria-label={t("gridPage.iterativeCalc")}
+          onClick={() => void setIterativeCalculation(!iterativeCalculation)}
+        >
+          <Repeat aria-hidden="true" className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
