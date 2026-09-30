@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OneFP&amp;A — Project Presentation</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: rgba(15, 29, 51, .82);
+      --panel-strong: #10233e;
+      --text: #eff6ff;
+      --muted: #a9bbd3;
+      --primary: #62d5ff;
+      --secondary: #9d8cff;
+      --accent: #43e6a6;
+      --warning: #ffd166;
+      --line: rgba(173, 208, 255, .18);
+      --shadow: 0 24px 80px rgba(0, 0, 0, .32);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(98, 213, 255, .18), transparent 28rem),
+        radial-gradient(circle at 88% 22%, rgba(157, 140, 255, .16), transparent 30rem),
+        linear-gradient(135deg, #07111f 0%, #0a1628 50%, #09101d 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    .progress { position: fixed; inset: 0 0 auto 0; z-index: 20; height: 4px; background: rgba(255,255,255,.08); }
+    .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent)); transition: width .25s ease; }
+    .topbar { position: fixed; top: 4px; left: 0; right: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; padding: 16px 5vw; background: rgba(7, 17, 31, .7); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+    .brand { font-weight: 800; letter-spacing: .04em; }
+    .brand span { color: var(--primary); }
+    .counter { color: var(--muted); font-variant-numeric: tabular-nums; }
+    main { padding-top: 72px; }
+    section { min-height: 100vh; display: grid; place-items: center; padding: 92px 7vw 72px; scroll-margin-top: 60px; }
+    .wrap { width: min(1160px, 100%); }
+    .hero { min-height: calc(100vh - 72px); }
+    .eyebrow { color: var(--primary); text-transform: uppercase; letter-spacing: .16em; font-size: .78rem; font-weight: 800; }
+    h1 { max-width: 900px; margin: 14px 0 20px; font-size: clamp(3.2rem, 9vw, 7.8rem); line-height: .94; letter-spacing: -.07em; }
+    h2 { margin: 10px 0 14px; font-size: clamp(2rem, 5vw, 4.2rem); line-height: 1; letter-spacing: -.05em; }
+    h3 { margin: 0 0 8px; font-size: 1.1rem; }
+    p.lead { max-width: 780px; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.35rem); }
+    .gradient { background: linear-gradient(100deg, var(--primary), #fff 45%, var(--secondary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    .button { display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); text-decoration: none; background: rgba(255,255,255,.05); cursor: pointer; font: inherit; }
+    .button.primary { border-color: transparent; color: #03101d; background: linear-gradient(100deg, var(--primary), var(--accent)); font-weight: 800; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 30px; }
+    .card { grid-column: span 4; padding: 23px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: var(--shadow); }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .card p, li { color: var(--muted); }
+    .icon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 16px; border-radius: 13px; color: #03101d; background: linear-gradient(135deg, var(--primary), var(--secondary)); font-weight: 900; }
+    .metric { font-size: 2.5rem; font-weight: 850; color: var(--primary); line-height: 1; }
+    .metric-label { color: var(--muted); margin-top: 7px; }
+    .pill { display: inline-block; padding: 5px 9px; border-radius: 999px; background: rgba(67, 230, 166, .12); color: var(--accent); font-size: .78rem; font-weight: 700; }
+    .pill.warn { color: var(--warning); background: rgba(255, 209, 102, .12); }
+    .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 26px; }
+    .flow-item { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-strong); font-weight: 700; }
+    .arrow { color: var(--primary); font-size: 1.4rem; }
+    .timeline { border-left: 2px solid var(--line); padding-left: 24px; }
+    .timeline div { position: relative; margin: 0 0 22px; }
+    .timeline div::before { content: ""; position: absolute; left: -34px; top: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 5px rgba(98,213,255,.12); }
+    .code { padding: 20px; border: 1px solid var(--line); border-radius: 16px; color: #c9f5ff; background: #050c17; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
+    footer { padding: 28px 7vw 50px; color: var(--muted); text-align: center; border-top: 1px solid var(--line); }
+    @media (max-width: 760px) { .topbar { padding: 13px 5vw; } section { padding-inline: 5vw; } .card, .card.wide { grid-column: 1 / -1; } .arrow { transform: rotate(90deg); } }
+    @media print { .topbar, .progress, .actions { display: none; } section { min-height: auto; page-break-after: always; } body { background: white; color: #111; } .card, .code { box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="progress"><span id="progressBar"></span></div>
+  <header class="topbar">
+    <div class="brand">ONE<span>FP&amp;A</span></div>
+    <div class="counter" id="counter">01 / 08</div>
+  </header>
+
+  <main>
+    <section class="hero" id="slide-1">
+      <div class="wrap">
+        <div class="eyebrow">Project presentation · Warzonesiddiki/fpa</div>
+        <h1><span class="gradient">OneFP&amp;A</span><br />the local-first FP&amp;A suite</h1>
+        <p class="lead">A desktop-native planning and analysis application designed to bring the complete FP&amp;A cycle into one encrypted, offline-capable workspace—without replacing the accounting system of record.</p>
+        <div class="actions"><a class="button primary" href="#slide-2">Start presentation →</a><a class="button" href="https://github.com/Warzonesiddiki/fpa" target="_blank" rel="noreferrer">Open repository ↗</a></div>
+        <div class="grid">
+          <div class="card"><div class="metric">38</div><div class="metric-label">MVP feature definitions</div></div>
+          <div class="card"><div class="metric">42</div><div class="metric-label">screen modules tracked</div></div>
+          <div class="card"><div class="metric">3</div><div class="metric-label">desktop operating systems</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-2">
+      <div class="wrap">
+        <div class="eyebrow">01 · What is this project?</div>
+        <h2>FP&amp;A from raw data to executive decision</h2>
+        <p class="lead">OneFP&amp;A is aimed at FP&amp;A analysts, controllers and CFO teams that need a controlled alternative to disconnected spreadsheets, BI dashboards and cloud EPM workflows.</p>
+        <div class="flow">
+          <div class="flow-item">Import Actuals</div><div class="arrow">→</div><div class="flow-item">Build Model</div><div class="arrow">→</div><div class="flow-item">Plan &amp; Forecast</div><div class="arrow">→</div><div class="flow-item">Analyze Variance</div><div class="arrow">→</div><div class="flow-item">Report &amp; Govern</div>
+        </div>
+        <div class="grid">
+          <div class="card wide"><span class="pill">Local-first</span><h3>Offline by design</h3><p>Company data is intended to stay on the user's machine. The product direction excludes cloud sync, telemetry and a hosted web runtime.</p></div>
+          <div class="card wide"><span class="pill">Desktop-native</span><h3>Windows · macOS · Linux</h3><p>A Tauri desktop shell combines a React webview with a native Rust core and OS services such as the keychain and filesystem.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-3">
+      <div class="wrap">
+        <div class="eyebrow">02 · Core capabilities</div>
+        <h2>One connected FP&amp;A workflow</h2>
+        <div class="grid">
+          <div class="card"><div class="icon">01</div><h3>Foundation</h3><p>Company Files, Business Units, Chart of Accounts, Dimensions, Fiscal Calendars, onboarding and Planning Horizons.</p></div>
+          <div class="card"><div class="icon">02</div><h3>Ingestion</h3><p>GL Dump and Excel/CSV Manual Import, mapping, validation, Trial Balance Tie-Out, Commit, Source File Vault and reconciliation.</p></div>
+          <div class="card"><div class="icon">03</div><h3>Modeling</h3><p>Sheets, Excel-compatible Formulas, Driver Tables, Assumption Register, workforce, capital, debt, inventory and revenue schedules.</p></div>
+          <div class="card"><div class="icon">04</div><h3>Planning</h3><p>Budget, Forecast, Rolling Forecast, Scenarios, immutable Versions, What-If, Sensitivity, Goal Seek and Planning Cycles.</p></div>
+          <div class="card"><div class="icon">05</div><h3>Analysis</h3><p>Variance in amount and percentage, 3-Way View, Volume/Price/Mix/FX/Efficiency Attribution, FVA and Alerts.</p></div>
+          <div class="card"><div class="icon">06</div><h3>Reporting</h3><p>P&amp;L, Balance Sheet, Cash Flow, SoCE, Segment Reports, Dashboards, KPI Builder, Board Pack and deterministic exports.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-4">
+      <div class="wrap">
+        <div class="eyebrow">03 · Modeling and planning experience</div>
+        <h2>Familiar spreadsheet behavior, governed by an engine</h2>
+        <div class="grid">
+          <div class="card wide"><h3>Model Grid</h3><ul><li>AG Grid-based financial editing surface</li><li>Formula bar and Excel-compatible formulas</li><li>Keyboard navigation, F2 editing and range selection</li><li>Copy, paste, fill, undo/redo and freeze controls</li><li>Actual vs Forecast period boundary</li></ul></div>
+          <div class="card wide"><h3>Driver-led decisions</h3><ul><li>Driver Tables by period and Dimension</li><li>Assumption Register with bounds and effective periods</li><li>Planning Methods: Manual, Static, Driver-based, Growth %, YoY, Seasonal and Spread</li><li>Scenarios move through Draft → Review → Approved → Locked</li><li>What-If overlays, Sensitivity and Goal Seek</li></ul></div>
+          <div class="card full"><h3>Examples of operational planning</h3><div class="flow"><div class="flow-item">Units × Price → Revenue</div><div class="flow-item">Headcount × Salary → Workforce Cost</div><div class="flow-item">Capex → Depreciation → Balance Sheet</div><div class="flow-item">DSO / DIO / DPO → Cash</div><div class="flow-item">Bookings → Revenue Recognition</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-5">
+      <div class="wrap">
+        <div class="eyebrow">04 · Industry and enterprise coverage</div>
+        <h2>Generic engines, configurable Industry Packs</h2>
+        <p class="lead">Industry behavior is represented as versioned data—not separate industry-specific code. Packs provide COA templates, KPIs, Driver Templates, Report Layouts, calendar presets and GL templates.</p>
+        <div class="grid">
+          <div class="card full"><h3>Launch Industry Packs</h3><p>SaaS / Technology · Manufacturing · Retail / CPG · Healthcare · Construction / Engineering · Professional Services · Nonprofit · Government · Energy · Financial Services · Logistics · Real Estate</p><span class="pill">Pack Builder included in the product scope</span></div>
+          <div class="card wide"><h3>Groups and consolidation</h3><p>Business Units can use different Industry Packs, calendars and currencies. Group reporting covers rollup maps, Intercompany eliminations, Balance Translation, NCI and CTA equity treatment.</p></div>
+          <div class="card wide"><h3>Calendar flexibility</h3><p>Supports 12-month calendars plus 4-5-4, 4-4-5, 5-4-4 and 3-3-3-4 / 13-period patterns, including configurable 52/53-week handling.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-6">
+      <div class="wrap">
+        <div class="eyebrow">05 · Trust and governance</div>
+        <h2>Controls for audit-grade planning</h2>
+        <div class="grid">
+          <div class="card"><div class="icon">$</div><h3>Exact money</h3><p>Rust owns money arithmetic through <code>rust_decimal</code>, integer minor units and decimal strings. Financial paths do not use floating-point values.</p></div>
+          <div class="card"><div class="icon">✓</div><h3>Health Check</h3><p>Checks statement tie-outs, broken references, rounding integrity, missing Driver feeds and anomalies before save or export. Problems are surfaced, not silently fixed.</p></div>
+          <div class="card"><div class="icon">⌁</div><h3>Audit Trail</h3><p>Mutations are designed to produce immutable, HMAC-chained events covering edits, imports, approvals, locks and exports.</p></div>
+          <div class="card"><div class="icon">🔒</div><h3>Security at rest</h3><p>AES-256-GCM protects the Company File; Argon2id protects the PIN; Recovery Phrase and OS Credential Store support local recovery and connector credentials.</p></div>
+          <div class="card"><div class="icon">↗</div><h3>Deterministic exports</h3><p>Excel Export, PDF Export, Model Dump and Auditor Data-Room Export are part of the reporting and governance surface.</p></div>
+          <div class="card"><div class="icon">A11Y</div><h3>Accessible screens</h3><p>Screen State coverage, keyboard workflows, focus management, contrast and axe-based accessibility tests are explicit quality requirements.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-7">
+      <div class="wrap">
+        <div class="eyebrow">06 · Technical architecture</div>
+        <h2>React view layer, Rust-owned business engines</h2>
+        <div class="grid">
+          <div class="card wide"><h3>Frontend · TypeScript 70%</h3><p>React 19, Vite, Tailwind, Zustand, AG Grid, ECharts, HyperFormula, Zod, React Router and i18next.</p><div class="code">src/ → pages · components · stores · workers · api · theme</div></div>
+          <div class="card wide"><h3>Native core · Rust 24.6%</h3><p>Tauri 2, SQLite via rusqlite WAL, rust_decimal, calamine, cryptography, native commands and deterministic engines.</p><div class="code">src-tauri/src/ → commands · core · storage</div></div>
+          <div class="card full"><h3>Runtime data flow</h3><div class="flow"><div class="flow-item">React Page</div><div class="arrow">→</div><div class="flow-item">Zod + typed IPC</div><div class="arrow">→</div><div class="flow-item">Rust Command</div><div class="arrow">→</div><div class="flow-item">Core Engine</div><div class="arrow">→</div><div class="flow-item">SQLite WAL + Audit</div></div><p>HyperFormula handles the spreadsheet formula graph in a web worker, while Rust remains the owner of money, calendar, ingestion, storage, security, consolidation and export concerns.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="slide-8">
+      <div class="wrap">
+        <div class="eyebrow">07 · Current state and next steps</div>
+        <h2>Ambitious scope, tracked honestly</h2>
+        <div class="grid">
+          <div class="card wide"><h3>What is represented in the repository</h3><p>The repository includes a substantial React/Tauri application structure, 38 MVP feature definitions, 42 tracked screen modules, Rust command registration, Industry Pack data, tests, quality scripts and a large specification suite.</p><span class="pill">Status is milestone-dependent</span></div>
+          <div class="card wide"><h3>What remains before a final release</h3><p>The taskboard distinguishes DONE, PARTIAL, TODO and BLOCKED work. Native toolchain verification, release CI, signing, performance baselines, full cross-OS E2E and several native integrations remain release considerations.</p><span class="pill warn">Do not read the roadmap as a finished product claim</span></div>
+          <div class="card full"><h3>Developer quickstart</h3><div class="code">npm ci<br />cargo fetch<br />npm run tauri:dev<br /><br />npm run check<br />cargo test</div><p>Primary repository sources: <a href="https://github.com/Warzonesiddiki/fpa/blob/main/README.md" target="_blank" rel="noreferrer" style="color:var(--primary)">README.md</a> · <a href="https://github.com/Warzonesiddiki/fpa/blob/main/docs/PRD.md" target="_blank" rel="noreferrer" style="color:var(--primary)">docs/PRD.md</a> · <a href="https://github.com/Warzonesiddiki/fpa/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noreferrer" style="color:var(--primary)">docs/ARCHITECTURE.md</a> · <a href="https://github.com/Warzonesiddiki/fpa/blob/main/TASKBOARD.md" target="_blank" rel="noreferrer" style="color:var(--primary)">TASKBOARD.md</a></p></div>
+        </div>
+        <div class="actions"><a class="button primary" href="#slide-1">↺ Replay</a><button class="button" onclick="window.print()">Print / Save PDF</button></div>
+      </div>
+    </section>
+  </main>
+  <footer>OneFP&amp;A · local-first FP&amp;A desktop suite · Presentation generated from the repository's documented product scope and architecture.</footer>
+  <script>
+    const slides = [...document.querySelectorAll('section')];
+    const bar = document.getElementById('progressBar');
+    const counter = document.getElementById('counter');
+    const update = () => {
+      const index = Math.min(slides.length - 1, Math.max(0, Math.round(window.scrollY / Math.max(1, window.innerHeight * .88))));
+      bar.style.width = `${((index + 1) / slides.length) * 100}%`;
+      counter.textContent = `${String(index + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+    document.addEventListener('keydown', (event) => {
+      if (!['ArrowRight', 'ArrowDown', 'PageDown', 'ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) return;
+      const current = Math.min(slides.length - 1, Math.max(0, Math.round(window.scrollY / Math.max(1, window.innerHeight * .88))));
+      const direction = ['ArrowRight', 'ArrowDown', 'PageDown'].includes(event.key) ? 1 : -1;
+      slides[Math.min(slides.length - 1, Math.max(0, current + direction))].scrollIntoView({ behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>
