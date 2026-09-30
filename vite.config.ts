@@ -12,10 +12,10 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
-    port: 5173,
+    port: 3000,
     strictPort: true,
-    host: true,
-    allowedHosts: [".e2b.app", ".localhost", "localhost", "127.0.0.1"],
+    host: "0.0.0.0",
+    allowedHosts: true,
     watch: { ignored: ["**/src-tauri/**"] },
   },
   envPrefix: ["VITE_", "TAURI_ENV_"],

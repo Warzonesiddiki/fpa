@@ -1,0 +1,29 @@
+{
+  "results": {
+    "spec_three_line_thousands": {
+      "displayed": ["12000", "3000", "7000"],
+      "displayed_total": "22000",
+      "sum_ties_to_total": true
+    },
+    "four_line_differing_remainders": {
+      "displayed": ["10000", "21000", "31000", "40000"],
+      "displayed_total": "102000",
+      "sum_ties_to_total": true
+    },
+    "negative_expenses_thousands": {
+      "displayed": ["-10000", "-21000", "-31000"],
+      "displayed_total": "-62000",
+      "sum_ties_to_total": true
+    },
+    "two_decimal_subcent_fractions": {
+      "displayed": ["10.01", "20", "30"],
+      "displayed_total": "60.01",
+      "sum_ties_to_total": true
+    },
+    "exact_multiples_zero_residual": {
+      "displayed": ["10000", "20000", "30000"],
+      "displayed_total": "60000",
+      "sum_ties_to_total": true
+    }
+  }
+}

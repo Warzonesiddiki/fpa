@@ -8,9 +8,8 @@
     "node": ">=22.0.0",
     "npm": ">=10.9.0"
   },
-  "packageManager": "npm@10.9.0",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",

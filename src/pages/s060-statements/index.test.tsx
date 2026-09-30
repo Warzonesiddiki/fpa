@@ -19,6 +19,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 import { StatementsPage } from "./index";
+import * as bridge from "@/api/bridge";
 import { useStatementStore } from "@/stores/statements";
 import { useSessionStore } from "@/stores/session";
 
@@ -376,6 +377,104 @@ describe("S-060 Statements axe", () => {
       findings: [],
     });
     storeState().loadStatement = vi.fn().mockResolvedValue(true);
+  });
+
+  it("triggers export.excel when Export Excel button is clicked", async () => {
+    const callSpy = vi.spyOn(bridge, "call").mockResolvedValueOnce({
+      file: "statement.xlsx",
+      audit_id: 101,
+    });
+    setStoreState({
+      status: "populated",
+      rows: PL_ROWS,
+      totals: PL_TOTALS,
+      tieoutStatus: "pass",
+      roundingStatus: "exact",
+    });
+    renderPage();
+
+    const excelBtn = screen.getByTestId("stmt-export-excel-btn");
+    expect(excelBtn).not.toBeDisabled();
+    await userEvent.click(excelBtn);
+
+    expect(callSpy).toHaveBeenCalledWith("export.excel", {
+      scope: { company_id: COMPANY_ID, statement_type: "pl" },
+    });
+    expect(screen.getByTestId("stmt-export-success")).toBeInTheDocument();
+    expect(screen.getByText("Statement exported to Excel successfully.")).toBeInTheDocument();
+  });
+
+  it("triggers export.pdf when Export PDF button is clicked", async () => {
+    const callSpy = vi.spyOn(bridge, "call").mockResolvedValueOnce({
+      file: "statement.pdf",
+      audit_id: 102,
+    });
+    setStoreState({
+      status: "populated",
+      rows: PL_ROWS,
+      totals: PL_TOTALS,
+      tieoutStatus: "pass",
+      roundingStatus: "exact",
+    });
+    renderPage();
+
+    const pdfBtn = screen.getByTestId("stmt-export-pdf-btn");
+    expect(pdfBtn).not.toBeDisabled();
+    await userEvent.click(pdfBtn);
+
+    expect(callSpy).toHaveBeenCalledWith("export.pdf", {
+      scope: { company_id: COMPANY_ID, statement_type: "pl" },
+    });
+    expect(screen.getByTestId("stmt-export-success")).toBeInTheDocument();
+    expect(screen.getByText("Statement exported to PDF successfully.")).toBeInTheDocument();
+  });
+
+  it("disables export buttons when tie-out fails", () => {
+    setStoreState({
+      status: "populated",
+      rows: PL_ROWS,
+      totals: PL_TOTALS,
+      tieoutStatus: "fail",
+      roundingStatus: "exact",
+    });
+    renderPage();
+
+    const excelBtn = screen.getByTestId("stmt-export-excel-btn");
+    const pdfBtn = screen.getByTestId("stmt-export-pdf-btn");
+    expect(excelBtn).toBeDisabled();
+    expect(pdfBtn).toBeDisabled();
+    expect(excelBtn).toHaveAttribute(
+      "title",
+      "STATEMENT_TIE_OUT_FAILED: Export blocked until tie-out passes.",
+    );
+  });
+
+  it("renders export error banner when export rejects", async () => {
+    vi.spyOn(bridge, "call").mockRejectedValueOnce({
+      code: "EXPORT_FAILED",
+      message: "Failed to generate file",
+      userMessage: "Export failed due to system error.",
+      httpStatus: 500,
+      retryable: false,
+    });
+    setStoreState({
+      status: "populated",
+      rows: PL_ROWS,
+      totals: PL_TOTALS,
+      tieoutStatus: "pass",
+      roundingStatus: "exact",
+    });
+    renderPage();
+
+    const excelBtn = screen.getByTestId("stmt-export-excel-btn");
+    await userEvent.click(excelBtn);
+
+    expect(screen.getByTestId("stmt-export-error")).toBeInTheDocument();
+    expect(screen.getByText("Export failed due to system error.")).toBeInTheDocument();
+
+    // Dismiss banner
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("stmt-export-error")).not.toBeInTheDocument();
   });
 
   it("has no axe violations in the populated state", async () => {

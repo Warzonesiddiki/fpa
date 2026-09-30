@@ -1,0 +1,65 @@
+{
+  "fixture": "statements/bs_basic",
+  "synthetic": true,
+  "currency": "USD",
+  "scale": 2,
+  "period": "fp_2026_fy",
+  "assets": [
+    {
+      "account_code": "1000",
+      "label": "Cash and Cash Equivalents",
+      "class": "current_assets",
+      "amount_decimal": "1320000.00",
+      "amount_minor": 132000000
+    },
+    {
+      "account_code": "1100",
+      "label": "Accounts Receivable",
+      "class": "current_assets",
+      "amount_decimal": "2100000.00",
+      "amount_minor": 210000000
+    },
+    {
+      "account_code": "1200",
+      "label": "Inventory",
+      "class": "current_assets",
+      "amount_decimal": "1150000.00",
+      "amount_minor": 115000000
+    },
+    {
+      "account_code": "1500",
+      "label": "Property, Plant & Equipment",
+      "class": "non_current_assets",
+      "amount_decimal": "4200000.00",
+      "amount_minor": 420000000
+    }
+  ],
+  "liabilities": [
+    {
+      "account_code": "2000",
+      "label": "Accounts Payable",
+      "class": "current_liabilities",
+      "amount_decimal": "1950000.00",
+      "amount_minor": 195000000,
+      "signed_amount_minor": -195000000
+    },
+    {
+      "account_code": "2500",
+      "label": "Long-Term Debt",
+      "class": "non_current_liabilities",
+      "amount_decimal": "5000000.00",
+      "amount_minor": 500000000,
+      "signed_amount_minor": -500000000
+    }
+  ],
+  "equity": [
+    {
+      "account_code": "3000",
+      "label": "Common Stock & Retained Earnings",
+      "class": "equity",
+      "amount_decimal": "1820000.00",
+      "amount_minor": 182000000,
+      "signed_amount_minor": -182000000
+    }
+  ]
+}

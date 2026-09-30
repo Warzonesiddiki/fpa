@@ -1442,6 +1442,11 @@
       "approximate": "Rounding: Approximate"
     },
     "integrityLabel": "Statement integrity",
+    "exportExcel": "Export Excel",
+    "exportPdf": "Export PDF",
+    "exportSuccess": "Statement exported to {{type}} successfully.",
+    "exportBlockedTieout": "STATEMENT_TIE_OUT_FAILED: Export blocked until tie-out passes.",
+    "dismiss": "Dismiss",
     "retry": "Retry",
     "footer": "Values are exact minor units of the reporting currency; display rounding is largest-remainder allocated so subtotals tie to totals.",
     "periodScopeLabel": "Period Scope",

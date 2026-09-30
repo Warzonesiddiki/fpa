@@ -36,10 +36,13 @@ import {
   type RoundingModeValue,
 } from "@/stores/statements";
 import type { StatementLine, StatementSection, BuScope } from "@/api/schema";
+import { Download, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { MoneyCell } from "@/components/domain/MoneyCell";
 import { StatePanel } from "@/components/ui/StatePanel";
 import { useSessionStore } from "@/stores/session";
 import { currencyScale } from "@/utils/money";
+import { call, toBridgeError, type BridgeError } from "@/api/bridge";
 
 interface StatementTypeDef {
   value: StatementTypeValue;
@@ -266,6 +269,47 @@ export function StatementsPage() {
     setBuScopeAction(nextBuScope);
   };
 
+  const [exportLoading, setExportLoading] = useState<"excel" | "pdf" | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<BridgeError | null>(null);
+
+  const isExportBlocked =
+    tieoutStatus === "fail" || findings.some((f) => f.code === "STATEMENT_TIE_OUT_FAILED");
+
+  const handleExportExcel = async () => {
+    if (!companyId || isExportBlocked) return;
+    setExportLoading("excel");
+    setExportSuccess(null);
+    setExportError(null);
+    try {
+      await call("export.excel", {
+        scope: { company_id: companyId, statement_type: activeType },
+      });
+      setExportSuccess(t("statementsPage.exportSuccess", { type: "Excel" }));
+    } catch (e) {
+      setExportError(toBridgeError(e));
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!companyId || isExportBlocked) return;
+    setExportLoading("pdf");
+    setExportSuccess(null);
+    setExportError(null);
+    try {
+      await call("export.pdf", {
+        scope: { company_id: companyId, statement_type: activeType },
+      });
+      setExportSuccess(t("statementsPage.exportSuccess", { type: "PDF" }));
+    } catch (e) {
+      setExportError(toBridgeError(e));
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
   const currentBuValue =
     storeBuScope.kind === "single" && storeBuScope.bu_id ? storeBuScope.bu_id : "all";
 
@@ -451,9 +495,85 @@ export function StatementsPage() {
             )}
           </span>
         </button>
+
+        {/* Export Actions */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isExportBlocked || !populated || exportLoading !== null}
+            title={
+              isExportBlocked
+                ? t("statementsPage.exportBlockedTieout")
+                : t("statementsPage.exportExcel")
+            }
+            onClick={() => void handleExportExcel()}
+            data-testid="stmt-export-excel-btn"
+          >
+            {exportLoading === "excel" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span>{t("statementsPage.exportExcel")}</span>
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isExportBlocked || !populated || exportLoading !== null}
+            title={
+              isExportBlocked
+                ? t("statementsPage.exportBlockedTieout")
+                : t("statementsPage.exportPdf")
+            }
+            onClick={() => void handleExportPdf()}
+            data-testid="stmt-export-pdf-btn"
+          >
+            {exportLoading === "pdf" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span>{t("statementsPage.exportPdf")}</span>
+          </Button>
+        </div>
       </div>
 
       <main className="flex-1 space-y-4 p-6">
+        {exportSuccess && (
+          <div
+            role="status"
+            className="flex items-center justify-between rounded-md border border-[var(--color-onefavorable)]/30 bg-[var(--color-onefavorable)]/10 px-4 py-2 text-sm text-[var(--color-onefavorable)]"
+            data-testid="stmt-export-success"
+          >
+            <span>{exportSuccess}</span>
+            <button
+              type="button"
+              className="text-xs underline hover:no-underline"
+              onClick={() => setExportSuccess(null)}
+            >
+              {t("statementsPage.dismiss")}
+            </button>
+          </div>
+        )}
+
+        {exportError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between rounded-md border border-[var(--color-oneunfavorable)]/30 bg-[var(--color-oneunfavorable)]/10 px-4 py-2 text-sm text-[var(--color-oneunfavorable)]"
+            data-testid="stmt-export-error"
+          >
+            <span>{exportError.userMessage || exportError.code}</span>
+            <button
+              type="button"
+              className="text-xs underline hover:no-underline"
+              onClick={() => setExportError(null)}
+            >
+              {t("statementsPage.dismiss")}
+            </button>
+          </div>
+        )}
         {storeError && (
           <StatePanel
             state="error"

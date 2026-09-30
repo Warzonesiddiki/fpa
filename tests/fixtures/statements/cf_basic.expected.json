@@ -1,0 +1,18 @@
+{
+  "operating_cash_flow": "1480000.00",
+  "operating_cash_flow_minor": 148000000,
+  "investing_cash_flow": "-640000.00",
+  "investing_cash_flow_minor": -64000000,
+  "free_cash_flow": "840000.00",
+  "free_cash_flow_minor": 84000000,
+  "financing_cash_flow": "-520000.00",
+  "financing_cash_flow_minor": -52000000,
+  "net_cash_change": "320000.00",
+  "net_cash_change_minor": 32000000,
+  "tie_out": {
+    "fcf_equals_ocf_plus_icf": true,
+    "net_change_equals_fcf_plus_financing": true,
+    "net_change_equals_bs_cash_delta": true,
+    "bs_cash_delta_minor": 32000000
+  }
+}

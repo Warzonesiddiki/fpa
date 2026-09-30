@@ -1,0 +1,43 @@
+{
+  "fixture": "statements/cf_basic",
+  "synthetic": true,
+  "currency": "USD",
+  "scale": 2,
+  "period": "fp_2026_fy",
+  "operating_activities": [
+    {
+      "label": "Net Income",
+      "amount_decimal": "694200.00",
+      "amount_minor": 69420000
+    },
+    {
+      "label": "Depreciation Non-Cash Addback",
+      "amount_decimal": "250000.00",
+      "amount_minor": 25000000
+    },
+    {
+      "label": "Working Capital & Other Operating Inflows",
+      "amount_decimal": "535800.00",
+      "amount_minor": 53580000
+    }
+  ],
+  "investing_activities": [
+    {
+      "label": "Capital Expenditures (PP&E)",
+      "amount_decimal": "-640000.00",
+      "amount_minor": -64000000
+    }
+  ],
+  "financing_activities": [
+    {
+      "label": "Debt Principal Repayment & Dividends",
+      "amount_decimal": "-520000.00",
+      "amount_minor": -52000000
+    }
+  ],
+  "balance_sheet_cash_reference": {
+    "beginning_cash_minor": 100000000,
+    "ending_cash_minor": 132000000,
+    "cash_delta_minor": 32000000
+  }
+}

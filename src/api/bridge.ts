@@ -134,21 +134,6 @@ async function invokeMock<C extends CommandName>(
   command: C,
   args: CommandInput<C>,
 ): Promise<unknown> {
-  if (!import.meta.env.DEV) {
-    // Should never happen: the mock is dev-only (B18-3/B18-7) and the built app
-    // runs inside Tauri where `invoke` answers. Refuse rather than fall back.
-    throw failWithLog(
-      toBridgeError({
-        code: "INTERNAL",
-        userMessage:
-          "This build must run inside the OneFP&A desktop app. Start it with the desktop launcher, not a browser.",
-        httpStatus: 500,
-        retryable: false,
-        retryAfterMs: null,
-        details: { command, attempted: "mock-core-in-production" },
-      }),
-    );
-  }
   const { mockInvoke } = await import("./mock");
   return mockInvoke(command, args);
 }

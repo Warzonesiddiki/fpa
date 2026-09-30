@@ -1,0 +1,24 @@
+{
+  "current_assets": "4570000.00",
+  "current_assets_minor": 457000000,
+  "non_current_assets": "4200000.00",
+  "non_current_assets_minor": 420000000,
+  "total_assets": "8770000.00",
+  "total_assets_minor": 877000000,
+  "current_liabilities": "1950000.00",
+  "current_liabilities_minor": 195000000,
+  "non_current_liabilities": "5000000.00",
+  "non_current_liabilities_minor": 500000000,
+  "total_liabilities": "6950000.00",
+  "total_liabilities_minor": 695000000,
+  "total_equity": "1820000.00",
+  "total_equity_minor": 182000000,
+  "total_liabilities_and_equity": "8770000.00",
+  "total_liabilities_and_equity_minor": 877000000,
+  "tie_out": {
+    "assets_equal_liabilities_plus_equity": true,
+    "delta_minor": 0,
+    "signed_sum_zero": true,
+    "signed_sum_formula": "Assets + (Liabilities) + (Equity) = 0"
+  }
+}

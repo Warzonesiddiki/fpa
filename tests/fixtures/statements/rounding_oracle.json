@@ -1,0 +1,37 @@
+{
+  "fixture": "statements/rounding_oracle",
+  "synthetic": true,
+  "description": "Multi-case oracle fixtures for Largest-Remainder Allocation per MONEY-ROUNDING-SPEC §4",
+  "cases": [
+    {
+      "id": "spec_three_line_thousands",
+      "name": "Standard 3-line 000s example from MONEY-ROUNDING-SPEC §4",
+      "unit": "1000",
+      "exact_lines": ["11400.00", "3400.00", "7400.00"]
+    },
+    {
+      "id": "four_line_differing_remainders",
+      "name": "Four lines with distinct remainders in 000s",
+      "unit": "1000",
+      "exact_lines": ["10400.00", "20800.00", "30700.00", "40100.00"]
+    },
+    {
+      "id": "negative_expenses_thousands",
+      "name": "Negative line items (expenses) in 000s",
+      "unit": "1000",
+      "exact_lines": ["-10400.00", "-20800.00", "-30700.00"]
+    },
+    {
+      "id": "two_decimal_subcent_fractions",
+      "name": "Two-decimal display on sub-cent fractions (unit 0.01)",
+      "unit": "0.01",
+      "exact_lines": ["10.004", "20.004", "30.004"]
+    },
+    {
+      "id": "exact_multiples_zero_residual",
+      "name": "Exact multiples with zero residual",
+      "unit": "1000",
+      "exact_lines": ["10000.00", "20000.00", "30000.00"]
+    }
+  ]
+}

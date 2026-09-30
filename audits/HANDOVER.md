@@ -34,6 +34,32 @@
 
 ## 1. STATE OF THE WORK
 
+### Latest — M6-1 Statement oracle fixtures + S-060 export actions & tie-out gate (2026-09-30)
+
+- **Why:** HANDOVER §2 item 1 ("add largest-remainder oracle fixtures vs MONEY-ROUNDING-SPEC §3–5")
+  and SCREENS-SPEC §S-060 ("export buttons, tie-out status chip, rounding integrity chip... Error:
+  STATEMENT_TIE_OUT_FAILED export blocked"). The statement oracle fixtures and S-060 export
+  wiring were the primary remaining TS-verifiable items for M6-1.
+- **What shipped (all executed, not claimed):**
+  1. `tests/fixtures/statements/` — 4 synthetic fixture pairs + README.md:
+     - `pl_basic.json` & `.expected.json`: 8-line income statement (Revenue 6,350,000.00, COGS 3,970,000.00,
+       Gross Profit 2,380,000.00, OpEx 1,240,000.00, EBITDA 1,140,000.00, Depr 250,000.00, EBIT 890,000.00,
+       Tax 22% 195,800.00, Net Income 694,200.00) matching TEST-FIXTURES-SPEC §3 verbatim.
+     - `bs_basic.json` & `.expected.json`: Balance sheet Assets (8,770,000.00) = Liabilities (6,950,000.00) +
+       Equity (1,820,000.00), signed sum `Assets + (Liabilities) + (Equity) = 0` (MONEY-ROUNDING-SPEC §5).
+     - `cf_basic.json` & `.expected.json`: OCF (1,480,000.00), ICF (-640,000.00), FCF (840,000.00),
+       Financing (-520,000.00), Net Cash Change (320,000.00 = BS cash delta).
+     - `rounding_oracle.json` & `.expected.json`: Multi-case largest-remainder allocation suite (000s,
+       negative values, sub-cent 2dp, zero residual).
+  2. `src/test/statement-fixtures.test.ts` — 4 tests running the fixtures through `largestRemainderAllocate`,
+     verifying arithmetic and tie-out invariants.
+  3. `src/pages/s060-statements/index.tsx` — wired Export Excel and Export PDF buttons in the toolbar
+     (`data-testid="stmt-export-excel-btn"`, `stmt-export-pdf-btn`), calling `export.excel` and `export.pdf`
+     via `call()`; disabled with title warning when tie-out fails (`STATEMENT_TIE_OUT_FAILED`); success and
+     error notification alerts with dismiss.
+  4. Tests: 4 new export tests in `src/pages/s060-statements/index.test.tsx` (21 tests, 0 axe violations).
+  5. Gates: Full `npm run check` green, `compile_applet` green, `money:ast` clean.
+
 ### Latest — AUDIT-04 store/UI toggle: iterative calculation on the S-041 toolbar (2026-09-26, `arena/01a0ce5b-fpa`)
 
 - **Why:** the documented AUDIT-04 follow-up was "native Rust parity + store/UI toggle".

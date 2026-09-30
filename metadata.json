@@ -1,0 +1,6 @@
+{
+  "name": "OneFP&A",
+  "description": "Local-first, encrypted, all-industry financial planning and analysis suite.",
+  "prompt": "OneFP&A — local-first, encrypted, all-industry financial planning and analysis suite.",
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
